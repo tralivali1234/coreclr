@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information. 
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 /*++
 
@@ -308,54 +307,6 @@ CorUnix::InternalOpen(
 #else
         nRet = open(szPath, nFlags, mode);
 #endif
-    return nRet;
-}
-
-
-/*++
-PAL_unlink
-
-Wrapper function for unlink.
-
-Input parameters:
-
-szPath = a symbolic link or a hard link to a file
-
-Return value:
-    Returns 0 on success and -1 on failure
---*/
-int
-__cdecl
-PAL_unlink(const char *szPath)
-{
-    return unlink(szPath);
-}
-
-
-/*++
-InternalDeleteFile
-
-Wrapper that does the same thing as unlink, except that
-it uses the SYS_Delete system call present on Apple instead of unlink.
-
-Input parameters:
-
-szPath = a symbolic link or a hard link to a file
-
-Return value:
-    Returns 0 on success and -1 on failure
---*/
-int
-CorUnix::InternalDeleteFile(
-    const char *szPath
-    )
-{
-    int nRet = -1;
-#if defined(__APPLE__) && defined(SYS_delete)
-    nRet = syscall(SYS_delete, szPath);
-#else
-    nRet = unlink(szPath);
-#endif // defined(__APPLE__) && defined(SYS_delete)
     return nRet;
 }
 

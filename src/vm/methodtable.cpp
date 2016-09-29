@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 //
 // File: methodtable.cpp
 //
@@ -34,7 +33,7 @@
 #include "log.h"
 #include "fieldmarshaler.h"
 #include "cgensys.h"
-#include "gc.h"
+#include "gcheaputilities.h"
 #include "security.h"
 #include "dbginterface.h"
 #include "comdelegate.h"
@@ -806,11 +805,10 @@ PTR_MethodTable InterfaceInfo_t::GetApproxMethodTable(Module * pContainingModule
     {
         GCStress<cfg_any>::MaybeTrigger();
 
-        // Make call to obj.GetImplType(interfaceTypeObj)
-        MethodDesc *pGetImplTypeMD = pServerMT->GetMethodDescForInterfaceMethod(MscorlibBinder::GetMethod(METHOD__ICASTABLE__GETIMPLTYPE));
-        OBJECTREF ownerManagedType = ownerType.GetManagedClassObject(); //GC triggers
+        // Make call to ICastableHelpers.GetImplType(obj, interfaceTypeObj)
+        PREPARE_NONVIRTUAL_CALLSITE(METHOD__ICASTABLEHELPERS__GETIMPLTYPE);
 
-        PREPARE_NONVIRTUAL_CALLSITE_USING_METHODDESC(pGetImplTypeMD);
+        OBJECTREF ownerManagedType = ownerType.GetManagedClassObject(); //GC triggers
         
         DECLARE_ARGHOLDER_ARRAY(args, 2);
         args[ARGNUM_0] = OBJECTREF_TO_ARGHOLDER(*pServer);
@@ -2288,14 +2286,16 @@ const char* GetSystemVClassificationTypeName(SystemVClassificationType t)
 {
     switch (t)
     {
-    case SystemVClassificationTypeUnknown:          return "Unknown";
-    case SystemVClassificationTypeStruct:           return "Struct";
-    case SystemVClassificationTypeNoClass:          return "NoClass";
-    case SystemVClassificationTypeMemory:           return "Memory";
-    case SystemVClassificationTypeInteger:          return "Integer";
-    case SystemVClassificationTypeIntegerReference: return "IntegerReference";
-    case SystemVClassificationTypeSSE:              return "SSE";
-    default:                                        return "ERROR";
+    case SystemVClassificationTypeUnknown:              return "Unknown";
+    case SystemVClassificationTypeStruct:               return "Struct";
+    case SystemVClassificationTypeNoClass:              return "NoClass";
+    case SystemVClassificationTypeMemory:               return "Memory";
+    case SystemVClassificationTypeInteger:              return "Integer";
+    case SystemVClassificationTypeIntegerReference:     return "IntegerReference";
+    case SystemVClassificationTypeIntegerByRef:         return "IntegerByReference";
+    case SystemVClassificationTypeSSE:                  return "SSE";
+    case SystemVClassificationTypeTypedReference:       return "TypedReference";
+    default:                                            return "ERROR";
     }
 };
 #endif // _DEBUG && LOGGING
@@ -2320,6 +2320,7 @@ static SystemVClassificationType ReClassifyField(SystemVClassificationType origi
 {
     _ASSERTE((newFieldClassification == SystemVClassificationTypeInteger) ||
              (newFieldClassification == SystemVClassificationTypeIntegerReference) ||
+             (newFieldClassification == SystemVClassificationTypeIntegerByRef) ||
              (newFieldClassification == SystemVClassificationTypeSSE));
 
     switch (newFieldClassification)
@@ -2349,6 +2350,11 @@ static SystemVClassificationType ReClassifyField(SystemVClassificationType origi
         // IntegerReference can only merge with IntegerReference.
         _ASSERTE(originalClassification == SystemVClassificationTypeIntegerReference);
         return SystemVClassificationTypeIntegerReference;
+
+    case SystemVClassificationTypeIntegerByRef:
+        // IntegerByReference can only merge with IntegerByReference.
+        _ASSERTE(originalClassification == SystemVClassificationTypeIntegerByRef);
+        return SystemVClassificationTypeIntegerByRef;
 
     default:
         _ASSERTE(false); // Unexpected type.
@@ -2425,7 +2431,6 @@ bool MethodTable::ClassifyEightBytesWithManagedLayout(SystemVStructRegisterPassi
         LPCUTF8 fieldName;
         pField->GetName_NoThrow(&fieldName);
 #endif // _DEBUG
-
         if (fieldClassificationType == SystemVClassificationTypeStruct)
         {
             TypeHandle th = pField->GetApproxFieldTypeHandleThrowing();
@@ -2455,6 +2460,66 @@ bool MethodTable::ClassifyEightBytesWithManagedLayout(SystemVStructRegisterPassi
                 return false;
             }
 
+            continue;
+        }
+
+        if (fieldClassificationType == SystemVClassificationTypeTypedReference || 
+            CorInfoType2UnixAmd64Classification(GetClass_NoLogging()->GetInternalCorElementType()) == SystemVClassificationTypeTypedReference)
+        {
+            // The TypedReference is a very special type.
+            // In source/metadata it has two fields - Type and Value and both are defined of type IntPtr.
+            // When the VM creates a layout of the type it changes the type of the Value to ByRef type and the
+            // type of the Type field is left to IntPtr (TYPE_I internally - native int type.)
+            // This requires a special treatment of this type. The code below handles the both fields (and this entire type).
+
+            for (unsigned i = 0; i < 2; i++)
+            {
+                fieldSize = 8;
+                fieldOffset = (i == 0 ? 0 : 8);
+                normalizedFieldOffset = fieldOffset + startOffsetOfStruct;
+                fieldClassificationType = (i == 0 ? SystemVClassificationTypeIntegerByRef : SystemVClassificationTypeInteger);
+                if ((normalizedFieldOffset % fieldSize) != 0)
+                {
+                    // The spec requires that struct values on the stack from register passed fields expects
+                    // those fields to be at their natural alignment.
+
+                    LOG((LF_JIT, LL_EVERYTHING, "     %*sxxxx Field %d %s: offset %d (normalized %d), size %d not at natural alignment; not enregistering struct\n",
+                        nestingLevel * 5, "", fieldNum, fieldNum, (i == 0 ? "Value" : "Type"), fieldOffset, normalizedFieldOffset, fieldSize));
+                    return false;
+                }
+
+                helperPtr->largestFieldOffset = (int)normalizedFieldOffset;
+
+                // Set the data for a new field.
+
+                // The new field classification must not have been initialized yet.
+                _ASSERTE(helperPtr->fieldClassifications[helperPtr->currentUniqueOffsetField] == SystemVClassificationTypeNoClass);
+
+                // There are only a few field classifications that are allowed.
+                _ASSERTE((fieldClassificationType == SystemVClassificationTypeInteger) ||
+                    (fieldClassificationType == SystemVClassificationTypeIntegerReference) ||
+                    (fieldClassificationType == SystemVClassificationTypeIntegerByRef) ||
+                    (fieldClassificationType == SystemVClassificationTypeSSE));
+
+                helperPtr->fieldClassifications[helperPtr->currentUniqueOffsetField] = fieldClassificationType;
+                helperPtr->fieldSizes[helperPtr->currentUniqueOffsetField] = fieldSize;
+                helperPtr->fieldOffsets[helperPtr->currentUniqueOffsetField] = normalizedFieldOffset;
+
+                LOG((LF_JIT, LL_EVERYTHING, "     %*s**** Field %d %s: offset %d (normalized %d), size %d, currentUniqueOffsetField %d, field type classification %s, chosen field classification %s\n",
+                    nestingLevel * 5, "", fieldNum, (i == 0 ? "Value" : "Type"), fieldOffset, normalizedFieldOffset, fieldSize, helperPtr->currentUniqueOffsetField,
+                    GetSystemVClassificationTypeName(fieldClassificationType),
+                    GetSystemVClassificationTypeName(helperPtr->fieldClassifications[helperPtr->currentUniqueOffsetField])));
+
+                helperPtr->currentUniqueOffsetField++;
+#ifdef _DEBUG
+                ++fieldNum;
+#endif // _DEBUG
+            }
+
+            // Both fields of the special TypedReference struct are handled.
+            pField = pFieldEnd;
+
+            // Done classifying the System.TypedReference struct fields.
             continue;
         }
 
@@ -2522,6 +2587,7 @@ bool MethodTable::ClassifyEightBytesWithManagedLayout(SystemVStructRegisterPassi
         // There are only a few field classifications that are allowed.
         _ASSERTE((fieldClassificationType == SystemVClassificationTypeInteger) ||
                  (fieldClassificationType == SystemVClassificationTypeIntegerReference) ||
+                 (fieldClassificationType == SystemVClassificationTypeIntegerByRef) ||
                  (fieldClassificationType == SystemVClassificationTypeSSE));
 
         helperPtr->fieldClassifications[helperPtr->currentUniqueOffsetField] = fieldClassificationType;
@@ -2533,8 +2599,8 @@ bool MethodTable::ClassifyEightBytesWithManagedLayout(SystemVStructRegisterPassi
                GetSystemVClassificationTypeName(fieldClassificationType),
                GetSystemVClassificationTypeName(helperPtr->fieldClassifications[helperPtr->currentUniqueOffsetField])));
 
-        helperPtr->currentUniqueOffsetField++;
         _ASSERTE(helperPtr->currentUniqueOffsetField < SYSTEMV_MAX_NUM_FIELDS_IN_REGISTER_PASSED_STRUCT);
+        helperPtr->currentUniqueOffsetField++;
     } // end per-field for loop
 
     AssignClassifiedEightByteTypes(helperPtr, nestingLevel);
@@ -2589,6 +2655,7 @@ bool MethodTable::ClassifyEightBytesWithNativeLayout(SystemVStructRegisterPassin
             nestingLevel * 5, "", this->GetDebugClassName()));
         return false;
     }
+
 #ifdef _DEBUG
     LOG((LF_JIT, LL_EVERYTHING, "%*s**** Classify for native struct %s (%p), startOffset %d, total struct size %d\n",
         nestingLevel * 5, "", this->GetDebugClassName(), this, startOffsetOfStruct, helperPtr->structSize));
@@ -2850,17 +2917,20 @@ bool MethodTable::ClassifyEightBytesWithNativeLayout(SystemVStructRegisterPassin
             case NFT_STRINGUNI:
             case NFT_STRINGANSI:
             case NFT_ANSICHAR:
+            case NFT_STRINGUTF8:
             case NFT_WINBOOL:
             case NFT_CBOOL:
+            case NFT_DELEGATE:
+            case NFT_SAFEHANDLE:
+            case NFT_CRITICALHANDLE:
                 fieldClassificationType = SystemVClassificationTypeInteger;
                 break;
 
-            case NFT_DELEGATE:
+            // It's not clear what the right behavior for NTF_DECIMAL and NTF_DATE is
+            // But those two types would only make sense on windows. We can revisit this later
             case NFT_DECIMAL:
             case NFT_DATE:
             case NFT_ILLEGAL:
-            case NFT_SAFEHANDLE:
-            case NFT_CRITICALHANDLE:
             default:
                 return false;
             }
@@ -2926,6 +2996,7 @@ bool MethodTable::ClassifyEightBytesWithNativeLayout(SystemVStructRegisterPassin
         // There are only a few field classifications that are allowed.
         _ASSERTE((fieldClassificationType == SystemVClassificationTypeInteger) ||
             (fieldClassificationType == SystemVClassificationTypeIntegerReference) ||
+            (fieldClassificationType == SystemVClassificationTypeIntegerByRef) ||
             (fieldClassificationType == SystemVClassificationTypeSSE));
 
         helperPtr->fieldClassifications[helperPtr->currentUniqueOffsetField] = fieldClassificationType;
@@ -2937,10 +3008,9 @@ bool MethodTable::ClassifyEightBytesWithNativeLayout(SystemVStructRegisterPassin
             GetSystemVClassificationTypeName(fieldClassificationType),
             GetSystemVClassificationTypeName(helperPtr->fieldClassifications[helperPtr->currentUniqueOffsetField])));
 
+        _ASSERTE(helperPtr->currentUniqueOffsetField < SYSTEMV_MAX_NUM_FIELDS_IN_REGISTER_PASSED_STRUCT);
         helperPtr->currentUniqueOffsetField++;
         ((BYTE*&)pFieldMarshaler) += MAXFIELDMARSHALERSIZE;
-        _ASSERTE(helperPtr->currentUniqueOffsetField < SYSTEMV_MAX_NUM_FIELDS_IN_REGISTER_PASSED_STRUCT);
-
     } // end per-field for loop
 
     AssignClassifiedEightByteTypes(helperPtr, nestingLevel);
@@ -3023,13 +3093,20 @@ void  MethodTable::AssignClassifiedEightByteTypes(SystemVStructRegisterPassingHe
             else if ((helperPtr->eightByteClassifications[currentEightByte] == SystemVClassificationTypeInteger) ||
                 (fieldClassificationType == SystemVClassificationTypeInteger))
             {
-                _ASSERTE(fieldClassificationType != SystemVClassificationTypeIntegerReference);
+                _ASSERTE((fieldClassificationType != SystemVClassificationTypeIntegerReference) && 
+                    (fieldClassificationType != SystemVClassificationTypeIntegerByRef));
+
                 helperPtr->eightByteClassifications[currentEightByte] = SystemVClassificationTypeInteger;
             }
             else if ((helperPtr->eightByteClassifications[currentEightByte] == SystemVClassificationTypeIntegerReference) ||
                 (fieldClassificationType == SystemVClassificationTypeIntegerReference))
             {
                 helperPtr->eightByteClassifications[currentEightByte] = SystemVClassificationTypeIntegerReference;
+            }
+            else if ((helperPtr->eightByteClassifications[currentEightByte] == SystemVClassificationTypeIntegerByRef) ||
+                (fieldClassificationType == SystemVClassificationTypeIntegerByRef))
+            {
+                helperPtr->eightByteClassifications[currentEightByte] = SystemVClassificationTypeIntegerByRef;
             }
             else
             {
@@ -3716,7 +3793,7 @@ OBJECTREF MethodTable::Box(void* data)
 
     GCPROTECT_BEGININTERIOR (data);
 
-    if (ContainsStackPtr())
+    if (IsByRefLike())
     {
         // We should never box a type that contains stack pointers.
         COMPlusThrow(kInvalidOperationException, W("InvalidOperation_TypeCannotBeBoxed"));
@@ -7655,25 +7732,6 @@ BOOL MethodTable::IsStructRequiringStackAllocRetBuf()
     // Disable this optimization. It has limited value (only kicks in on x86, and only for less common structs),
     // causes bugs and introduces odd ABI differences not compatible with ReadyToRun.
     return FALSE;
-
-#if 0
-
-#if defined(_WIN64)
-    // We have not yet updated the 64-bit JIT compiler to follow this directive, so there's
-    // no reason to stack-allocate the return buffers.
-    return FALSE;
-#elif defined(MDIL) || defined(_TARGET_ARM_) 
-    // WPB 481466 RetBuf GC hole (When jitting on ARM32 CoreCLR.dll MDIL is not defined)
-    // 
-    // This optimization causes versioning problems for MDIL which we haven't addressed yet
-    return FALSE;
-#else
-    return IsValueType()
-        && ContainsPointers()
-        && GetNumInstanceFieldBytes() <= MaxStructBytesForLocalVarRetBuffBytes;
-#endif
-
-#endif
 }
 
 //==========================================================================================
@@ -9746,11 +9804,11 @@ BOOL MethodTable::Validate()
     }
 
     DWORD dwLastVerifiedGCCnt = m_pWriteableData->m_dwLastVerifedGCCnt;
-    // Here we used to assert that (dwLastVerifiedGCCnt <= GCHeap::GetGCHeap()->GetGcCount()) but 
+    // Here we used to assert that (dwLastVerifiedGCCnt <= GCHeapUtilities::GetGCHeap()->GetGcCount()) but 
     // this is no longer true because with background gc. Since the purpose of having 
     // m_dwLastVerifedGCCnt is just to only verify the same method table once for each GC
     // I am getting rid of the assert.
-    if (g_pConfig->FastGCStressLevel () > 1 && dwLastVerifiedGCCnt == GCHeap::GetGCHeap()->GetGcCount())
+    if (g_pConfig->FastGCStressLevel () > 1 && dwLastVerifiedGCCnt == GCHeapUtilities::GetGCHeap()->GetGcCount())
         return TRUE;
 #endif //_DEBUG
 
@@ -9777,7 +9835,7 @@ BOOL MethodTable::Validate()
     // It is not a fatal error to fail the update the counter. We will run slower and retry next time, 
     // but the system will function properly.
     if (EnsureWritablePagesNoThrow(m_pWriteableData, sizeof(MethodTableWriteableData)))
-        m_pWriteableData->m_dwLastVerifedGCCnt = GCHeap::GetGCHeap()->GetGcCount();
+        m_pWriteableData->m_dwLastVerifedGCCnt = GCHeapUtilities::GetGCHeap()->GetGcCount();
 #endif //_DEBUG
 
     return TRUE;

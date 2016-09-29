@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information. 
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 /*++
 
@@ -83,7 +82,7 @@ int GetLibRotorNameViaLoadQuery(LPSTR pszBuf)
         iLQRetVal = loadquery(L_GETINFO, pLoadQueryBuf, cbBuf);
         if (iLQRetVal < 0)
         {
-            InternalFree(pThread, pLoadQueryBuf);
+            free(pThread, pLoadQueryBuf);
             pLoadQueryBuf = NULL;
             DWORD dwLastError = GetLastError();
             if (dwLastError == ERROR_NOT_ENOUGH_MEMORY)
@@ -138,7 +137,7 @@ int GetLibRotorNameViaLoadQuery(LPSTR pszBuf)
     }
 Done:
     if (pLoadQueryBuf)
-        InternalFree(pThread, pLoadQueryBuf);
+        free(pThread, pLoadQueryBuf);
     return iRetVal;
 }
 #endif // defined(_AIX)

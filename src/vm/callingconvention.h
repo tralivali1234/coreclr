@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 //
 
 
@@ -13,6 +12,8 @@
 
 #ifndef __CALLING_CONVENTION_INCLUDED
 #define __CALLING_CONVENTION_INCLUDED
+
+BOOL IsRetBuffPassedAsFirstArg();
 
 // Describes how a single argument is laid out in registers and/or stack locations when given as an input to a
 // managed method as part of a larger signature.
@@ -112,6 +113,7 @@ struct TransitionBlock
         };
     };
     ArgumentRegisters       m_argumentRegisters;
+    TADDR padding; // Keep size of TransitionBlock as multiple of 16-byte. Simplifies code in PROLOG_WITH_TRANSITION_BLOCK
 #else
     PORTABILITY_ASSERT("TransitionBlock");
 #endif
@@ -735,6 +737,8 @@ int ArgIteratorTemplate<ARGITERATOR_BASE>::GetRetBuffArgOffset()
 #if _TARGET_X86_
     // x86 is special as always
     ret += this->HasThis() ? offsetof(ArgumentRegisters, EDX) : offsetof(ArgumentRegisters, ECX);
+#elif _TARGET_ARM64_
+    ret += (int) offsetof(ArgumentRegisters, x[8]);
 #else
     if (this->HasThis())
         ret += sizeof(void *);
@@ -762,7 +766,7 @@ int ArgIteratorTemplate<ARGITERATOR_BASE>::GetVASigCookieOffset()
         ret += sizeof(void*);
     }
 
-    if (this->HasRetBuffArg())
+    if (this->HasRetBuffArg() && IsRetBuffPassedAsFirstArg())
     {
         ret += sizeof(void*);
     }
@@ -815,7 +819,7 @@ int ArgIteratorTemplate<ARGITERATOR_BASE>::GetParamTypeArgOffset()
         ret += sizeof(void*);
     }
 
-    if (this->HasRetBuffArg())
+    if (this->HasRetBuffArg() && IsRetBuffPassedAsFirstArg())
     {
         ret += sizeof(void*);
     }
@@ -846,7 +850,7 @@ int ArgIteratorTemplate<ARGITERATOR_BASE>::GetNextOffset()
         if (this->HasThis())
             numRegistersUsed++;
 
-        if (this->HasRetBuffArg())
+        if (this->HasRetBuffArg() && IsRetBuffPassedAsFirstArg())
             numRegistersUsed++;
 
         _ASSERTE(!this->IsVarArg() || !this->HasParamType());
@@ -955,8 +959,8 @@ int ArgIteratorTemplate<ARGITERATOR_BASE>::GetNextOffset()
     m_fArgInRegisters = true;
 
     int cFPRegs = 0;
+    int cGenRegs = 0;
     int cbArg = StackElemSize(argSize);
-    int cGenRegs = cbArg / 8; // GP reg size
 
     switch (argType)
     {
@@ -985,6 +989,7 @@ int ArgIteratorTemplate<ARGITERATOR_BASE>::GetNextOffset()
                 {
                     case SystemVClassificationTypeInteger:
                     case SystemVClassificationTypeIntegerReference:
+                    case SystemVClassificationTypeIntegerByRef:
                         cGenRegs++;
                         break;
                     case SystemVClassificationTypeSSE:
@@ -1027,6 +1032,7 @@ int ArgIteratorTemplate<ARGITERATOR_BASE>::GetNextOffset()
     }
 
     default:
+        cGenRegs = cbArg / 8; // GP reg size
         break;
     }
 
@@ -1093,10 +1099,12 @@ int ArgIteratorTemplate<ARGITERATOR_BASE>::GetNextOffset()
         // the interop "native value types".
         fRequiresAlign64Bit = thValueType.RequiresAlign8();
 
+#ifdef FEATURE_HFA
         // Handle HFAs: packed structures of 1-4 floats or doubles that are passed in FP argument
         // registers if possible.
         if (thValueType.IsHFA())
             fFloatingPoint = true;
+#endif
 
         break;
     }
@@ -1118,6 +1126,7 @@ int ArgIteratorTemplate<ARGITERATOR_BASE>::GetNextOffset()
 
     // Ignore floating point argument placement in registers if we're dealing with a vararg function (the ABI
     // specifies this so that vararg processing on the callee side is simplified).
+#ifndef ARM_SOFTFP
     if (fFloatingPoint && !this->IsVarArg())
     {
         // Handle floating point (primitive) arguments.
@@ -1170,6 +1179,7 @@ int ArgIteratorTemplate<ARGITERATOR_BASE>::GetNextOffset()
 
         return argOfs;
     }
+#endif // ARM_SOFTFP
 
     //
     // Handle the non-floating point case.
@@ -1445,7 +1455,7 @@ void ArgIteratorTemplate<ARGITERATOR_BASE>::ForceSigWalk()
     if (this->HasThis())
         numRegistersUsed++;
 
-    if (this->HasRetBuffArg())
+    if (this->HasRetBuffArg() && IsRetBuffPassedAsFirstArg())
         numRegistersUsed++;
 
     if (this->IsVarArg())
@@ -1492,11 +1502,7 @@ void ArgIteratorTemplate<ARGITERATOR_BASE>::ForceSigWalk()
                 _ASSERTE(!FORBIDGC_LOADER_USE_ENABLED());
                 CONTRACT_VIOLATION(ThrowsViolation);
 #endif
-#ifdef BINDER
-                IfFailThrow(COR_E_NOTSUPPORTED);
-#else
                 COMPlusThrow(kNotSupportedException);
-#endif
             }
 #endif
         }
@@ -1553,7 +1559,7 @@ void ArgIteratorTemplate<ARGITERATOR_BASE>::ForceSigWalk()
         int endOfs = ofs + stackElemSize;
         if (endOfs > maxOffset)
         {
-#if !defined(DACCESS_COMPILE) && !defined(BINDER)
+#if !defined(DACCESS_COMPILE)
             if (endOfs > MAX_ARG_SIZE)
             {
 #ifdef _DEBUG
@@ -1689,6 +1695,16 @@ inline BOOL HasRetBuffArg(MetaSig * pSig)
     WRAPPER_NO_CONTRACT;
     ArgIterator argit(pSig);
     return argit.HasRetBuffArg();
+}
+
+inline BOOL IsRetBuffPassedAsFirstArg()
+{
+    WRAPPER_NO_CONTRACT;
+#ifndef _TARGET_ARM64_
+    return TRUE;
+#else
+    return FALSE;
+#endif        
 }
 
 #endif // __CALLING_CONVENTION_INCLUDED

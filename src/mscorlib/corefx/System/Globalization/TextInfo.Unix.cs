@@ -1,14 +1,17 @@
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 using System.Diagnostics.Contracts;
+using System.Security;
 using System.Text;
 
 namespace System.Globalization
 {
     public partial class TextInfo
     {
-        private readonly bool m_needsTurkishCasing;
+        [NonSerialized]
+        private Tristate _needsTurkishCasing = Tristate.NotInitialized;
 
         //////////////////////////////////////////////////////////////////////////
         ////
@@ -19,13 +22,17 @@ namespace System.Globalization
         //////////////////////////////////////////////////////////////////////////
         internal unsafe TextInfo(CultureData cultureData)
         {
-            m_cultureData = cultureData;
-            m_cultureName = m_cultureData.CultureName;
-            m_textInfoName = m_cultureData.STEXTINFO;
-            m_needsTurkishCasing = NeedsTurkishCasing(m_textInfoName);
+            _cultureData = cultureData;
+            _cultureName = _cultureData.CultureName;
+            _textInfoName = _cultureData.STEXTINFO;
+            FinishInitialization(_textInfoName);
         }
 
-        [System.Security.SecuritySafeCritical]
+        private void FinishInitialization(string textInfoName)
+        {
+        }
+
+        [SecuritySafeCritical]
         private unsafe string ChangeCase(string s, bool toUpper)
         {
             Contract.Assert(s != null);
@@ -70,7 +77,7 @@ namespace System.Globalization
             return result;
         }
 
-        [System.Security.SecuritySafeCritical]
+        [SecuritySafeCritical]
         private unsafe char ChangeCase(char c, bool toUpper)
         {
             char dst = default(char);
@@ -87,10 +94,11 @@ namespace System.Globalization
         private bool NeedsTurkishCasing(string localeName)
         {
             Contract.Assert(localeName != null);
-            return CultureInfo.GetCultureInfo(localeName).CompareInfo.Compare("i", "I", CompareOptions.IgnoreCase) != 0;
+
+            return CultureInfo.GetCultureInfo(localeName).CompareInfo.Compare("\u0131", "I", CompareOptions.IgnoreCase) == 0;
         }
 
-        private bool IsInvariant { get { return m_cultureName.Length == 0; } }
+        private bool IsInvariant { get { return _cultureName.Length == 0; } }
 
         internal unsafe void ChangeCase(char* src, int srcLen, char* dstBuffer, int dstBufferCapacity, bool bToUpper)
         {
@@ -98,13 +106,20 @@ namespace System.Globalization
             {
                 Interop.GlobalizationInterop.ChangeCaseInvariant(src, srcLen, dstBuffer, dstBufferCapacity, bToUpper);
             }
-            else if (m_needsTurkishCasing)
-            {
-                Interop.GlobalizationInterop.ChangeCaseTurkish(src, srcLen, dstBuffer, dstBufferCapacity, bToUpper);
-            }
             else
             {
-                Interop.GlobalizationInterop.ChangeCase(src, srcLen, dstBuffer, dstBufferCapacity, bToUpper);
+                if (_needsTurkishCasing == Tristate.NotInitialized)
+                {
+                    _needsTurkishCasing = NeedsTurkishCasing(_textInfoName) ? Tristate.True : Tristate.False;
+                }
+                if (_needsTurkishCasing == Tristate.True)
+                {
+                    Interop.GlobalizationInterop.ChangeCaseTurkish(src, srcLen, dstBuffer, dstBufferCapacity, bToUpper);
+                }
+                else
+                {
+                    Interop.GlobalizationInterop.ChangeCase(src, srcLen, dstBuffer, dstBufferCapacity, bToUpper);
+                }
             }
         }
 

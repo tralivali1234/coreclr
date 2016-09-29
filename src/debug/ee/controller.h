@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 //*****************************************************************************
 // File: controller.h
 // 
@@ -214,6 +213,9 @@ public:
         *(reinterpret_cast<DWORD*>(BypassBuffer)) = SentinelValue;
         RipTargetFixup = 0;
         RipTargetFixupSize = 0;
+#elif _TARGET_ARM64_
+        RipTargetFixup = 0;
+        
 #endif
     }
 
@@ -252,6 +254,8 @@ public:
 
     UINT_PTR                RipTargetFixup;
     BYTE                    RipTargetFixupSize;
+#elif defined(_TARGET_ARM64_)
+    UINT_PTR                RipTargetFixup;
 #endif
 
 private:
@@ -540,6 +544,9 @@ typedef DPTR(DebuggerControllerPatch) PTR_DebuggerControllerPatch;
 class DebuggerPatchTable : private CHashTableAndData<CNewZeroData>
 {
     VPTR_BASE_CONCRETE_VTABLE_CLASS(DebuggerPatchTable);
+
+public:
+    virtual ~DebuggerPatchTable() = default;
 
     friend class DebuggerRCThread;
 private:

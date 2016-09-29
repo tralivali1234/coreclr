@@ -1,5 +1,6 @@
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 /*============================================================
 **
@@ -281,7 +282,7 @@ namespace System.IO {
         public override Task FlushAsync(CancellationToken cancellationToken) { 
         
             if (cancellationToken.IsCancellationRequested) 
-                return Task.FromCancellation(cancellationToken); 
+                return Task.FromCanceled(cancellationToken); 
 
             try { 
             
@@ -322,7 +323,7 @@ namespace System.IO {
                 Contract.EndContractBlock();
                 if (!CanSeek) __Error.StreamIsClosed();
                 
-#if WIN32
+#if !BIT64
                 unsafe {
                     // On 32 bit machines, ensure we don't wrap around.
                     if (value > (long) Int32.MaxValue || _mem + value < _mem)
@@ -444,7 +445,7 @@ namespace System.IO {
             Contract.EndContractBlock();  // contract validation copied from Read(...) 
       
             if (cancellationToken.IsCancellationRequested)  
-                return Task.FromCancellation<Int32>(cancellationToken); 
+                return Task.FromCanceled<Int32>(cancellationToken); 
         
             try { 
             
@@ -639,7 +640,7 @@ namespace System.IO {
             Contract.EndContractBlock();  // contract validation copied from Write(..) 
                             
             if (cancellationToken.IsCancellationRequested)  
-                return Task.FromCancellation(cancellationToken); 
+                return Task.FromCanceled(cancellationToken); 
          
             try { 
                        

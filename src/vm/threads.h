@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 // THREADS.H -
 //
 
@@ -143,7 +142,8 @@
 #include "regdisp.h"
 #include "mscoree.h"
 #include "appdomainstack.h"
-#include "gc.h"
+#include "gcheaputilities.h"
+#include "gcinfotypes.h"
 #include <clrhost.h>
 
 class     Thread;
@@ -198,6 +198,7 @@ class Thread
 
 public:
     BOOL IsAddressInStack (PTR_VOID addr) const { return TRUE; }
+    static BOOL IsAddressInCurrentStack (PTR_VOID addr) { return TRUE; }
 
     Frame *IsRunningIn(AppDomain* pDomain, int *count) { return NULL; }
 
@@ -630,8 +631,9 @@ enum ThreadpoolThreadType
 //
 // Public functions for taking control of a thread at a safe point
 //
-//      VOID OnHijackObjectTripThread() - we've hijacked a JIT object-ref return
-//      VOID OnHijackScalarTripThread() - we've hijacked a JIT non-object ref return
+//      VOID OnHijackTripThread() - we've hijacked a JIT method
+//      VOID OnHijackFPTripThread() - we've hijacked a JIT method, 
+//                                    and need to save the x87 FP stack.
 //
 //***************************************************************************
 
@@ -686,15 +688,9 @@ void InitThreadManager();
 
 #ifdef FEATURE_HIJACK
 
-EXTERN_C void __stdcall OnHijackObjectTripThread();                 // hijacked JIT code is returning an objectref
-EXTERN_C void __stdcall OnHijackInteriorPointerTripThread();        // hijacked JIT code is returning a byref
-EXTERN_C void __stdcall OnHijackScalarTripThread();                 // hijacked JIT code is returning a non-objectref, non-FP
-#ifdef FEATURE_UNIX_AMD64_STRUCT_PASSING
-EXTERN_C void __stdcall OnHijackStructInRegsTripThread();           // hijacked JIT code is returning a struct in registers
-#endif // FEATURE_UNIX_AMD64_STRUCT_PASSING
-
+EXTERN_C void __stdcall OnHijackTripThread();
 #ifdef _TARGET_X86_
-EXTERN_C void __stdcall OnHijackFloatingPointTripThread();          // hijacked JIT code is returning an FP value
+EXTERN_C void __stdcall OnHijackFPTripThread();  // hijacked JIT code is returning an FP value
 #endif // _TARGET_X86_
 
 #endif // FEATURE_HIJACK
@@ -1016,13 +1012,17 @@ typedef DWORD (*AppropriateWaitFunc) (void *args, DWORD timeout, DWORD option);
 // unstarted System.Thread), then this instance can be found in the TLS
 // of that physical thread.
 
-#ifdef FEATURE_HIJACK
-EXTERN_C void STDCALL OnHijackObjectWorker(HijackArgs * pArgs);
-EXTERN_C void STDCALL OnHijackInteriorPointerWorker(HijackArgs * pArgs);
-EXTERN_C void STDCALL OnHijackScalarWorker(HijackArgs * pArgs);
-#ifdef FEATURE_UNIX_AMD64_STRUCT_PASSING
-EXTERN_C void STDCALL OnHijackStructInRegsWorker(HijackArgs * pArgs);
-#endif // FEATURE_UNIX_AMD64_STRUCT_PASSING
+// FEATURE_MULTIREG_RETURN is set for platforms where a struct return value 
+// [GcInfo v2 only]        can be returned in multiple registers
+//                         ex: Windows/Unix ARM/ARM64, Unix-AMD64.
+//                         
+//                       
+// FEATURE_UNIX_AMD64_STRUCT_PASSING is a specific kind of FEATURE_MULTIREG_RETURN
+// [GcInfo v1 and v2]       specified by SystemV ABI for AMD64
+//                                   
+
+#ifdef FEATURE_HIJACK                                                    // Hijack function returning
+EXTERN_C void STDCALL OnHijackWorker(HijackArgs * pArgs);              
 #endif // FEATURE_HIJACK
 
 // This is the code we pass around for Thread.Interrupt, mainly for assertions
@@ -1070,12 +1070,7 @@ class Thread: public IUnknown
 #ifdef FEATURE_HIJACK
     // MapWin32FaultToCOMPlusException needs access to Thread::IsAddrOfRedirectFunc()
     friend DWORD MapWin32FaultToCOMPlusException(EXCEPTION_RECORD *pExceptionRecord);
-    friend void STDCALL OnHijackObjectWorker(HijackArgs *pArgs);
-    friend void STDCALL OnHijackInteriorPointerWorker(HijackArgs *pArgs);
-    friend void STDCALL OnHijackScalarWorker(HijackArgs *pArgs);
-#ifdef FEATURE_UNIX_AMD64_STRUCT_PASSING
-    friend void STDCALL OnHijackStructInRegsWorker(HijackArgs *pArgs);
-#endif // FEATURE_UNIX_AMD64_STRUCT_PASSING
+    friend void STDCALL OnHijackWorker(HijackArgs * pArgs);
 #ifdef PLATFORM_UNIX
     friend void PALAPI HandleGCSuspensionForInterruptedThread(CONTEXT *interruptedContext);
 #endif // PLATFORM_UNIX
@@ -1744,9 +1739,9 @@ public:
 
     // on MP systems, each thread has its own allocation chunk so we can avoid
     // lock prefixes and expensive MP cache snooping stuff
-    alloc_context        m_alloc_context;
+    gc_alloc_context        m_alloc_context;
 
-    inline alloc_context *GetAllocContext() { LIMITED_METHOD_CONTRACT; return &m_alloc_context; }
+    inline gc_alloc_context *GetAllocContext() { LIMITED_METHOD_CONTRACT; return &m_alloc_context; }
 
     // This is the type handle of the first object in the alloc context at the time 
     // we fire the AllocationTick event. It's only for tooling purpose.
@@ -3509,19 +3504,19 @@ public:
 
     DWORD          DoAppropriateWait(AppropriateWaitFunc func, void *args, DWORD millis,
                                      WaitMode mode, PendingSync *syncInfo = 0);
-#ifndef FEATURE_CORECLR
+#ifndef FEATURE_PAL
     DWORD          DoSignalAndWait(HANDLE *handles, DWORD millis, BOOL alertable,
                                      PendingSync *syncState = 0);
-#endif
+#endif // !FEATURE_PAL
 private:
     void           DoAppropriateWaitWorkerAlertableHelper(WaitMode mode);
     DWORD          DoAppropriateWaitWorker(int countHandles, HANDLE *handles, BOOL waitAll,
                                            DWORD millis, WaitMode mode);
     DWORD          DoAppropriateWaitWorker(AppropriateWaitFunc func, void *args,
                                            DWORD millis, WaitMode mode);
-#ifndef FEATURE_CORECLR
+#ifndef FEATURE_PAL
     DWORD          DoSignalAndWaitWorker(HANDLE* pHandles, DWORD millis,BOOL alertable);
-#endif
+#endif // !FEATURE_PAL
     DWORD          DoAppropriateAptStateWait(int numWaiters, HANDLE* pHandles, BOOL bWaitAll, DWORD timeout, WaitMode mode);
 #ifdef FEATURE_SYNCHRONIZATIONCONTEXT_WAIT
     DWORD          DoSyncContextWait(OBJECTREF *pSyncCtxObj, int countHandles, HANDLE *handles, BOOL waitAll, DWORD millis);
@@ -3625,7 +3620,7 @@ public:
     static UINT_PTR VirtualUnwindCallFrame(PREGDISPLAY pRD, EECodeInfo * pCodeInfo = NULL);
     static PCODE VirtualUnwindLeafCallFrame(T_CONTEXT* pContext);
     static PCODE VirtualUnwindNonLeafCallFrame(T_CONTEXT* pContext, T_KNONVOLATILE_CONTEXT_POINTERS* pContextPointers = NULL,
-        PRUNTIME_FUNCTION pFunctionEntry = NULL, UINT_PTR uImageBase = NULL);
+        PT_RUNTIME_FUNCTION pFunctionEntry = NULL, UINT_PTR uImageBase = NULL);
     static UINT_PTR VirtualUnwindToFirstManagedCallFrame(T_CONTEXT* pContext);
 #endif // WIN64EXCEPTIONS
 
@@ -3853,6 +3848,21 @@ public:
         return m_CacheStackLimit < addr && addr <= m_CacheStackBase;
     }
 
+    static BOOL IsAddressInCurrentStack (PTR_VOID addr)
+    {
+        LIMITED_METHOD_DAC_CONTRACT;
+        Thread* currentThread = GetThread();
+        if (currentThread == NULL)
+        {
+            return FALSE;
+        }
+
+        PTR_VOID sp = dac_cast<PTR_VOID>(GetCurrentSP());
+        _ASSERTE(currentThread->m_CacheStackBase != NULL);
+        _ASSERTE(sp < currentThread->m_CacheStackBase);
+        return sp < addr && addr <= currentThread->m_CacheStackBase;
+    }
+
     // DetermineIfGuardPagePresent returns TRUE if the thread's stack contains a proper guard page. This function
     // makes a physical check of the stack, rather than relying on whether or not the CLR is currently processing a
     // stack overflow exception.
@@ -3862,10 +3872,11 @@ public:
     // CanResetStackTo will return TRUE if the given stack pointer is far enough away from the guard page to proper
     // restore the guard page with RestoreGuardPage.
     BOOL CanResetStackTo(LPCVOID stackPointer);
-#endif
 
     // IsStackSpaceAvailable will return true if there are the given number of stack pages available on the stack.
     BOOL IsStackSpaceAvailable(float numPages);
+
+#endif
     
     // Returns the amount of stack available after an SO but before the OS rips the process.
     static UINT_PTR GetStackGuarantee();
@@ -4083,7 +4094,7 @@ private:
 
 private:
     // Set once on initialization, single-threaded, inside friend code:InitThreadManager,
-    // based on whether the user has set COMPLUS_EnforceEEThreadNotRequiredContracts.
+    // based on whether the user has set COMPlus_EnforceEEThreadNotRequiredContracts.
     // This is then later accessed via public
     // code:Thread::ShouldEnforceEEThreadNotRequiredContracts. See
     // code:GetThreadGenericFullCheck for details.
@@ -4873,7 +4884,7 @@ private:
 private:
     // When we create an object, or create an OBJECTREF, or create an Interior Pointer, or enter EE from managed
     // code, we will set this flag.
-    // Inside GCHeap::StressHeap, we only do GC if this flag is TRUE.  Then we reset it to zero.
+    // Inside GCHeapUtilities::StressHeap, we only do GC if this flag is TRUE.  Then we reset it to zero.
     BOOL m_fStressHeapCount;
 public:
     void EnableStressHeap()
@@ -5530,11 +5541,11 @@ public:
     // object associated with them (e.g., the bgc thread).
     void SetGCSpecial(bool fGCSpecial);
 
-#if !defined(FEATURE_CORECLR)
+#ifndef FEATURE_PAL
 private:
     WORD m_wCPUGroup;
     DWORD_PTR m_pAffinityMask;
-#endif
+#endif // !FEATURE_PAL
 
 public:
     void ChooseThreadCPUGroupAffinity();
@@ -5561,24 +5572,33 @@ public:
         _ASSERTE(pAllLoggedTypes != NULL ? m_pAllLoggedTypes == NULL : TRUE);
         m_pAllLoggedTypes = pAllLoggedTypes;
     }
-#ifdef FEATURE_UNIX_AMD64_STRUCT_PASSING
+
+#ifdef FEATURE_HIJACK
 private:
-    EEClass* m_pHijackReturnTypeClass;
+
+    // By the time a frame is scanned by the runtime, m_pHijackReturnKind always 
+    // identifies the gc-ness of the return register(s)
+    // If the ReturnKind information is not available from the GcInfo, the runtime
+    // computes it using the return types's class handle.
+
+    ReturnKind m_HijackReturnKind;
+
 public:
-    EEClass* GetHijackReturnTypeClass()
+
+    ReturnKind GetHijackReturnKind()
     {
         LIMITED_METHOD_CONTRACT;
 
-        return m_pHijackReturnTypeClass;
+        return m_HijackReturnKind;
     }
 
-    void SetHijackReturnTypeClass(EEClass* pClass)
+    void SetHijackReturnKind(ReturnKind returnKind)
     {
         LIMITED_METHOD_CONTRACT;
 
-        m_pHijackReturnTypeClass = pClass;
+        m_HijackReturnKind = returnKind;
     }
-#endif // FEATURE_UNIX_AMD64_STRUCT_PASSING
+#endif // FEATURE_HIJACK
 };
 
 // End of class Thread
@@ -7748,7 +7768,7 @@ struct ThreadLocalInfo
     AppDomain* m_pAppDomain;
     void** m_EETlsData; // ClrTlsInfo::data
 #ifdef FEATURE_MERGE_JIT_AND_ENGINE
-    Compiler* m_pCompiler;
+    void* m_pJitTls;
 #endif
 };
 #endif // FEATURE_IMPLICIT_TLS

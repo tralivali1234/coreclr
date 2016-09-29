@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 // 
 // THREADS.CPP
 // 
@@ -19,7 +18,7 @@
 #include "excep.h"
 #include "comsynchronizable.h"
 #include "log.h"
-#include "gc.h"
+#include "gcheaputilities.h"
 #include "mscoree.h"
 #include "dbginterface.h"
 #include "corprof.h"                // profiling
@@ -345,16 +344,22 @@ BOOL SetAppDomain(AppDomain* ad)
 }
 
 #if defined(FEATURE_MERGE_JIT_AND_ENGINE)
-Compiler* GetTlsCompiler()
+extern "C"
+{
+
+void* GetJitTls()
 {
     LIMITED_METHOD_CONTRACT
 
-    return gCurrentThreadInfo.m_pCompiler;
+    return gCurrentThreadInfo.m_pJitTls;
 }
-void SetTlsCompiler(Compiler* c)
+
+void SetJitTls(void* v)
 {
     LIMITED_METHOD_CONTRACT
-    gCurrentThreadInfo.m_pCompiler = c;
+    gCurrentThreadInfo.m_pJitTls = v;
+}
+
 }
 #endif // defined(FEATURE_MERGE_JIT_AND_ENGINE)
 
@@ -603,16 +608,18 @@ void Thread::ChooseThreadCPUGroupAffinity()
     }
     CONTRACTL_END;
 
-#if !defined(FEATURE_CORECLR)
+#ifndef FEATURE_PAL
     if (!CPUGroupInfo::CanEnableGCCPUGroups() || !CPUGroupInfo::CanEnableThreadUseAllCpuGroups()) 
          return;
 
+#ifndef FEATURE_CORECLR
     // We only handle the non-hosted case here. If CLR is hosted, the hosting 
     // process controls the physical OS Threads. If CLR is not hosted, we can 
     // set thread group affinity on OS threads directly.
     HostComHolder<IHostTask> pHostTask (GetHostTaskWithAddRef());
     if (pHostTask != NULL)
         return;
+#endif //!FEATURE_CORECLR
 
     //Borrow the ThreadStore Lock here: Lock ThreadStore before distributing threads
     ThreadStoreLockHolder TSLockHolder(TRUE);
@@ -629,7 +636,7 @@ void Thread::ChooseThreadCPUGroupAffinity()
     CPUGroupInfo::SetThreadGroupAffinity(GetThreadHandle(), &groupAffinity, NULL);
     m_wCPUGroup = groupAffinity.Group;
     m_pAffinityMask = groupAffinity.Mask;
-#endif
+#endif // !FEATURE_PAL
 }
 
 void Thread::ClearThreadCPUGroupAffinity()
@@ -641,16 +648,18 @@ void Thread::ClearThreadCPUGroupAffinity()
     }
     CONTRACTL_END;
 
-#if !defined(FEATURE_CORECLR)
+#ifndef FEATURE_PAL
     if (!CPUGroupInfo::CanEnableGCCPUGroups() || !CPUGroupInfo::CanEnableThreadUseAllCpuGroups()) 
          return;
 
+#ifndef FEATURE_CORECLR
     // We only handle the non-hosted case here. If CLR is hosted, the hosting 
     // process controls the physical OS Threads. If CLR is not hosted, we can 
     // set thread group affinity on OS threads directly.
     HostComHolder<IHostTask> pHostTask (GetHostTaskWithAddRef());
     if (pHostTask != NULL)
         return;
+#endif //!FEATURE_CORECLR
 
     ThreadStoreLockHolder TSLockHolder(TRUE);
 
@@ -665,7 +674,7 @@ void Thread::ClearThreadCPUGroupAffinity()
 
     m_wCPUGroup = 0;
     m_pAffinityMask = 0;
-#endif 
+#endif // !FEATURE_PAL
 }
 
 DWORD Thread::StartThread()
@@ -680,8 +689,8 @@ DWORD Thread::StartThread()
 
     DWORD dwRetVal = (DWORD) -1;
 #ifdef _DEBUG
-    _ASSERTE (m_Creater.IsSameThread());
-    m_Creater.ResetThreadId();
+    _ASSERTE (m_Creater.IsCurrentThread());
+    m_Creater.Clear();
 #endif
 #ifdef FEATURE_INCLUDE_ALL_INTERFACES
     HostComHolder<IHostTask> pHostTask(GetHostTaskWithAddRef());
@@ -1109,13 +1118,10 @@ Thread* SetupUnstartedThread(BOOL bRequiresTSL)
     _ASSERTE(ThreadInited());
     Thread* pThread = new Thread();
 
-    if (pThread)
-    {
-        FastInterlockOr((ULONG *) &pThread->m_State,
-                        (Thread::TS_Unstarted | Thread::TS_WeOwn));
+    FastInterlockOr((ULONG *) &pThread->m_State,
+                    (Thread::TS_Unstarted | Thread::TS_WeOwn));
 
-        ThreadStore::AddThread(pThread, bRequiresTSL);
-    }
+    ThreadStore::AddThread(pThread, bRequiresTSL);
 
     return pThread;
 }
@@ -1408,7 +1414,7 @@ DWORD_PTR Thread::OBJREF_HASH = OBJREF_TABSIZE;
 //             GetThreadGenericFullCheck() to actually be called when GetThread() is
 //             called, given the optimizations around GetThread():
 //             * code:InitThreadManager ensures that non-PAL, debug, x86/x64 builds that
-//                 run with COMPLUS_EnforceEEThreadNotRequiredContracts set are forced to
+//                 run with COMPlus_EnforceEEThreadNotRequiredContracts set are forced to
 //                 use GetThreadGeneric instead of the dynamically generated optimized
 //                 TLS getter.
 //             * The non-PAL, debug, x86/x64 GetThreadGeneric() (implemented in the
@@ -1526,11 +1532,11 @@ AppDomain* STDCALL GetAppDomainGeneric()
 // FLS getter to avoid unnecessary indirection via execution engine. It will be used if we get high TLS slot
 // from the OS where we cannot use the fast optimized assembly helpers. (It happens pretty often in hosted scenarios).
 //
-VOID * ClrFlsGetBlockDirect()
+LPVOID* ClrFlsGetBlockDirect()
 {
     LIMITED_METHOD_CONTRACT;
 
-    return UnsafeTlsGetValue(CExecutionEngine::GetTlsIndex());
+    return (LPVOID*)UnsafeTlsGetValue(CExecutionEngine::GetTlsIndex());
 }
 
 extern "C" void * ClrFlsGetBlock();
@@ -1660,10 +1666,10 @@ void InitThreadManager()
     CExecutionEngine::CheckThreadState(0, FALSE);
 
     DWORD masterSlotIndex = CExecutionEngine::GetTlsIndex();
-    POPTIMIZEDTLSGETTER pGetter = MakeOptimizedTlsGetter(masterSlotIndex, (PVOID)ClrFlsGetBlock, TLS_GETTER_MAX_SIZE);
+    CLRFLSGETBLOCK pGetter = (CLRFLSGETBLOCK)MakeOptimizedTlsGetter(masterSlotIndex, (PVOID)ClrFlsGetBlock, TLS_GETTER_MAX_SIZE);
     __ClrFlsGetBlock = pGetter ? pGetter : ClrFlsGetBlockDirect;
 #else
-    __ClrFlsGetBlock = (POPTIMIZEDTLSGETTER) CExecutionEngine::GetTlsData;
+    __ClrFlsGetBlock = CExecutionEngine::GetTlsData;
 #endif // FEATURE_IMPLICIT_TLS
 
     IfFailThrow(Thread::CLRSetThreadStackGuarantee(Thread::STSGuarantee_Force));
@@ -1922,7 +1928,7 @@ Thread::Thread()
 #ifdef _DEBUG
     dbg_m_cSuspendedThreads = 0;
     dbg_m_cSuspendedThreadsWithoutOSLock = 0;
-    m_Creater.ResetThreadId();
+    m_Creater.Clear();
     m_dwUnbreakableLockCount = 0;
 #endif
 
@@ -2232,11 +2238,8 @@ Thread::Thread()
 #endif
 
     m_pAllLoggedTypes = NULL;
-#ifdef FEATURE_UNIX_AMD64_STRUCT_PASSING
-    m_pHijackReturnTypeClass = NULL;
-#endif
+    m_HijackReturnKind = RT_Illegal;
 }
-
 
 //--------------------------------------------------------------------
 // Failable initialization occurs here.
@@ -2372,10 +2375,7 @@ BOOL Thread::InitThread(BOOL fInternal)
 
     // Set floating point mode to round to nearest
 #ifndef FEATURE_PAL
-#ifndef _TARGET_ARM64_
-    //ARM64TODO: remove the ifdef
     (void) _controlfp_s( NULL, _RC_NEAR, _RC_CHOP|_RC_UP|_RC_DOWN|_RC_NEAR );
-#endif
 
     m_pTEB = (struct _NT_TIB*)NtCurrentTeb();
 
@@ -3132,7 +3132,7 @@ BOOL Thread::CreateNewOSThread(SIZE_T sizeToCommitOrReserve, LPTHREAD_START_ROUT
     FastInterlockIncrement(&ThreadStore::s_pThreadStore->m_PendingThreadCount);
 
 #ifdef _DEBUG
-    m_Creater.SetThreadId();
+    m_Creater.SetToCurrentThread();
 #endif
 
     return TRUE;
@@ -3188,7 +3188,7 @@ BOOL Thread::CreateNewHostTask(SIZE_T stackSize, LPTHREAD_START_ROUTINE start, v
     FastInterlockIncrement(&ThreadStore::s_pThreadStore->m_PendingThreadCount);
 
 #ifdef _DEBUG
-    m_Creater.SetThreadId();
+    m_Creater.SetToCurrentThread();
 #endif
 
     return TRUE;
@@ -3889,14 +3889,14 @@ void Thread::OnThreadTerminate(BOOL holdingLock)
 #endif
     }
 
-    if  (GCHeap::IsGCHeapInitialized())
+    if  (GCHeapUtilities::IsGCHeapInitialized())
     {
         // Guaranteed to NOT be a shutdown case, because we tear down the heap before
         // we tear down any threads during shutdown.
         if (ThisThreadID == CurrentThreadID)
         {
             GCX_COOP();
-            GCHeap::GetGCHeap()->FixAllocContext(&m_alloc_context, FALSE, NULL, NULL);
+            GCHeapUtilities::GetGCHeap()->FixAllocContext(&m_alloc_context, FALSE, NULL, NULL);
             m_alloc_context.init();
         }
     }
@@ -3957,11 +3957,11 @@ void Thread::OnThreadTerminate(BOOL holdingLock)
 #endif
         }
 
-        if  (GCHeap::IsGCHeapInitialized() && ThisThreadID != CurrentThreadID)
+        if  (GCHeapUtilities::IsGCHeapInitialized() && ThisThreadID != CurrentThreadID)
         {
             // We must be holding the ThreadStore lock in order to clean up alloc context.
             // We should never call FixAllocContext during GC.
-            GCHeap::GetGCHeap()->FixAllocContext(&m_alloc_context, FALSE, NULL, NULL);
+            GCHeapUtilities::GetGCHeap()->FixAllocContext(&m_alloc_context, FALSE, NULL, NULL);
             m_alloc_context.init();
         }
 
@@ -4512,6 +4512,14 @@ retry:
         {
             ThrowOutOfMemory();
         }
+#ifdef FEATURE_PAL
+        else if (errorCode == ERROR_NOT_SUPPORTED)
+        {
+            // "Wait for any" and "wait for all" operations on multiple wait handles are not supported when a cross-process sync
+            // object is included in the array
+            COMPlusThrow(kPlatformNotSupportedException, W("PlatformNotSupported_NamedSyncObjectWaitAnyWaitAll"));
+        }
+#endif
         else if (errorCode != ERROR_INVALID_HANDLE)
         {
             ThrowWin32(errorCode);
@@ -4696,7 +4704,7 @@ WaitCompleted:
     return ret;
 }
 
-#ifndef FEATURE_CORECLR
+#ifndef FEATURE_PAL
 //--------------------------------------------------------------------
 // Only one style of wait for DoSignalAndWait since we don't support this on STA Threads
 //--------------------------------------------------------------------
@@ -4843,7 +4851,7 @@ WaitCompleted:
 
     return ret;
 }
-#endif // FEATURE_CORECLR
+#endif // !FEATURE_PAL
 
 #ifdef FEATURE_SYNCHRONIZATIONCONTEXT_WAIT
 DWORD Thread::DoSyncContextWait(OBJECTREF *pSyncCtxObj, int countHandles, HANDLE *handles, BOOL waitAll, DWORD millis)
@@ -7373,8 +7381,7 @@ HRESULT Thread::CLRSetThreadStackGuarantee(SetThreadStackGuaranteeScope fScope)
         ULONG uGuardSize = SIZEOF_DEFAULT_STACK_GUARANTEE;
         int   EXTRA_PAGES = 0;
 #if defined(_WIN64)
-#if defined(_TARGET_AMD64_)
-        // AMD64 Free Build EH Stack Stats:
+        // Free Build EH Stack Stats:
         // --------------------------------
         // currently the maximum stack usage we'll face while handling a SO includes:
         //      4.3k for the OS (kernel32!RaiseException, Rtl EH dispatch code, RtlUnwindEx [second pass])
@@ -7390,8 +7397,6 @@ HRESULT Thread::CLRSetThreadStackGuarantee(SetThreadStackGuaranteeScope fScope)
         //
         EXTRA_PAGES = 3;
         INDEBUG(EXTRA_PAGES += 1);
-
-#endif // _TARGET_AMD64_
 
         int ThreadGuardPages = CLRConfig::GetConfigValue(CLRConfig::EXTERNAL_ThreadGuardPages);
         if (ThreadGuardPages == 0)
@@ -7924,7 +7929,6 @@ BOOL Thread::CanResetStackTo(LPCVOID stackPointer)
         return FALSE;
     }
 }
-#endif // FEATURE_STACK_PROBE
 
 /*
  * IsStackSpaceAvailable
@@ -7974,6 +7978,8 @@ BOOL Thread::IsStackSpaceAvailable(float numPages)
 
     return TRUE;
 }
+
+#endif // FEATURE_STACK_PROBE
 
 /*
  * GetStackGuarantee
@@ -9840,7 +9846,7 @@ void Thread::DoExtraWorkForFinalizer()
         Thread::CleanupDetachedThreads();
     }
     
-    if(ExecutionManager::IsCacheCleanupRequired() && GCHeap::GetGCHeap()->GetCondemnedGeneration()>=1)
+    if(ExecutionManager::IsCacheCleanupRequired() && GCHeapUtilities::GetGCHeap()->GetCondemnedGeneration()>=1)
     {
         ExecutionManager::ClearCaches();
     }
@@ -10633,8 +10639,10 @@ TADDR Thread::GetStaticFieldAddrNoCreate(FieldDesc *pFD, PTR_AppDomain pDomain)
     if (pFD->IsByValue())
     {
         _ASSERTE(result != NULL);
-        result = dac_cast<TADDR>
-            ((* PTR_UNCHECKED_OBJECTREF(result))->GetData());
+        PTR_Object obj = *PTR_UNCHECKED_OBJECTREF(result);
+        if (obj == NULL)
+            return NULL;
+        result = dac_cast<TADDR>(obj->GetData());
     }
 
     return result;
@@ -11178,7 +11186,7 @@ void Thread::SetHasPromotedBytes ()
 
     m_fPromoted = TRUE;
 
-    _ASSERTE(GCHeap::IsGCInProgress()  && IsGCThread ());
+    _ASSERTE(GCHeapUtilities::IsGCInProgress()  && IsGCThread ());
 
     if (!m_fPreemptiveGCDisabled)
     {
@@ -11202,7 +11210,7 @@ BOOL ThreadStore::HoldingThreadStore(Thread *pThread)
     }
     else
     {
-        return (s_pThreadStore->m_holderthreadid.IsSameThread());
+        return (s_pThreadStore->m_holderthreadid.IsCurrentThread());
     }
 }
 
@@ -11608,7 +11616,7 @@ HRESULT Thread::GetMemStats (COR_GC_THREAD_STATS *pStats)
     CONTRACTL_END;
 
     // Get the allocation context which contains this counter in it.
-    alloc_context *p = &m_alloc_context;
+    gc_alloc_context *p = &m_alloc_context;
     pStats->PerThreadAllocation = p->alloc_bytes + p->alloc_bytes_loh;
     if (GetHasPromotedBytes())
         pStats->Flags = COR_GC_THREAD_HAS_PROMOTED_BYTES;

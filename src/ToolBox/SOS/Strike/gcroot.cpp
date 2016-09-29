@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information. 
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 // ==++==
 // 
@@ -453,12 +452,12 @@ void GCRootImpl::ReportOnePath(DWORD thread, const SOSStackRefData &stackRef, Ro
         if (stackRef.SourceType == SOS_StackSourceIP)
         {
             WString methodName = MethodNameFromIP(stackRef.Source);
-            ExtOut("    %p %p %S\n", stackRef.StackPointer, stackRef.Source, methodName.c_str());
+            ExtOut("    %p %p %S\n", SOS_PTR(stackRef.StackPointer), SOS_PTR(stackRef.Source), methodName.c_str());
         }
         else
         {
             WString frameName = GetFrameFromAddress(TO_TADDR(stackRef.Source));
-            ExtOut("    %p %S\n", stackRef.Source, frameName.c_str());
+            ExtOut("    %p %S\n", SOS_PTR(stackRef.Source), frameName.c_str());
         }
     }
     
@@ -526,8 +525,8 @@ int GCRootImpl::PrintRootsInOlderGen()
             return 0;
         }
 
-        ExtDbgOut("internal_root_array = %#p\n", analyzeData.internal_root_array);
-        ExtDbgOut("internal_root_array_index = %#p\n", analyzeData.internal_root_array_index);
+        ExtDbgOut("internal_root_array = %#p\n", SOS_PTR(analyzeData.internal_root_array));
+        ExtDbgOut("internal_root_array_index = %#p\n", SOS_PTR(analyzeData.internal_root_array_index));
         
         TADDR start = TO_TADDR(analyzeData.internal_root_array);
         TADDR stop = TO_TADDR(analyzeData.internal_root_array + sizeof(TADDR) * (size_t)analyzeData.internal_root_array_index);
@@ -568,8 +567,8 @@ int GCRootImpl::PrintRootsInOlderGen()
                 continue;
             }
 
-            ExtDbgOut("internal_root_array = %#p\n", analyzeData.internal_root_array);
-            ExtDbgOut("internal_root_array_index = %#p\n", analyzeData.internal_root_array_index);
+            ExtDbgOut("internal_root_array = %#p\n", SOS_PTR(analyzeData.internal_root_array));
+            ExtDbgOut("internal_root_array_index = %#p\n", SOS_PTR(analyzeData.internal_root_array_index));
             
             TADDR start = TO_TADDR(analyzeData.internal_root_array);
             TADDR stop = TO_TADDR(analyzeData.internal_root_array + sizeof(TADDR) * (size_t)analyzeData.internal_root_array_index);
@@ -1321,11 +1320,11 @@ void PrintNotReachableInRange(TADDR rngStart, TADDR rngEnd, BOOL bExcludeReadyFo
 // The value of card_size is determined empirically according to the average size of an object
 // In the code we also rely on the assumption that one card_table entry (DWORD) covers an entire os page
 //
-#if defined (_TARGET_AMD64_)
+#if defined (_TARGET_WIN64_)
 #define card_size ((size_t)(2*DT_OS_PAGE_SIZE/card_word_width))
 #else
 #define card_size ((size_t)(DT_OS_PAGE_SIZE/card_word_width))
-#endif //_TARGET_AMD64_
+#endif //_TARGET_WIN64_
 
 // so card_size = 128 on x86, 256 on x64
 
@@ -1640,7 +1639,7 @@ BOOL FindSegment(const DacpGcHeapDetails &heap, DacpHeapSegmentData &seg, CLRDAT
     // Request the inital segment.
     if (seg.Request(g_sos, dwAddrSeg, heap) != S_OK)
     {
-        ExtOut("Error requesting heap segment %p.\n", (ULONG64)dwAddrSeg);
+        ExtOut("Error requesting heap segment %p.\n", SOS_PTR(dwAddrSeg));
         return FALSE;
     }
 
@@ -1657,7 +1656,7 @@ BOOL FindSegment(const DacpGcHeapDetails &heap, DacpHeapSegmentData &seg, CLRDAT
 
         if (seg.Request(g_sos, dwAddrSeg, heap) != S_OK)
         {
-            ExtOut("Error requesting heap segment %p.\n", (ULONG64)dwAddrSeg);
+            ExtOut("Error requesting heap segment %p.\n", SOS_PTR(dwAddrSeg));
             return FALSE;
         }
     }
@@ -2340,7 +2339,7 @@ bool sos::ObjectIterator::VerifyObjectMembers(char *reason, size_t count) const
                          (GetSizeEfficient(dwAddr1, dwAddrMethTable, FALSE, s, bPointers) == FALSE)) 
                     {
                         BuildError(reason, count, "object %s: bad member %p at %p", DMLObject(objAddr),
-                               (size_t)dwAddr1, (size_t)(objAddr+(size_t)parm-objAddr));
+                               SOS_PTR(dwAddr1), SOS_PTR(objAddr+(size_t)parm-objAddr));
 
                         return false;
                     }
@@ -2348,7 +2347,7 @@ bool sos::ObjectIterator::VerifyObjectMembers(char *reason, size_t count) const
                     if (IsMTForFreeObj(dwAddrMethTable))
                     {
                         sos::Throw<HeapCorruption>("object %s contains free object %p at %p", DMLObject(objAddr),
-                               (ULONG64)dwAddr1, (ULONG64)(objAddr+(size_t)parm-objAddr));
+                               SOS_PTR(dwAddr1), SOS_PTR(objAddr+(size_t)parm-objAddr));
                     }
                
                     // verify card table
@@ -2357,7 +2356,7 @@ bool sos::ObjectIterator::VerifyObjectMembers(char *reason, size_t count) const
                     {
                         BuildError(reason, count, "Object %s: %s missing card_table entry for %p",
                                 DMLObject(objAddr), (dwChild == dwAddr1)? "" : " maybe",
-                               (size_t)(objAddr+(size_t)parm-objAddr));
+                                SOS_PTR(objAddr+(size_t)parm-objAddr));
 
                         return false;
                     }
@@ -2415,8 +2414,8 @@ bool sos::ObjectIterator::VerifyObjectMembers(char *reason, size_t count) const
                              if (FAILED(GetMTOfObject(dwAddr1, &dwAddrMethTable)) ||
                                   (GetSizeEfficient(dwAddr1, dwAddrMethTable, FALSE, s, bPointers) == FALSE)) 
                              {
-                                 BuildError(reason, count, "Object %s: Bad member %p at %p.\n", DMLObject(objAddr), 
-                                         (size_t)dwAddr1, (size_t)(objAddr+(size_t)parm-objAddr));
+                                 BuildError(reason, count, "Object %s: Bad member %p at %p.\n", DMLObject(objAddr),
+                                         SOS_PTR(dwAddr1), SOS_PTR(objAddr+(size_t)parm-objAddr));
 
                                  return false;
                              }
@@ -2424,7 +2423,7 @@ bool sos::ObjectIterator::VerifyObjectMembers(char *reason, size_t count) const
                              if (IsMTForFreeObj(dwAddrMethTable))
                              {
                                  BuildError(reason, count, "Object %s contains free object %p at %p.", DMLObject(objAddr),
-                                        (size_t)dwAddr1, (size_t)(objAddr+(size_t)parm-objAddr));
+                                        SOS_PTR(dwAddr1), SOS_PTR(objAddr+(size_t)parm-objAddr));
                                  return false;
                              }
 
@@ -2434,7 +2433,7 @@ bool sos::ObjectIterator::VerifyObjectMembers(char *reason, size_t count) const
                              {
                                  BuildError(reason, count, "Object %s:%s missing card_table entry for %p",
                                         DMLObject(objAddr), (dwChild == dwAddr1) ? "" : " maybe",
-                                        (size_t)(objAddr+(size_t)parm-objAddr));
+                                        SOS_PTR(objAddr+(size_t)parm-objAddr));
 
                                  return false;
                              }

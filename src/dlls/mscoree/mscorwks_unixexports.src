@@ -4,11 +4,13 @@ coreclr_execute_assembly
 coreclr_initialize
 coreclr_shutdown
 
-; Obsolete Unix hosting API, to be removed
-ExecuteAssembly
+; il{d}asm
+MetaDataGetDispenser
+GetMetaDataInternalInterface
+GetMetaDataInternalInterfaceFromPublic
+GetMetaDataPublicInterfaceFromInternal
 
-; PAL initialization and module registration
-PAL_InitializeCoreCLR 
+; PAL module registration
 PAL_RegisterModule
 PAL_UnregisterModule
 
@@ -38,6 +40,7 @@ FlushFileBuffers
 FormatMessageW
 FreeEnvironmentStringsW
 GetACP
+GetComputerNameW
 GetConsoleCP
 GetConsoleOutputCP
 GetCurrentDirectoryW

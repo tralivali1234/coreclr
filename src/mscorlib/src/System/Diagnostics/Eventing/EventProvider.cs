@@ -1,6 +1,6 @@
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 using Microsoft.Win32;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -44,7 +44,7 @@ namespace System.Diagnostics.Tracing
     /// controller callback)
     /// </summary>
     [System.Security.Permissions.HostProtection(MayLeakOnAbort = true)]
-    internal class EventProvider : IDisposable
+    internal partial class EventProvider : IDisposable
     {
         // This is the windows EVENT_DATA_DESCRIPTOR structure.  We expose it because this is what
         // subclasses of EventProvider use when creating efficient (but unsafe) version of
@@ -89,7 +89,7 @@ namespace System.Diagnostics.Tracing
         private static WriteEventErrorCode s_returnCode; // The last return code 
 
         private const int s_basicTypeAllocationBufferSize = 16;
-        private const int s_etwMaxNumberArguments = 32;
+        private const int s_etwMaxNumberArguments = 128;
         private const int s_etwAPIMaxRefObjCount = 8;
         private const int s_maxEventDataDescriptors = 128;
         private const int s_traceEventMaximumSize = 65482;
@@ -104,12 +104,12 @@ namespace System.Diagnostics.Tracing
             EventTooBig = 2,
             NullInput = 3,
             TooManyArgs = 4,
-            Other = 5, 
+            Other = 5,
         };
 
         // Because callbacks happen on registration, and we need the callbacks for those setup
         // we can't call Register in the constructor.   
-            //
+        //
         // Note that EventProvider should ONLY be used by EventSource.  In particular because
         // it registers a callback from native code you MUST dispose it BEFORE shutdown, otherwise
         // you may get native callbacks during shutdown when we have destroyed the delegate.  
@@ -135,38 +135,11 @@ namespace System.Diagnostics.Tracing
             uint status;
             m_etwCallback = new UnsafeNativeMethods.ManifestEtw.EtwEnableCallback(EtwEnableCallBack);
 
-            status = EventRegister(ref m_providerId, m_etwCallback); 
+            status = EventRegister(ref m_providerId, m_etwCallback);
             if (status != 0)
             {
                 throw new ArgumentException(Win32Native.GetMessage(unchecked((int)status)));
             }
-        }
-
-        [System.Security.SecurityCritical]
-        internal unsafe int SetInformation(
-            UnsafeNativeMethods.ManifestEtw.EVENT_INFO_CLASS eventInfoClass,
-            void* data,
-            int dataSize)
-        {
-            int status = UnsafeNativeMethods.ManifestEtw.ERROR_NOT_SUPPORTED;
-
-            if (!m_setInformationMissing)
-            {
-                try
-                {
-                    status = UnsafeNativeMethods.ManifestEtw.EventSetInformation(
-                        m_regHandle,
-                        eventInfoClass,
-                        data,
-                        dataSize);
-                }
-                catch (TypeLoadException)
-                {
-                    m_setInformationMissing = true;
-                }
-            }
-
-            return status;
         }
 
         //
@@ -381,7 +354,7 @@ namespace System.Diagnostics.Tracing
             List<SessionInfo> liveSessionList = null;
 
             GetSessionInfo((Action<int, long>)
-                ((etwSessionId, matchAllKeywords) => 
+                ((etwSessionId, matchAllKeywords) =>
                     GetSessionInfoCallback(etwSessionId, matchAllKeywords, ref liveSessionList)));
 
             List<Tuple<SessionInfo, bool>> changedSessionList = new List<Tuple<SessionInfo, bool>>();
@@ -396,7 +369,7 @@ namespace System.Diagnostics.Tracing
                     if ((idx = IndexOfSessionInList(liveSessionList, s.etwSessionId)) < 0 ||
                         (liveSessionList[idx].sessionIdBit != s.sessionIdBit))
                         changedSessionList.Add(Tuple.Create(s, false));
-                        
+
                 }
             }
             // next look for sessions that were created since the last callback  (or have changed)
@@ -413,7 +386,6 @@ namespace System.Diagnostics.Tracing
             }
 
             m_liveSessions = liveSessionList;
-
             return changedSessionList;
         }
 
@@ -463,7 +435,7 @@ namespace System.Diagnostics.Tracing
 
             // However the framework version of EventSource DOES have ES_SESSION_INFO defined and thus
             // does not have this issue.  
-#if ES_SESSION_INFO
+#if ES_SESSION_INFO || !ES_BUILD_STANDALONE  
             int buffSize = 256;     // An initial guess that probably works most of the time.  
             byte* buffer;
             for (; ; )
@@ -503,7 +475,15 @@ namespace System.Diagnostics.Tracing
                 providerInstance = (UnsafeNativeMethods.ManifestEtw.TRACE_PROVIDER_INSTANCE_INFO*)&structBase[providerInstance->NextOffset];
             }
 #else 
-#if !ES_BUILD_PCL && !FEATURE_PAL   // TODO command arguments don't work on PCL builds...
+#if !ES_BUILD_PCL && !FEATURE_PAL  // TODO command arguments don't work on PCL builds...
+            // This code is only used in the Nuget Package Version of EventSource.  because
+            // the code above is using APIs baned from UWP apps.     
+            // 
+            // TODO: In addition to only working when TraceEventSession enables the provider, this code
+            // also has a problem because TraceEvent does not clean up if the registry is stale 
+            // It is unclear if it is worth keeping, but for now we leave it as it does work
+            // at least some of the time.  
+
             // Determine our session from what is in the registry.  
             string regKey = @"\Microsoft\Windows\CurrentVersion\Winevt\Publishers\{" + m_providerId + "}";
             if (System.Runtime.InteropServices.Marshal.SizeOf(typeof(IntPtr)) == 8)
@@ -516,7 +496,7 @@ namespace System.Diagnostics.Tracing
             {
                 foreach (string valueName in key.GetValueNames())
                 {
-                    if (valueName.StartsWith("ControllerData_Session_"))
+                    if (valueName.StartsWith("ControllerData_Session_", StringComparison.Ordinal))
                     {
                         string strId = valueName.Substring(23);      // strip of the ControllerData_Session_
                         int etwSessionId;
@@ -528,7 +508,7 @@ namespace System.Diagnostics.Tracing
                             if (data != null)
                             {
                                 var dataAsString = System.Text.Encoding.UTF8.GetString(data);
-                                int keywordIdx = dataAsString.IndexOf("EtwSessionKeyword");
+                                int keywordIdx = dataAsString.IndexOf("EtwSessionKeyword", StringComparison.Ordinal);
                                 if (0 <= keywordIdx)
                                 {
                                     int startIdx = keywordIdx + 18;
@@ -561,7 +541,7 @@ namespace System.Diagnostics.Tracing
                 if (sessions[i].etwSessionId == etwSessionId)
                     return i;
 
-            return -1;    
+            return -1;
         }
 
         /// <summary>
@@ -573,14 +553,14 @@ namespace System.Diagnostics.Tracing
         /// starts, and the command being issued associated with that data.  
         /// </summary>
         [System.Security.SecurityCritical]
-        private unsafe bool GetDataFromController(int etwSessionId, 
+        private unsafe bool GetDataFromController(int etwSessionId,
                 UnsafeNativeMethods.ManifestEtw.EVENT_FILTER_DESCRIPTOR* filterData, out ControllerCommand command, out byte[] data, out int dataStart)
         {
             data = null;
             dataStart = 0;
             if (filterData == null)
             {
-#if !ES_BUILD_PCL && !FEATURE_PAL
+#if (!ES_BUILD_PCL && !PROJECTN && !FEATURE_PAL)
                 string regKey = @"\Microsoft\Windows\CurrentVersion\Winevt\Publishers\{" + m_providerId + "}";
                 if (System.Runtime.InteropServices.Marshal.SizeOf(typeof(IntPtr)) == 8)
                     regKey = @"HKEY_LOCAL_MACHINE\Software" + @"\Wow6432Node" + regKey;
@@ -729,7 +709,7 @@ namespace System.Diagnostics.Tracing
 
         --*/
         {
-            Again:
+        Again:
             dataDescriptor->Reserved = 0;
 
             string sRet = data as string;
@@ -1042,7 +1022,7 @@ namespace System.Diagnostics.Tracing
                             dataRefObj.Add(null);
                             ++refObjIndex;
                         }
-                        
+
                         //
                         // now fix any string arguments and set the pointer on the data descriptor 
                         //
@@ -1237,3 +1217,4 @@ namespace System.Diagnostics.Tracing
         }
     }
 }
+

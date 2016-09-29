@@ -1,5 +1,3 @@
 if(WIN32)
     add_subdirectory(Strike)
-    add_subdirectory(DacTableGen)
-    add_subdirectory(diasdk)
 endif(WIN32)

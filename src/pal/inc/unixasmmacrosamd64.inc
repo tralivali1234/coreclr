@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 .macro NESTED_ENTRY Name, Section, Handler
         LEAF_ENTRY \Name, \Section
@@ -17,10 +16,10 @@
 .macro NESTED_END Name, Section
         LEAF_END \Name, \Section
 #if defined(__APPLE__)
+        .set LOCAL_LABEL(\Name\()_Size), . - C_FUNC(\Name)
         .section __LD,__compact_unwind,regular,debug
         .quad C_FUNC(\Name)
-        .set C_FUNC(\Name\()_Size), C_FUNC(\Name\()_End) - C_FUNC(\Name)
-        .long C_FUNC(\Name\()_Size)
+        .long LOCAL_LABEL(\Name\()_Size)
         .long 0x04000000 # DWARF
         .quad 0
         .quad 0
@@ -43,13 +42,17 @@ C_FUNC(\Name):
         .cfi_startproc
 .endm
 
-.macro LEAF_END_MARKED Name, Section
-C_FUNC(\Name\()_End):
-        .global C_FUNC(\Name\()_End)
+.macro LEAF_END Name, Section
 #if !defined(__APPLE__)
         .size \Name, .-\Name
 #endif
         .cfi_endproc
+.endm
+
+.macro LEAF_END_MARKED Name, Section
+C_FUNC(\Name\()_End):
+        .global C_FUNC(\Name\()_End)
+        LEAF_END \Name, \Section
 .endm
 
 .macro NOP_3_BYTE
@@ -89,7 +92,7 @@ C_FUNC(\Name\()_End):
 
 .macro alloc_stack Size
 .att_syntax
-        lea -\Size(%rsp), %rsp
+        lea -(\Size)(%rsp), %rsp
 .intel_syntax noprefix
         .cfi_adjust_cfa_offset \Size
 .endm
@@ -260,6 +263,8 @@ C_FUNC(\Name\()_End):
 // extra locals + padding to qword align
 .macro PROLOG_WITH_TRANSITION_BLOCK extraLocals = 0, stackAllocOnEntry = 0, stackAllocSpill1, stackAllocSpill2, stackAllocSpill3
 
+        set_cfa_register rsp, 8
+        
         __PWTB_FloatArgumentRegisters = \extraLocals
 
         .if ((__PWTB_FloatArgumentRegisters % 16) != 0)
@@ -324,7 +329,8 @@ C_FUNC(\Name\()_End):
 
 .macro EPILOG_WITH_TRANSITION_BLOCK_RETURN
 
-        add rsp, __PWTB_StackAlloc
+        free_stack      __PWTB_StackAlloc
+        POP_ARGUMENT_REGISTERS
         POP_CALLEE_SAVED_REGISTERS
         ret
 
@@ -336,5 +342,14 @@ C_FUNC(\Name\()_End):
         free_stack      __PWTB_StackAlloc
         POP_ARGUMENT_REGISTERS
         POP_CALLEE_SAVED_REGISTERS
+
+.endm
+
+.macro RESET_FRAME_WITH_RBP
+
+        mov     rsp, rbp
+        set_cfa_register rsp, 16
+        pop_nonvol_reg rbp
+        .cfi_same_value rbp
 
 .endm

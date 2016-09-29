@@ -10,7 +10,7 @@ Build CoreCLR and CoreFX. Refer to building instructions in the respective repos
 
 To build only the tests, on the Windows machine:
 
-> `C:\coreclr>tests\buildtest.cmd clean`
+> `C:\coreclr>build-test.cmd -rebuild`
 
 **Running tests**
 
@@ -28,7 +28,7 @@ See runtest.sh usage information:
 
 > `~/coreclr$ tests/runtest.sh --help`
 
-Run tests:
+Run tests (`Debug` may be replaced with `Release` or `Checked`, depending on which Configuration you've built):
 
 > ```bash
 > ~/coreclr$ tests/runtest.sh
@@ -36,9 +36,22 @@ Run tests:
 >     --testNativeBinDir=~/coreclr/bin/obj/Linux.x64.Debug/tests
 >     --coreClrBinDir=~/coreclr/bin/Product/Linux.x64.Debug
 >     --mscorlibDir=/media/coreclr/bin/Product/Linux.x64.Debug
->     --coreFxBinDir=~/corefx/bin/Linux.AnyCPU.Debug
+>     --coreFxBinDir="~/corefx/bin/Linux.AnyCPU.Debug;~/corefx/bin/Unix.AnyCPU.Debug;~/corefx/bin/AnyOS.AnyCPU.Debug"
 >     --coreFxNativeBinDir=~/corefx/bin/Linux.x64.Debug
 > ```
+
+The method above will copy dependencies from the set of directories provided to create an 'overlay' directory.
+If you already have an overlay directory prepared with the dependencies you need, you can specify `--coreOverlayDir`
+instead of `--coreClrBinDir`, `--mscorlibDir`, `--coreFxBinDir`, and `--coreFxNativeBinDir`. It would look something like:
+
+
+> ```bash
+> ~/coreclr$ tests/runtest.sh
+>     --testRootDir=~/test/Windows_NT.x64.Debug
+>     --testNativeBinDir=~/coreclr/bin/obj/Linux.x64.Debug/tests
+>     --coreOverlayDir=/path/to/directory/containing/overlay
+> ```
+
 
 Test results will go into:
 

@@ -1,5 +1,6 @@
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 //
 /*=============================================================================
@@ -131,8 +132,9 @@ namespace System.Threading {
 #if FEATURE_REMOTING        
         private Context         m_Context;
 #endif 
-#if !FEATURE_CORECLR
         private ExecutionContext m_ExecutionContext;    // this call context follows the logical thread
+#if FEATURE_CORECLR
+        private SynchronizationContext m_SynchronizationContext;    // On CoreCLR, this is maintained separately from ExecutionContext
 #endif
 
         private String          m_Name;
@@ -353,7 +355,19 @@ namespace System.Threading {
         }
 
 
-#if !FEATURE_CORECLR
+#if FEATURE_CORECLR
+        internal ExecutionContext ExecutionContext
+        {
+            get { return m_ExecutionContext; } 
+            set { m_ExecutionContext = value; }
+        }
+
+        internal SynchronizationContext SynchronizationContext
+        {
+            get { return m_SynchronizationContext; }
+            set { m_SynchronizationContext = value; }
+        }	
+#else // !FEATURE_CORECLR
         [ReliabilityContract(Consistency.WillNotCorruptState, Cer.Success)]
         internal ExecutionContext.Reader GetExecutionContextReader()
         {
@@ -516,22 +530,6 @@ namespace System.Threading {
 #pragma warning restore 618
         public void Abort()
         {
-#if FEATURE_LEGACYNETCF
-            if(CompatibilitySwitches.IsAppEarlierThanWindowsPhone8)
-            {
-                System.Reflection.Assembly callingAssembly = System.Reflection.Assembly.GetCallingAssembly();
-                if(callingAssembly != null && !callingAssembly.IsProfileAssembly)
-                {
-                    string caller = new StackFrame(1).GetMethod().FullName;
-                    string callee = System.Reflection.MethodBase.GetCurrentMethod().FullName;
-                    throw new MethodAccessException(String.Format(
-                        CultureInfo.CurrentCulture,
-                        Environment.GetResourceString("Arg_MethodAccessException_WithCaller"),
-                        caller,
-                        callee));
-                }
-            }
-#endif // FEATURE_LEGACYNETCF
             AbortInternal();
         }
 
@@ -1103,14 +1101,6 @@ namespace System.Threading {
                     nativeInitCultureAccessors();
 #endif
 
-#if FEATURE_LEGACYNETCF && !FEATURE_COREFX_GLOBALIZATION
-                if (CompatibilitySwitches.IsAppEarlierThanWindowsPhone8)
-                {
-                    // Maintain legacy NetCF Behavior where setting the value for one thread impacts all threads.
-                    CultureInfo.SetCurrentUICultureQuirk(value);
-                    return;
-                }
-#endif
                 if (!AppContextSwitches.NoAsyncCurrentCulture)
                 {
                     if (s_asyncLocalCurrentUICulture == null)
@@ -1218,14 +1208,6 @@ namespace System.Threading {
                     nativeInitCultureAccessors();
 #endif
 
-#if FEATURE_LEGACYNETCF && !FEATURE_COREFX_GLOBALIZATION
-                if (CompatibilitySwitches.IsAppEarlierThanWindowsPhone8)
-                {
-                    // See comment in CurrentUICulture setter
-                    CultureInfo.SetCurrentCultureQuirk(value);
-                    return;
-                }
-#endif
                 if (!AppContextSwitches.NoAsyncCurrentCulture)
                 {
                     if (s_asyncLocalCurrentCulture == null)

@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information. 
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 /*++
 
@@ -509,7 +508,7 @@ CSharedMemoryObject::PromoteSharedData(
             m_pot->GetSharedDataSize()
             );
         
-        InternalFree(m_pvSharedData);
+        free(m_pvSharedData);
         m_pvSharedData = pvSharedData;
     }
 
@@ -870,7 +869,7 @@ CSharedMemoryObject::~CSharedMemoryObject()
 
     if (NULL != m_pvSharedData && ProcessLocalObject == m_ObjectDomain)
     {
-        InternalFree(m_pvSharedData);
+        free(m_pvSharedData);
     }
     else if (SHMNULL != m_shmod && m_fDeleteSharedData)
     {

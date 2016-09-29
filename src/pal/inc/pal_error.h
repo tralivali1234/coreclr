@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information. 
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 /*++
 
@@ -54,6 +53,7 @@
 #define ERROR_CANNOT_MAKE 82L
 #define ERROR_INVALID_PARAMETER 87L
 #define ERROR_NET_WRITE_FAULT 88L
+#define ERROR_TOO_MANY_SEMAPHORES 100L
 #define ERROR_DRIVE_LOCKED 108L
 #define ERROR_BROKEN_PIPE 109L
 #define ERROR_OPEN_FAILED 110L

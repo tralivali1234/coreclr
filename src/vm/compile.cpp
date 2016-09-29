@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 // ===========================================================================
 // File: compile.cpp
 //
@@ -52,11 +51,11 @@
 #include "cgensys.h"
 #include "peimagelayout.inl"
 
-#if defined(FEATURE_HOSTED_BINDER) && defined(FEATURE_APPX_BINDER)
+#if defined(FEATURE_APPX_BINDER)
 #include "appxutil.h"
 #include "clrprivbinderappx.h"
 #include "clrprivtypecachewinrt.h"
-#endif // defined(FEATURE_HOSTED_BINDER) && defined(FEATURE_APPX_BINDER)
+#endif // defined(FEATURE_APPX_BINDER)
 
 #ifdef FEATURE_COMINTEROP
 #include "clrprivbinderwinrt.h"
@@ -75,12 +74,9 @@
 #include "perfmap.h"
 #endif
 
-#ifdef MDIL
-#include <mdil.h>
-#endif
-#include "tritonstress.h"
-
 #include "argdestination.h"
+
+#include "versionresilienthashcode.h"
 
 #ifdef CROSSGEN_COMPILE
 CompilationDomain * theDomain;
@@ -143,11 +139,7 @@ HRESULT CEECompileInfo::CreateDomain(ICorCompilationDomain **ppDomain,
                                      BOOL fForceDebug,
                                      BOOL fForceProfiling,
                                      BOOL fForceInstrument,
-                                     BOOL fForceFulltrustDomain
-#ifdef MDIL
-                                   , MDILCompilationFlags     mdilCompilationFlags
-#endif
-                                               )
+                                     BOOL fForceFulltrustDomain)
 {
     STANDARD_VM_CONTRACT;
 
@@ -165,17 +157,13 @@ HRESULT CEECompileInfo::CreateDomain(ICorCompilationDomain **ppDomain,
 
     {
         SystemDomain::LockHolder lh;
-        pCompilationDomain->Init(
-#ifdef MDIL
-            mdilCompilationFlags
-#endif
-             );
+        pCompilationDomain->Init();
     }
 
     if (pEmitter)
         pCompilationDomain->SetDependencyEmitter(pEmitter);
     
-#if defined(FEATURE_HOSTED_BINDER) && defined(FEATURE_APPX_BINDER)
+#if defined(FEATURE_APPX_BINDER)
     if (AppX::IsAppXProcess())
     {
         HRESULT hr = S_OK;
@@ -185,7 +173,7 @@ HRESULT CEECompileInfo::CreateDomain(ICorCompilationDomain **ppDomain,
         IfFailThrow(pBinder->QueryInterface(IID_ICLRPrivBinder, &pBinderInterface));
         pCompilationDomain->SetLoadContextHostBinder(pBinderInterface);
     }
-#endif // defined(FEATURE_HOSTED_BINDER) && defined(FEATURE_APPX_BINDER)
+#endif // defined(FEATURE_APPX_BINDER)
 
 #ifdef DEBUGGING_SUPPORTED 
     // Notify the debugger here, before the thread transitions into the
@@ -394,7 +382,6 @@ HRESULT CEECompileInfo::LoadAssemblyByPath(
 
     Assembly * pAssembly;
     HRESULT    hrProcessLibraryBitnessMismatch = S_OK;
-    bool       verifyingImageIsAssembly = false;
 
     // We don't want to do a LoadFrom, since they do not work with ngen. Instead,
     // read the metadata from the file and do a bind based on that.
@@ -428,9 +415,6 @@ HRESULT CEECompileInfo::LoadAssemblyByPath(
                 fExplicitBindToNativeImage ? MDInternalImport_NoCache : MDInternalImport_Default);
         }
 
-#if defined(FEATURE_WINDOWSPHONE)
-        verifyingImageIsAssembly = true;
-#endif // FEATURE_WINDOWSPHONE
         if (fExplicitBindToNativeImage && !pImage->HasReadyToRunHeader())
         {
             pImage->VerifyIsNIAssembly();
@@ -439,8 +423,6 @@ HRESULT CEECompileInfo::LoadAssemblyByPath(
         {
             pImage->VerifyIsAssembly();
         }
-        
-        verifyingImageIsAssembly = false;
 
         // Check to make sure the bitness of the assembly matches the bitness of the process
         // we will be loading it into and store the result.  If a COR_IMAGE_ERROR gets thrown
@@ -513,7 +495,7 @@ HRESULT CEECompileInfo::LoadAssemblyByPath(
                     TRUE,                   // fThrowOnFileNotFound
                     &bindResult, 
 
-                    // fNgenExplicitBind: Generally during NGEN / MDIL compilation, this is
+                    // fNgenExplicitBind: Generally during NGEN compilation, this is
                     // TRUE, meaning "I am NGEN, and I am doing an explicit bind to the IL
                     // image, so don't infer the NI and try to open it, because I already
                     // have it open". But if we're executing crossgen /CreatePDB, this should
@@ -544,13 +526,6 @@ HRESULT CEECompileInfo::LoadAssemblyByPath(
                 pDomain->ToCompilationDomain()->ComputeAssemblyHardBindList(pAssemblyHolder->GetPersistentMDImport());
 #endif
 
-#ifdef MDIL
-            // MDIL is generated as a special mode of ngen.exe or coregen.exe; normally these two utilities
-            // would not generate anything if a native image for the requested assembly already exists.
-            // Of course, this is not the desired behavior when generating MDIL - it should always work.
-            // We need to prevent loading of the native image when we are generating MDIL.
-            if (!GetAppDomain()->IsMDILCompilationDomain())
-#endif
             {
                 // Mark the assembly before it gets fully loaded and NGen image dependencies are verified. This is necessary
                 // to allow skipping compilation if there is NGen image already.
@@ -565,22 +540,13 @@ HRESULT CEECompileInfo::LoadAssemblyByPath(
             pDomain->ToCompilationDomain()->AddDependency(&spec, pAssemblyHolder);
         }
 
-#ifdef MDIL
-        if (GetAppDomain()->IsMDILCompilationDomain())
-            TritonStressStartup(LogToSvcLogger);
-#endif
-
         // Kind of a workaround - if we could have loaded this assembly via normal load,
 
         *pHandle = CORINFO_ASSEMBLY_HANDLE(pAssembly);
     }
     EX_CATCH_HRESULT(hr);
     
-    if (verifyingImageIsAssembly && hr != S_OK)
-    {
-        hr = NGEN_E_FILE_NOT_ASSEMBLY;
-    }
-    else if ( hrProcessLibraryBitnessMismatch != S_OK && ( hr == COR_E_BADIMAGEFORMAT || hr == HRESULT_FROM_WIN32(ERROR_BAD_EXE_FORMAT) ) )
+    if ( hrProcessLibraryBitnessMismatch != S_OK && ( hr == COR_E_BADIMAGEFORMAT || hr == HRESULT_FROM_WIN32(ERROR_BAD_EXE_FORMAT) ) )
     {
         hr = hrProcessLibraryBitnessMismatch;
     }
@@ -628,11 +594,6 @@ static HRESULT LoadAssemblyByIAssemblyNameWorker(
 
         pAssembly = spec.LoadAssembly(FILE_LOADED);
     }
-
-#ifdef MDIL
-    if (GetAppDomain()->IsMDILCompilationDomain())
-        TritonStressStartup(LogToSvcLogger);
-#endif
 
     //
     // Return the module handle
@@ -880,7 +841,13 @@ HRESULT CEECompileInfo::SetCachedSigningLevel(HANDLE hNI, HANDLE *pModules, COUN
         handles.Append(hFile);
     }
 
-    IfFailGo(SetCachedSigningLevel(handles.GetElements(), handles.GetCount(), 0, hNI));
+    if (!SetCachedSigningLevel(handles.GetElements(), handles.GetCount(), 0, hNI))
+    {
+        hr = HRESULT_FROM_WIN32(GetLastError());
+        _ASSERTE(FAILED(hr));
+        goto ErrExit;
+    }
+
     for (COUNT_T i = 0; i < nModules; i++)
     {
         if (!SetCachedSigningLevel(handles.GetElements(), handles.GetCount(), 0, pModules[i]))
@@ -934,90 +901,6 @@ BOOL CEECompileInfo::CheckAssemblyZap(
 
     return result;
 }
-
-#ifdef MDIL
-DWORD CEECompileInfo::GetMdilModuleSecurityFlags(
-    CORINFO_ASSEMBLY_HANDLE assembly)
-{
-    STANDARD_VM_CONTRACT;
-
-    Assembly *pAssembly = (Assembly*) assembly;
-
-    ModuleSecurityDescriptor *pMSD = ModuleSecurityDescriptor::GetModuleSecurityDescriptor(pAssembly);
-
-    MDILHeader::Flags securityFlags = MDILHeader::MdilModuleSecurityDescriptorFlags_None;
-
-    // Is Microsoft Platform
-    if (pMSD->IsMicrosoftPlatform())
-        securityFlags = (MDILHeader::Flags)(securityFlags | MDILHeader::MdilModuleSecurityDescriptorFlags_IsMicrosoftPlatform);
-
-    // Is every method and type in the assembly transparent
-    if (pMSD->IsAllTransparent())
-        securityFlags = (MDILHeader::Flags)(securityFlags | MDILHeader::MdilModuleSecurityDescriptorFlags_IsAllTransparent);
-
-    // Is every method and type introduced by the assembly critical
-    if (pMSD->IsAllCritical())
-        securityFlags = (MDILHeader::Flags)(securityFlags | MDILHeader::MdilModuleSecurityDescriptorFlags_IsAllCritical);
-
-    // Combined with IsAllCritical - is every method and type introduced by the assembly safe critical
-    if (pMSD->IsTreatAsSafe())
-        securityFlags = (MDILHeader::Flags)(securityFlags | MDILHeader::MdilModuleSecurityDescriptorFlags_IsTreatAsSafe);
-
-    // Does the assembly not care about transparency, and wants the CLR to take care of making sure everything
-    // is annotated properly in the assembly.
-    if (pMSD->IsOpportunisticallyCritical())
-        securityFlags = (MDILHeader::Flags)(securityFlags | MDILHeader::MdilModuleSecurityDescriptorFlags_IsOpportunisticallyCritical);
-
-    // Partial trust assemblies are forced all-transparent under some conditions. This 
-    // tells us whether that is true for this particular assembly.
-    if (pMSD->IsAllTransparentDueToPartialTrust())
-        securityFlags = (MDILHeader::Flags)(securityFlags | MDILHeader::MdilModuleSecurityDescriptorFlags_TransparentDueToPartialTrust);
-
-#ifdef FEATURE_APTCA
-    if (pMSD->IsAPTCA())
-#endif
-        securityFlags = (MDILHeader::Flags)(securityFlags | MDILHeader::MdilModuleSecurityDescriptorFlags_IsAPTCA);
-
-#ifndef FEATURE_CORECLR
-    // Can fully trusted transparent code bypass verification
-    if (pMSD->CanTransparentCodeSkipVerification())
-        securityFlags = (MDILHeader::Flags)(securityFlags | MDILHeader::MdilModuleSecurityDescriptorFlags_SkipFullTrustVerification);
-#endif // !FEATURE_CORECLR
-
-    return (DWORD)securityFlags;
-}
-
-BOOL CEECompileInfo::CompilerRelaxationNoStringInterningPermitted(
-    CORINFO_ASSEMBLY_HANDLE assembly)
-{
-    STANDARD_VM_CONTRACT;
-
-    Assembly *pAssembly = (Assembly*) assembly;
-
-    return pAssembly->GetManifestModule()->IsNoStringInterning();
-}
-
-BOOL CEECompileInfo::RuntimeCompatibilityWrapExceptions(
-    CORINFO_ASSEMBLY_HANDLE assembly)
-{
-    STANDARD_VM_CONTRACT;
-
-    Assembly *pAssembly = (Assembly*) assembly;
-
-    return pAssembly->GetManifestModule()->IsRuntimeWrapExceptions();
-}
-
-DWORD CEECompileInfo::CERReliabilityContract(
-    CORINFO_ASSEMBLY_HANDLE assembly)
-{
-    STANDARD_VM_CONTRACT;
-
-    Assembly *pAssembly = (Assembly*) assembly;
-
-    return pAssembly->GetManifestModule()->GetReliabilityContract();
-}
-
-#endif // MDIL
 
 HRESULT CEECompileInfo::SetCompilationTarget(CORINFO_ASSEMBLY_HANDLE     assembly,
                                              CORINFO_MODULE_HANDLE       module)
@@ -1161,23 +1044,6 @@ CORINFO_ASSEMBLY_HANDLE
 
     return (CORINFO_ASSEMBLY_HANDLE) GetModule(module)->GetAssembly();
 }
-
-#ifdef MDIL
-HRESULT CEECompileInfo::ShouldCompile(CORINFO_METHOD_HANDLE method)
-{
-    STANDARD_VM_CONTRACT;
-    MethodDesc * pMD = (MethodDesc *)method;
-
-    BOOL fIsMinimalMDIL = GetAppDomain()->IsMinimalMDILCompilationDomain();
-    if (fIsMinimalMDIL && !pMD->HasClassOrMethodInstantiation())
-        return S_FALSE;
-
-    if (GetAppDomain()->IsNoMDILCompilationDomain())
-        return S_FALSE;
-
-    return S_OK;
-}
-#endif // MDIL
 
 #ifdef FEATURE_FUSION
 HRESULT CEECompileInfo::GetAssemblyName(
@@ -1380,9 +1246,7 @@ void GetLoadHint(ASSEMBLY * pAssembly, ASSEMBLY *pAssemblyDependency,
 HRESULT CEECompileInfo::GetLoadHint(CORINFO_ASSEMBLY_HANDLE hAssembly,
                                     CORINFO_ASSEMBLY_HANDLE hAssemblyDependency,
                                     LoadHintEnum *loadHint,
-                                    LoadHintEnum *defaultLoadHint // for MDIL we want to separate the default load hint on the assembly
-                                                                  // from the load hint on the dependency
-                                    )
+                                    LoadHintEnum *defaultLoadHint)
 {
     STANDARD_VM_CONTRACT;
 
@@ -2135,7 +1999,8 @@ void CEECompileInfo::EncodeMethod(
                           LPVOID                pEncodeModuleContext,
                           ENCODEMODULE_CALLBACK pfnEncodeModule,
                           CORINFO_RESOLVED_TOKEN * pResolvedToken,
-                          CORINFO_RESOLVED_TOKEN * pConstrainedResolvedToken)
+                          CORINFO_RESOLVED_TOKEN * pConstrainedResolvedToken,
+                          BOOL                  fEncodeUsingResolvedTokenSpecStreams)
 {
     STANDARD_VM_CONTRACT;
 
@@ -2148,7 +2013,8 @@ void CEECompileInfo::EncodeMethod(
                               pSigBuilder,
                               pEncodeModuleContext, 
                               pfnEncodeModule, NULL,
-                              pResolvedToken, pConstrainedResolvedToken);
+                              pResolvedToken, pConstrainedResolvedToken,
+                              fEncodeUsingResolvedTokenSpecStreams);
     _ASSERTE(fSuccess);
 
     COOPERATIVE_TRANSITION_END();
@@ -2492,7 +2358,8 @@ void CEECompileInfo::EncodeField(
                          SigBuilder *          pSigBuilder,
                          LPVOID                encodeContext,
                          ENCODEMODULE_CALLBACK pfnEncodeModule,
-                         CORINFO_RESOLVED_TOKEN * pResolvedToken)
+                         CORINFO_RESOLVED_TOKEN * pResolvedToken, 
+                         BOOL fEncodeUsingResolvedTokenSpecStreams)
 {
     STANDARD_VM_CONTRACT;
 
@@ -2503,7 +2370,8 @@ void CEECompileInfo::EncodeField(
                         pSigBuilder,
                         encodeContext, 
                         pfnEncodeModule,
-                        pResolvedToken);
+                        pResolvedToken,
+                        fEncodeUsingResolvedTokenSpecStreams);
 
     COOPERATIVE_TRANSITION_END();
 }
@@ -2543,12 +2411,12 @@ CORCOMPILE_FIXUP_BLOB_KIND CEECompileInfo::GetFieldBaseOffset(
 
     if (pMT->IsValueType())
     {
-        return (CORCOMPILE_FIXUP_BLOB_KIND)0;
+        return ENCODE_NONE;
     }
 
     if (pMT->GetParentMethodTable()->IsInheritanceChainLayoutFixedInCurrentVersionBubble())
     {
-        return (CORCOMPILE_FIXUP_BLOB_KIND)0;
+        return ENCODE_NONE;
     }
 
     if (pMT->HasLayout())
@@ -2624,7 +2492,7 @@ void CEECompileInfo::EncodeTypeLayout(CORINFO_CLASS_HANDLE classHandle, SigBuild
     }
 #endif
 
-    if ((dwFlags & dwFlags & READYTORUN_LAYOUT_Alignment) && !(dwFlags & READYTORUN_LAYOUT_Alignment_Native))
+    if ((dwFlags & READYTORUN_LAYOUT_Alignment) && !(dwFlags & READYTORUN_LAYOUT_Alignment_Native))
     {
         pSigBuilder->AppendData(dwAlignment);
     }
@@ -2650,8 +2518,33 @@ BOOL CEECompileInfo::AreAllClassesFullyLoaded(CORINFO_MODULE_HANDLE moduleHandle
     return ((Module *)moduleHandle)->AreAllClassesFullyLoaded();
 }
 
+int CEECompileInfo::GetVersionResilientTypeHashCode(CORINFO_MODULE_HANDLE moduleHandle, mdToken token)
+{
+    STANDARD_VM_CONTRACT;
+
+    int dwHashCode;
+    if (!::GetVersionResilientTypeHashCode(((Module *)moduleHandle)->GetMDImport(), token, &dwHashCode))
+        ThrowHR(COR_E_BADIMAGEFORMAT);
+
+    return dwHashCode;
+}
+
+int CEECompileInfo::GetVersionResilientMethodHashCode(CORINFO_METHOD_HANDLE methodHandle)
+{
+    STANDARD_VM_CONTRACT;
+
+    return ::GetVersionResilientMethodHashCode(GetMethod(methodHandle));
+}
+
 #endif // FEATURE_READYTORUN_COMPILER
 
+BOOL CEECompileInfo::HasCustomAttribute(CORINFO_METHOD_HANDLE method, LPCSTR customAttributeName)
+{
+    STANDARD_VM_CONTRACT;
+
+    MethodDesc * pMD = GetMethod(method);
+    return S_OK == pMD->GetMDImport()->GetCustomAttributeByName(pMD->GetMemberDef(), customAttributeName, NULL, NULL);
+}
 
 #define OMFConst_Read            0x0001
 #define OMFConst_Write           0x0002
@@ -3016,36 +2909,44 @@ public:
     {
         LIMITED_METHOD_CONTRACT;
     }
-            
-    HRESULT Load()
+
+#ifdef FEATURE_CORECLR
+#define WRITER_LOAD_ERROR_MESSAGE W("Unable to load ") NATIVE_SYMBOL_READER_DLL W(".  Please ensure that ") NATIVE_SYMBOL_READER_DLL W(" is on the path.  Error='%d'\n")
+#else
+#define WRITER_LOAD_ERROR_MESSAGE W("Unable to load diasymreader.dll.  Please ensure that version 11 or greater of diasymreader.dll is on the path.  You can typically find this DLL in the desktop .NET install directory for 4.5 or greater.  Error='%d'\n")
+#endif
+
+    HRESULT Load(LPCWSTR wszDiasymreaderPath = nullptr)
     {
         STANDARD_VM_CONTRACT;
 
         HRESULT hr = S_OK;
 
-        m_hModule = WszLoadLibrary(W("diasymreader.dll"));
+        m_hModule = WszLoadLibrary(wszDiasymreaderPath != nullptr ? wszDiasymreaderPath : (LPCWSTR)NATIVE_SYMBOL_READER_DLL);
         if (m_hModule == NULL)
         {
-            GetSvcLogger()->Printf(
-                W("Unable to load diasymreader.dll.  Please ensure that version 11 or greater of diasymreader.dll is on the path.  You can typically find this DLL in the desktop .NET install directory for 4.5 or greater.  Error='%d'\n"),
-                GetLastError());
-            return HRESULT_FROM_WIN32(GetLastError());
+            hr = HRESULT_FROM_WIN32(GetLastError());
+            GetSvcLogger()->Printf(WRITER_LOAD_ERROR_MESSAGE, GetLastError());
+            return hr;
         }
 
         m_Create = reinterpret_cast<CreateNGenPdbWriter_t>(GetProcAddress(m_hModule, "CreateNGenPdbWriter"));
         if (m_Create == NULL)
         {
-            GetSvcLogger()->Printf(
-                W("An incorrect version of diasymreader.dll was found.  Please ensure that version 11 or greater of diasymreader.dll is on the path.  You can typically find this DLL in the desktop .NET install directory for 4.5 or greater.  Error='%d'\n"),
-                GetLastError());
-            return HRESULT_FROM_WIN32(GetLastError());
+            hr = HRESULT_FROM_WIN32(GetLastError());
+            GetSvcLogger()->Printf(WRITER_LOAD_ERROR_MESSAGE, GetLastError());
+            return hr;
         }
 
         if ((m_dwExtraData & kPDBLines) != 0)
         {
             hr = FakeCoCreateInstanceEx(
                 CLSID_CorSymBinder_SxS,
-                NULL,
+#ifdef FEATURE_CORECLR
+                wszDiasymreaderPath != nullptr ? wszDiasymreaderPath : (LPCWSTR)NATIVE_SYMBOL_READER_DLL,
+#else
+                wszDiasymreaderPath,
+#endif
                 IID_ISymUnmanagedBinder,
                 (void**)&m_pBinder,
                 NULL);
@@ -3157,6 +3058,13 @@ private:
     DWORD m_dwExtraData;
     LPCWSTR m_wszManagedPDBSearchPath;
 
+	// Currently The DiasymWriter does not use the correct PDB signature for NGEN PDBS unless 
+	// the NGEN DLL whose symbols are being generated end in .ni.dll.   Thus we copy
+	// to this name if it does not follow this covention (as is true with readyToRun
+	// dlls).   This variable remembers this temp file path so we can delete it after
+	// Pdb generation.   If DiaSymWriter is fixed, we can remove this.  
+	SString m_tempSourceDllName;
+
     // Interfaces for reading IL PDB info
     ReleaseHolder<ISymUnmanagedBinder> m_pBinder;
     ReleaseHolder<ISymUnmanagedReader> m_pReader;
@@ -3204,6 +3112,8 @@ public:
 
         ZeroMemory(m_wszPDBFilePath, sizeof(m_wszPDBFilePath));
     }
+
+	~NGenModulePdbWriter();
     
     HRESULT WritePDBData();
 
@@ -3504,6 +3414,13 @@ HRESULT NGenModulePdbWriter::InitILPdbData()
     return S_OK;
 }
 
+NGenModulePdbWriter::~NGenModulePdbWriter()
+{
+	// Delete any temporary files we created. 
+	if (m_tempSourceDllName.GetCount() != 0)
+		DeleteFileW(m_tempSourceDllName);
+	m_tempSourceDllName.Clear();
+}
 
 //---------------------------------------------------------------------------------------
 //
@@ -3538,8 +3455,32 @@ HRESULT NGenModulePdbWriter::WritePDBData()
 
     PEImageLayout * pLoadedLayout = m_pModule->GetFile()->GetLoaded();
 
+	// Currently DiaSymReader does not work properly generating NGEN PDBS unless 
+	// the DLL whose PDB is being generated ends in .ni.*.   Unfortunately, readyToRun
+	// images do not follow this convention and end up producing bad PDBS.  To fix
+	// this (without changing diasymreader.dll which ships indepdendently of .Net Core)
+	// we copy the file to somethign with this convention before generating the PDB
+	// and delete it when we are done.  
+	SString dllPath = pLoadedLayout->GetPath();
+	if (!dllPath.EndsWithCaseInsensitive(L".ni.dll") && !dllPath.EndsWithCaseInsensitive(L".ni.exe"))
+	{
+		SString::Iterator fileNameStart = dllPath.Begin();
+		dllPath.FindBack(fileNameStart, '\\');
+
+		SString::Iterator ext = dllPath.End();
+		dllPath.FindBack(ext, '.');
+
+		// m_tempSourceDllName = Convertion of  INPUT.dll  to INPUT.ni.dll where the PDB lives.  
+		m_tempSourceDllName = m_wszPdbPath;
+		m_tempSourceDllName += SString(dllPath, fileNameStart, ext - fileNameStart);
+		m_tempSourceDllName += L".ni";
+		m_tempSourceDllName += SString(dllPath, ext, dllPath.End() - ext);
+		CopyFileW(dllPath, m_tempSourceDllName, false);
+		dllPath = m_tempSourceDllName;
+	}
+
     ReleaseHolder<ISymNGenWriter> pWriter1;
-    hr = m_Create(pLoadedLayout->GetPath(), m_wszPdbPath, &pWriter1);
+    hr = m_Create(dllPath, m_wszPdbPath, &pWriter1);
     if (FAILED(hr))
         return hr;
     
@@ -4891,7 +4832,7 @@ BOOL NGenMethodLinesPdbWriter::FinalizeLinesFileBlock(
 }
 #endif // NO_NGENPDB
 #if defined(FEATURE_PERFMAP) || !defined(NO_NGENPDB)
-HRESULT __stdcall CreatePdb(CORINFO_ASSEMBLY_HANDLE hAssembly, BSTR pNativeImagePath, BSTR pPdbPath, BOOL pdbLines, BSTR pManagedPdbSearchPath)
+HRESULT __stdcall CreatePdb(CORINFO_ASSEMBLY_HANDLE hAssembly, BSTR pNativeImagePath, BSTR pPdbPath, BOOL pdbLines, BSTR pManagedPdbSearchPath, LPCWSTR pDiasymreaderPath)
 {
     STANDARD_VM_CONTRACT;
 
@@ -4906,7 +4847,7 @@ HRESULT __stdcall CreatePdb(CORINFO_ASSEMBLY_HANDLE hAssembly, BSTR pNativeImage
         pPdbPath, 
         pdbLines ? kPDBLines : 0,
         pManagedPdbSearchPath);
-    IfFailThrow(pdbWriter.Load());
+    IfFailThrow(pdbWriter.Load(pDiasymreaderPath));
 #elif defined(FEATURE_PERFMAP)
     NativeImagePerfMap perfMap(pAssembly, pPdbPath);
 #endif
@@ -4933,8 +4874,10 @@ HRESULT __stdcall CreatePdb(CORINFO_ASSEMBLY_HANDLE hAssembly, BSTR pNativeImage
     if (!fAtLeastOneNativeModuleFound)
     {
         GetSvcLogger()->Printf(
+            W("Loaded image '%s' (for input file '%s') is not a native image.\n"),
+            pAssembly->GetManifestFile()->GetPath().GetUnicode(),
             pNativeImagePath);
-        return E_FAIL;
+        return CORDBG_E_NO_IMAGE_AVAILABLE;
     }
 
     GetSvcLogger()->Printf(
@@ -4948,7 +4891,7 @@ HRESULT __stdcall CreatePdb(CORINFO_ASSEMBLY_HANDLE hAssembly, BSTR pNativeImage
     return S_OK;
 }
 #else
-HRESULT __stdcall CreatePdb(CORINFO_ASSEMBLY_HANDLE hAssembly, BSTR pNativeImagePath, BSTR pPdbPath, BOOL pdbLines, BSTR pManagedPdbSearchPath)
+HRESULT __stdcall CreatePdb(CORINFO_ASSEMBLY_HANDLE hAssembly, BSTR pNativeImagePath, BSTR pPdbPath, BOOL pdbLines, BSTR pManagedPdbSearchPath, LPCWSTR pDiasymreaderPath)
 {
     return E_NOTIMPL;
 }
@@ -5035,6 +4978,8 @@ CEEPreloader::CEEPreloader(Module *pModule,
     CONSISTENCY_CHECK(pModule == GetAppDomain()->ToCompilationDomain()->GetTargetModule());
 
     GetAppDomain()->ToCompilationDomain()->SetTargetImage(m_image, this);
+
+    m_methodCompileLimit = pModule->GetMDImport()->GetCountWithTokenKind(mdtMethodDef) * 10;
 
 #ifdef FEATURE_FULL_NGEN
     m_fSpeculativeTriage = FALSE;
@@ -5245,7 +5190,7 @@ void CEEPreloader::MethodReferencedByCompiledCode(CORINFO_METHOD_HANDLE handle)
 
         if (pEntry->fScheduled)
             return;        
-        m_uncompiledMethods.Append(pMD);
+        AppendUncompiledMethod(pMD);
     }
     else
     {
@@ -5274,199 +5219,6 @@ BOOL CEEPreloader::IsUncompiledMethod(CORINFO_METHOD_HANDLE handle)
     return m_compileMethodsHash.LookupPtr(pMD) != NULL;
 #endif
 }
-
-#ifdef MDIL
-#define ELEMENT_TYPE_NULLABLE       ((CorElementType)0x17)
-#define ELEMENT_TYPE_NULLABLE_CANON ((CorElementType)0x1f)
-MethodTable *GetMethodTable(CorElementType elType)
-{
-    switch (elType)
-    {
-    default:
-        assert(!"unexpected element type");
-        return g_pCanonMethodTableClass;
-
-    case    ELEMENT_TYPE_BOOLEAN:
-    case    ELEMENT_TYPE_CHAR:
-    case    ELEMENT_TYPE_I1:
-    case    ELEMENT_TYPE_U1:
-    case    ELEMENT_TYPE_I2:
-    case    ELEMENT_TYPE_U2:
-    case    ELEMENT_TYPE_I4:
-    case    ELEMENT_TYPE_U4:
-    case    ELEMENT_TYPE_I8:
-    case    ELEMENT_TYPE_U8:
-    case    ELEMENT_TYPE_R4:
-    case    ELEMENT_TYPE_R8:
-        return MscorlibBinder::LoadPrimitiveType(elType);
-
-    case    ELEMENT_TYPE_VALUETYPE:
-        return MscorlibBinder::GetClass(CLASS__DECIMAL);
-
-    case    ELEMENT_TYPE_CLASS:
-        return g_pCanonMethodTableClass;
-
-    case    ELEMENT_TYPE_NULLABLE:
-        {
-            MethodTable *pInstMT = NULL;
-            EX_TRY
-            {
-                TypeHandle int32TH = GetMethodTable(ELEMENT_TYPE_I4);
-                pInstMT = ClassLoader::LoadGenericInstantiationThrowing(g_pNullableClass->GetModule(),
-                                                                        g_pNullableClass->GetCl(),
-                                                                        Instantiation(&int32TH, 1),
-                                                                        ClassLoader::LoadTypes
-                                                                        ).GetMethodTable();
-            }
-            EX_CATCH
-            {
-                // do nothing
-            }
-            EX_END_CATCH(SwallowAllExceptions)
-
-            return pInstMT;
-        }
-
-    case    ELEMENT_TYPE_NULLABLE_CANON:
-        {
-            MethodTable *pInstMT = NULL;
-            EX_TRY
-            {
-                TypeHandle canonTH = g_pCanonMethodTableClass;
-                pInstMT = ClassLoader::LoadGenericInstantiationThrowing(g_pNullableClass->GetModule(),
-                                                                        g_pNullableClass->GetCl(),
-                                                                        Instantiation(&canonTH, 1),
-                                                                        ClassLoader::LoadTypes
-                                                                        ).GetMethodTable();
-            }
-            EX_CATCH
-            {
-                // do nothing
-            }
-            EX_END_CATCH(SwallowAllExceptions)
-
-            return pInstMT;
-        }
-    }
-}
-
-void CEEPreloader::AddMDILCodeFlavorsToUncompiledMethods(CORINFO_METHOD_HANDLE handle)
-{
-    STANDARD_VM_CONTRACT;
-#if 0
-    static CorElementType popularFlavors[] = 
-    {
-        ELEMENT_TYPE_CLASS,
-        ELEMENT_TYPE_VALUETYPE,
-        ELEMENT_TYPE_I4,
-//        ELEMENT_TYPE_NULLABLE,
-        ELEMENT_TYPE_R8,
-        ELEMENT_TYPE_U1,
-        ELEMENT_TYPE_BOOLEAN,
-        ELEMENT_TYPE_U2,
-        ELEMENT_TYPE_I8,
-        ELEMENT_TYPE_U4,
-        ELEMENT_TYPE_U8,
-//        ELEMENT_TYPE_NULLABLE_CANON,
-    };
-
-    MethodDesc *pMD = GetMethod(handle);
-    MethodTable *pMT = pMD->GetMethodTable();
-
-    DWORD nGenericClassArgs = pMT->GetNumGenericArgs();
-    DWORD nGenericMethodArgs = pMD->GetNumGenericMethodArgs();
-    DWORD nGenericArgs = nGenericClassArgs + nGenericMethodArgs;
-    if (nGenericArgs == 0)
-                return;
-    DWORD flavorCount = nGenericArgs <= 1 ? COUNTOF(popularFlavors) : COUNTOF(popularFlavors)*COUNTOF(popularFlavors);
-    DWORD flavorsPerArg = nGenericArgs <= 1 ? COUNTOF(popularFlavors) : COUNTOF(popularFlavors);
-
-    for (DWORD flavor = 1; flavor < flavorCount; flavor++)
-    {
-        // First instantiate the declaring type at <...,...,...>
-
-        DWORD dwAllocSize = 0;
-        if (!ClrSafeInt<DWORD>::multiply(sizeof(TypeHandle), nGenericClassArgs, dwAllocSize))
-            ThrowHR(COR_E_OVERFLOW);
-
-        CQuickBytes qbGenericClassArgs;
-        TypeHandle* pGenericClassArgs = reinterpret_cast<TypeHandle*>(qbGenericClassArgs.AllocThrows(dwAllocSize));
-
-        DWORD remainder = flavor;
-
-        for (DWORD i = 0; i < nGenericClassArgs; i++)
-        {
-            pGenericClassArgs[i] = GetMethodTable(popularFlavors[remainder % flavorsPerArg]);
-            remainder /= flavorsPerArg;
-        }
-
-        MethodTable *pInstMT = NULL;
-
-        EX_TRY
-        {
-            pInstMT = ClassLoader::LoadGenericInstantiationThrowing(pMT->GetModule(),
-                                                                    pMT->GetCl(),
-                                                                    Instantiation(pGenericClassArgs, nGenericClassArgs),
-                                                                    ClassLoader::LoadTypes
-                                                                    ).GetMethodTable();
-        }
-        EX_CATCH
-        {
-            // do nothing
-        }
-        EX_END_CATCH(SwallowAllExceptions)
-
-        if (pInstMT == NULL)
-        {
-            continue;
-        }
-
-        // Now instantiate the method at <__Canon,...,__Canon>, creating the shared code.
-        // This will not create an instantiating stub just yet.
-        CQuickBytes qbGenericMethodArgs;
-        TypeHandle *genericMethodArgs = NULL;
-
-        // The rest of this method instantiates a generic method
-        // Instantiate at "__Canon" if a NULL "genericMethodArgs" is given
-        if (nGenericMethodArgs)
-        {
-            dwAllocSize = 0;
-            if (!ClrSafeInt<DWORD>::multiply(sizeof(TypeHandle), nGenericMethodArgs, dwAllocSize))
-                ThrowHR(COR_E_OVERFLOW);
-        
-            genericMethodArgs = reinterpret_cast<TypeHandle*>(qbGenericMethodArgs.AllocThrows(dwAllocSize));
-
-
-            for (DWORD i =0; i < nGenericMethodArgs; i++)
-            {
-                genericMethodArgs[i] = GetMethodTable(popularFlavors[remainder % flavorsPerArg]);
-                remainder /= flavorsPerArg;
-            }
-        }
-
-        MethodDesc *pInstMD = NULL;
-        EX_TRY
-        {
-            pInstMD = MethodDesc::FindOrCreateAssociatedMethodDesc( pMD, 
-                                                                    pMT,
-                                                                    FALSE, /* don't get unboxing entry point */
-                                                                    Instantiation(genericMethodArgs, nGenericMethodArgs),
-                                                                    TRUE,
-                                                                    FALSE,
-                                                                    TRUE);
-        }
-        EX_CATCH
-        {
-            // do nothing
-        }
-        EX_END_CATCH(SwallowAllExceptions)
-
-        if (pInstMD != NULL)
-            AddToUncompiledMethods(pInstMD);
-    }
-#endif
-}
-#endif
 
 static bool IsTypeAccessibleOutsideItsAssembly(TypeHandle th)
 {
@@ -5558,12 +5310,6 @@ static bool IsMethodCallableOutsideItsAssembly(MethodDesc * pMD)
 {
     STANDARD_VM_CONTRACT;
 
-#ifdef MDIL
-    // Tracking of referenced methods does not kick in during MDIL compilation, so disable this optimization.
-    if (GetAppDomain()->IsMDILCompilationDomain())
-        return true;
-#endif
-
     // Virtual methods can be called via interfaces, etc. We would need to do
     // more analysis to trim them. For now, assume that they can be referenced outside this assembly.
     if (pMD->IsVirtual())
@@ -5595,12 +5341,6 @@ void CEEPreloader::AddToUncompiledMethods(MethodDesc *pMD, BOOL fForStubs)
         if (!pMD->MayHaveNativeCode() && !pMD->IsWrapperStub())
             return;
     }
-
-#ifdef MDIL
-    BOOL fIsMinimalMDIL = GetAppDomain()->IsMinimalMDILCompilationDomain();
-    if (fIsMinimalMDIL && (fForStubs || !pMD->HasClassOrMethodInstantiation()))
-        return;
-#endif // MDIL
 
     // If it's already been compiled, don't add it to the set of uncompiled methods
     if (m_image->GetCodeAddress(pMD) != NULL)
@@ -5660,7 +5400,7 @@ void CEEPreloader::AddToUncompiledMethods(MethodDesc *pMD, BOOL fForStubs)
     }
 
     // Add it to the set of uncompiled methods
-    m_uncompiledMethods.Append(pMD);
+    AppendUncompiledMethod(pMD);
 }
 
 //
@@ -5757,6 +5497,35 @@ static void SpecializeComparer(SString& ss, Instantiation& inst)
         {
             ss.Set(W("System.Collections.Generic.NullableComparer`1"));
             inst = nullableInst;
+            return;
+        }
+    }
+
+    if (elemTypeHnd.IsEnum())
+    {
+        CorElementType et = elemTypeHnd.GetVerifierCorElementType();
+        if (et == ELEMENT_TYPE_I1 ||
+            et == ELEMENT_TYPE_I2 ||
+            et == ELEMENT_TYPE_I4)
+        {
+            ss.Set(W("System.Collections.Generic.Int32EnumComparer`1"));
+            return;
+        }
+        if (et == ELEMENT_TYPE_U1 ||
+            et == ELEMENT_TYPE_U2 ||
+            et == ELEMENT_TYPE_U4)
+        {
+            ss.Set(W("System.Collections.Generic.UInt32EnumComparer`1"));
+            return;
+        }
+        if (et == ELEMENT_TYPE_I8)
+        {
+            ss.Set(W("System.Collections.Generic.Int64EnumComparer`1"));
+            return;
+        }
+        if (et == ELEMENT_TYPE_U8)
+        {
+            ss.Set(W("System.Collections.Generic.UInt64EnumComparer`1"));
             return;
         }
     }
@@ -6947,15 +6716,7 @@ void CEEPreloader::GenerateMethodStubs(
     MethodDesc* pMD = GetMethod(hMethod);
     MethodDesc* pStubMD = NULL;
 
-#ifdef MDIL
-    // Do not generate IL stubs when generating MDIL
-    // This prevents versionability concerns around IL stubs exposing internal
-    // implementation details of the CLR.
-    if (GetAppDomain()->IsMDILCompilationDomain())
-        return;
-#endif
-
-    // Do not generate IL stubs when generating MDIL
+    // Do not generate IL stubs when generating ReadyToRun images
     // This prevents versionability concerns around IL stubs exposing internal
     // implementation details of the CLR.
     if (IsReadyToRunCompilation())
@@ -7217,9 +6978,10 @@ CORINFO_METHOD_HANDLE CEEPreloader::LookupMethodDef(mdMethodDef token)
                                      token,
                                      FALSE);
 
-    // READYTORUN: FUTURE: Generics
     if (IsReadyToRunCompilation() && pMD->HasClassOrMethodInstantiation())
-        return NULL;
+    {
+        _ASSERTE(IsCompilationProcess() && pMD->GetModule_NoLogging() == GetAppDomain()->ToCompilationDomain()->GetTargetModule());
+    }
 
     pMD = pMD->FindOrCreateTypicalSharedInstantiation();
 
@@ -7527,11 +7289,7 @@ CompilationDomain::~CompilationDomain()
 
 }
 
-void CompilationDomain::Init(
-#ifdef MDIL
-                             MDILCompilationFlags     mdilCompilationFlags
-#endif
-                             )
+void CompilationDomain::Init()
 {
     STANDARD_VM_CONTRACT;
 
@@ -7546,14 +7304,6 @@ void CompilationDomain::Init(
 
     Security::SetDefaultAppDomainProperty(GetSecurityDescriptor());
     SetCompilationDomain();
-#ifdef MDIL
-    if (mdilCompilationFlags & MDILCompilationFlags_CreateMDIL)
-        SetMDILCompilationDomain();
-    if (mdilCompilationFlags & MDILCompilationFlags_MinimalMDIL)
-        SetMinimalMDILCompilationDomain();
-    if (mdilCompilationFlags & MDILCompilationFlags_NoMDIL)
-        SetNoMDILCompilationDomain();
-#endif
 
 #ifndef FEATURE_CORECLR
     // We need the Compilation Domain to be homogeneous.  We've already forced everything to be full trust.

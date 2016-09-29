@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 //
 
 //
@@ -251,28 +250,6 @@ LONG WINAPI CLRVectoredExceptionHandler(PEXCEPTION_POINTERS pExceptionInfo);
 // Actual UEF worker prototype for use by GCUnhandledExceptionFilter.
 extern LONG InternalUnhandledExceptionFilter_Worker(PEXCEPTION_POINTERS pExceptionInfo);
 
-// This function is the filter function for the "__except" setup in "gc1()"
-// in gc.cpp to handle exceptions that happen during GC.
-inline LONG CheckException(EXCEPTION_POINTERS* pExceptionPointers, PVOID pv)
-{
-    WRAPPER_NO_CONTRACT;
-
-    LONG result = CLRVectoredExceptionHandler(pExceptionPointers);
-    if (result != EXCEPTION_EXECUTE_HANDLER)
-        return result;
-
-#ifdef _DEBUG_IMPL
-    _ASSERTE(!"Unexpected Exception");
-#else
-    FreeBuildDebugBreak();
-#endif
-
-    // Set the debugger to break on AV and return a value of EXCEPTION_CONTINUE_EXECUTION (-1)
-    // here and you will bounce back to the point of the AV.
-    return EXCEPTION_EXECUTE_HANDLER;
-
-}
-
 //==========================================================================
 // Installs a handler to unwind exception frames, but not catch the exception
 //==========================================================================
@@ -320,7 +297,7 @@ void UnwindAndContinueRethrowHelperInsideCatch(Frame* pEntryFrame, Exception* pE
 VOID DECLSPEC_NORETURN UnwindAndContinueRethrowHelperAfterCatch(Frame* pEntryFrame, Exception* pException);
 
 #ifdef FEATURE_PAL
-VOID DECLSPEC_NORETURN DispatchManagedException(PAL_SEHException& ex);
+VOID DECLSPEC_NORETURN DispatchManagedException(PAL_SEHException& ex, bool isHardwareException);
 
 #define INSTALL_MANAGED_EXCEPTION_DISPATCHER        \
         PAL_SEHException exCopy;                    \
@@ -331,12 +308,12 @@ VOID DECLSPEC_NORETURN DispatchManagedException(PAL_SEHException& ex);
         }                                           \
         catch (PAL_SEHException& ex)                \
         {                                           \
-            exCopy = ex;                            \
+            exCopy = std::move(ex);                 \
             hasCaughtException = true;              \
         }                                           \
         if (hasCaughtException)                     \
         {                                           \
-            DispatchManagedException(exCopy);       \
+            DispatchManagedException(exCopy, false);\
         }
 
 // Install trap that catches unhandled managed exception and dumps its stack
@@ -344,17 +321,17 @@ VOID DECLSPEC_NORETURN DispatchManagedException(PAL_SEHException& ex);
         try {                                                                                   
 
 // Uninstall trap that catches unhandled managed exception and dumps its stack
-#define UNINSTALL_UNHANDLED_MANAGED_EXCEPTION_TRAP                                          \
-        }                                                                                   \
-        catch (PAL_SEHException& ex)                                                        \
-        {                                                                                   \
-            DefaultCatchHandler(NULL /*pExceptionInfo*/,                                    \
-                                NULL /*Throwable*/,                                         \
-                                TRUE /*useLastThrownObject*/,                               \
-                                TRUE /*isTerminating*/,                                     \
-                                FALSE /*isThreadBaseFIlter*/,                               \
-                                FALSE /*sendAppDomainEvents*/);                             \
-            EEPOLICY_HANDLE_FATAL_ERROR(COR_E_EXECUTIONENGINE);                             \
+#define UNINSTALL_UNHANDLED_MANAGED_EXCEPTION_TRAP                                                  \
+        }                                                                                           \
+        catch (PAL_SEHException& ex)                                                                \
+        {                                                                                           \
+            if (!GetThread()->HasThreadStateNC(Thread::TSNC_ProcessedUnhandledException))           \
+            {                                                                                       \
+                LONG disposition = InternalUnhandledExceptionFilter_Worker(&ex.ExceptionPointers);  \
+                _ASSERTE(disposition == EXCEPTION_CONTINUE_SEARCH);                                 \
+            }                                                                                       \
+            TerminateProcess(GetCurrentProcess(), 1);                                               \
+            UNREACHABLE();                                                                          \
         }
 
 #else
@@ -484,18 +461,14 @@ extern DWORD g_ExceptionLine;
 #define ENDCANNOTTHROWCOMPLUSEXCEPTION_SEH()
 
 #define COMPlusThrow                        RealCOMPlusThrow
-#ifndef CLR_STANDALONE_BINDER
 #define COMPlusThrowNonLocalized            RealCOMPlusThrowNonLocalized
-#endif // !CLR_STANDALONE_BINDER
 #ifndef DACCESS_COMPILE
 #define COMPlusThrowHR                      RealCOMPlusThrowHR
 #else
 #define COMPlusThrowHR ThrowHR
 #endif
 #define COMPlusThrowWin32                   RealCOMPlusThrowWin32
-#ifndef CLR_STANDALONE_BINDER
 #define COMPlusThrowOM                      RealCOMPlusThrowOM
-#endif // !CLR_STANDALONE_BINDER
 #ifdef FEATURE_STACK_PROBE
 #define COMPlusThrowSO                      RealCOMPlusThrowSO
 #endif

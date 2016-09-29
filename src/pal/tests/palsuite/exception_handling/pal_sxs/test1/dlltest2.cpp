@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information. 
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 /*=====================================================================
 **
@@ -21,6 +20,17 @@ int InitializeDllTest2()
     return PAL_InitializeDLL();
 }
 
+__attribute__((noinline,optnone))
+static void FailingFunction(volatile int *p)
+{
+    if (p == NULL)
+    {
+        throw PAL_SEHException();
+    }
+
+    *p = 1;          // Causes an access violation exception
+}
+
 BOOL bTry    = FALSE;
 BOOL bExcept = FALSE;
 
@@ -31,10 +41,11 @@ int DllTest2()
 
     PAL_TRY(VOID*, unused, NULL)
     {
-        volatile int* p = 0x00000000;   /* NULL pointer */
+        volatile int* p = (volatile int *)0x22; // Invalid pointer
 
-        bTry = TRUE;    /* indicate we hit the PAL_TRY block */
-        *p = 13;        /* causes an access violation exception */
+        bTry = TRUE;                            // Indicate we hit the PAL_TRY block
+        FailingFunction(p);  // Throw in function to fool C++ runtime into handling
+                             // h/w exception
 
         Fail("ERROR: code was executed after the access violation.\n");
     }
@@ -45,7 +56,13 @@ int DllTest2()
             Fail("ERROR: PAL_EXCEPT was hit without PAL_TRY being hit.\n");
         }
 
-        bExcept = TRUE; /* indicate we hit the PAL_EXCEPT block */
+        // Validate that the faulting address is correct; the contents of "p" (0x22).
+        if (ex.GetExceptionRecord()->ExceptionInformation[1] != 0x22)
+        {
+            Fail("ERROR: PAL_EXCEPT ExceptionInformation[1] != 0x22\n");
+        }
+
+        bExcept = TRUE;                         // Indicate we hit the PAL_EXCEPT block
     }
     PAL_ENDTRY;
 
@@ -59,13 +76,12 @@ int DllTest2()
         Trace("ERROR: the code in the PAL_EXCEPT block was not executed.\n");
     }
 
-    /* did we hit all the code blocks? */
+    // Did we hit all the code blocks?
     if(!bTry || !bExcept)
     {
         Fail("DllTest2 FAILED\n");
     }
 
     Trace("DLLTest2 PASSED\n");
-
     return PASS;
 }

@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 //
 
 //
@@ -1077,6 +1076,7 @@ _SAFECRT__EXTERN_C
 errno_t __cdecl _itow_s(int _Value, WCHAR *_Dst, size_t _SizeInWords, int _Radix);
 
 #if defined(__cplusplus) && _SAFECRT_USE_CPP_OVERLOADS
+extern "C++"
 template <size_t _SizeInWords>
 inline
 errno_t __cdecl _itow_s(int _Value, WCHAR (&_Dst)[_SizeInWords], int _Radix)
@@ -1105,6 +1105,7 @@ _SAFECRT__EXTERN_C
 errno_t __cdecl _i64tow_s(__int64 _Value, WCHAR *_Dst, size_t _SizeInWords, int _Radix);
 
 #if defined(__cplusplus) && _SAFECRT_USE_CPP_OVERLOADS
+extern "C++"
 template <size_t _SizeInWords>
 inline
 errno_t __cdecl _i64tow_s(__int64 _Value, WCHAR (&_Dst)[_SizeInWords], int _Radix)
@@ -1136,6 +1137,7 @@ _SAFECRT__EXTERN_C
 errno_t __cdecl getenv_s(size_t *_ReturnValue, char *_Dst, size_t _SizeInWords, const char *_Name);
 
 #if defined(__cplusplus) && _SAFECRT_USE_CPP_OVERLOADS
+extern "C++"
 template <size_t _SizeInWords>
 inline
 errno_t __cdecl getenv_s(size_t *_ReturnValue, char *_Dst, size_t _SizeInWords, const char *_Name)
@@ -1248,6 +1250,7 @@ namespace std
     typedef decltype(nullptr) nullptr_t;
 }
 
+extern "C++"
 template< class T >
 typename std::remove_reference<T>::type&& move( T&& t );
 #endif // __cplusplus
@@ -1284,6 +1287,8 @@ typedef HANDLE HWND;
 
 #define IS_TEXT_UNICODE_SIGNATURE             0x0008
 #define IS_TEXT_UNICODE_UNICODE_MASK          0x000F
+
+BOOL IsTextUnicode(CONST VOID* lpv, int iSize, LPINT lpiResult);
 
 typedef struct _LIST_ENTRY {
    struct _LIST_ENTRY *Flink;
@@ -1361,6 +1366,7 @@ typedef VOID (__stdcall *WAITORTIMERCALLBACK)(PVOID, BOOLEAN);
 #ifdef PLATFORM_UNIX
 #define DIRECTORY_SEPARATOR_CHAR_A '/'
 #define DIRECTORY_SEPARATOR_CHAR_W W('/')
+#define DIRECTORY_SEPARATOR_STR_A "/"
 #define DIRECTORY_SEPARATOR_STR_W W("/")
 #define PATH_SEPARATOR_CHAR_W W(':')
 #define PATH_SEPARATOR_STR_W W(":")
@@ -1368,6 +1374,7 @@ typedef VOID (__stdcall *WAITORTIMERCALLBACK)(PVOID, BOOLEAN);
 #else // PLATFORM_UNIX
 #define DIRECTORY_SEPARATOR_CHAR_A '\\'
 #define DIRECTORY_SEPARATOR_CHAR_W W('\\')
+#define DIRECTORY_SEPARATOR_STR_A "\\"
 #define DIRECTORY_SEPARATOR_STR_W W("\\")
 #define PATH_SEPARATOR_CHAR_W W(';')
 #define PATH_SEPARATOR_STR_W W(";")

@@ -1,5 +1,6 @@
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 //
@@ -102,6 +103,7 @@ public class ReliabilityFramework
     // static members
     private static int s_seed = (int)System.DateTime.Now.Ticks;
     private static Random s_randNum = new Random(s_seed);
+    private static string timeValue = null;
     private static bool s_fNoExit = false;
 #if !PROJECTK_BUILD
     static string myProcessName = null;
@@ -119,7 +121,7 @@ public class ReliabilityFramework
     {
         string configFile = null;
         bool okToContinue = true, doReplay = false;
-        string sTests = "tests", sSeed = "seed";
+        string sTests = "tests", sSeed = "seed",exectime ="maximumExecutionTime";
 
         ReliabilityFramework rf = new ReliabilityFramework();
         rf._logger.WriteToInstrumentationLog(null, LoggingLevels.StartupShutdown, "Started");
@@ -145,6 +147,10 @@ public class ReliabilityFramework
                 {
                     s_seed = Convert.ToInt32(arg.Substring(sSeed.Length + 2));
                     s_randNum = new Random(s_seed);
+                }
+                else if (String.Compare(arg.Substring(1, arg.IndexOf(':') - 1), exectime, true) == 0)
+                {
+                    timeValue = arg.Substring(exectime.Length + 2);
                 }
                 else
                 {
@@ -313,6 +319,9 @@ public class ReliabilityFramework
             _testsRunningCount = 0;
             _testsRanCount = 0;
             _curTestSet = testSet;
+            if (timeValue != null)
+                _curTestSet.MaximumTime = ReliabilityConfig.ConvertTimeValueToTestRunTime(timeValue);
+
             _logger.ReportResults = _curTestSet.ReportResults;
 
 #if !PROJECTK_BUILD

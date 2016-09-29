@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 //
 #include "common.h"
@@ -15,7 +14,7 @@
 #include "openum.h"
 #include "fcall.h"
 #include "frames.h"
-#include "gc.h"
+#include "gcheaputilities.h"
 #include <float.h>
 #include "jitinterface.h"
 #include "safemath.h"
@@ -2239,7 +2238,7 @@ EvalLoop:
             break;
 
         case CEE_JMP:
-            *pJmpCallToken = getU4LittleEndian(m_ILCodePtr + sizeof(byte));
+            *pJmpCallToken = getU4LittleEndian(m_ILCodePtr + sizeof(BYTE));
             *pDoJmpCall = true;
             goto ExitEvalLoop;
 
@@ -7287,7 +7286,7 @@ void Interpreter::LdFld(FieldDesc* fldIn)
         }
         if (fld == NULL)
         {
-            unsigned tok = getU4LittleEndian(m_ILCodePtr + sizeof(byte));
+            unsigned tok = getU4LittleEndian(m_ILCodePtr + sizeof(BYTE));
             fld = FindField(tok  InterpTracingArg(RTK_LdFld));
             assert(fld != NULL);
 
@@ -7508,7 +7507,7 @@ void Interpreter::LdFldA()
         MODE_COOPERATIVE;
     } CONTRACTL_END;
 
-    unsigned tok = getU4LittleEndian(m_ILCodePtr + sizeof(byte));
+    unsigned tok = getU4LittleEndian(m_ILCodePtr + sizeof(BYTE));
 
 #if INTERP_TRACING
     InterlockedIncrement(&s_tokenResolutionOpportunities[RTK_LdFldA]);
@@ -7572,7 +7571,7 @@ void Interpreter::StFld()
         if (s_InterpreterUseCaching) fld = GetCachedInstanceField(ilOffset);
         if (fld == NULL)
         {
-            unsigned tok = getU4LittleEndian(m_ILCodePtr + sizeof(byte));
+            unsigned tok = getU4LittleEndian(m_ILCodePtr + sizeof(BYTE));
             GCX_PREEMP();
             fld = FindField(tok  InterpTracingArg(RTK_StFld));
             assert(fld != NULL);
@@ -7724,7 +7723,7 @@ bool Interpreter::StaticFldAddrWork(CORINFO_ACCESS_FLAGS accessFlgs, /*out (byre
     bool isCacheable = true;
     *pManagedMem = true;  // Default result.
 
-    unsigned tok = getU4LittleEndian(m_ILCodePtr + sizeof(byte));
+    unsigned tok = getU4LittleEndian(m_ILCodePtr + sizeof(BYTE));
     m_ILCodePtr += 5;  // Above is last use of m_ILCodePtr in this method, so update now.
 
     FieldDesc* fld;
@@ -8567,10 +8566,6 @@ void Interpreter::Box()
         }
 
         MethodTable* pMT = th.AsMethodTable();
-        if (pMT->ContainsStackPtr()) // TODO: the call to MethodTable::Box() below also calls ContainsStackPtr(), and throws kInvalidOperationException if it returns true. Should we not call it here?
-        {
-            COMPlusThrow(kInvalidProgramException);
-        }
 
         {
             Object* res = OBJECTREFToObject(pMT->Box(valPtr));
@@ -8611,10 +8606,6 @@ void Interpreter::BoxStructRefAt(unsigned ind, CORINFO_CLASS_HANDLE valCls)
     TypeHandle th(valCls);
     if (th.IsTypeDesc())
         COMPlusThrow(kInvalidOperationException,W("InvalidOperation_TypeCannotBeBoxed"));
-
-    MethodTable * pMT = th.AsMethodTable();
-    if (pMT->ContainsStackPtr())
-        COMPlusThrow(kInvalidProgramException);
 
     {
         Object* res = OBJECTREFToObject(pMT->Box(valPtr));
@@ -9019,7 +9010,7 @@ void Interpreter::DoCallWork(bool virtualCall, void* thisArg, CORINFO_RESOLVED_T
 #if INTERP_TRACING
     InterlockedIncrement(&s_totalInterpCalls);
 #endif // INTERP_TRACING
-    unsigned tok = getU4LittleEndian(m_ILCodePtr + sizeof(byte));
+    unsigned tok = getU4LittleEndian(m_ILCodePtr + sizeof(BYTE));
 
     // It's possible for an IL method to push a capital-F Frame.  If so, we pop it and save it;
     // we'll push it back on after our GCPROTECT frame is popped.
@@ -9587,6 +9578,7 @@ void Interpreter::DoCallWork(bool virtualCall, void* thisArg, CORINFO_RESOLVED_T
 
     // This is the argument slot that will be used to hold the return value.
     ARG_SLOT retVal = 0;
+    _ASSERTE (NUMBER_RETURNVALUE_SLOTS == 1);
 
     // If the return type is a structure, then these will be initialized.
     CORINFO_CLASS_HANDLE retTypeClsHnd = NULL;
@@ -9597,7 +9589,7 @@ void Interpreter::DoCallWork(bool virtualCall, void* thisArg, CORINFO_RESOLVED_T
     // (I could probably optimize this pop all the arguments first, then allocate space for the return value
     // on the large structure operand stack, and pass a pointer directly to that space, avoiding the extra
     // copy we have below.  But this seemed more expedient, and this should be a pretty rare case.)
-    byte* pLargeStructRetVal = NULL;
+    BYTE* pLargeStructRetVal = NULL;
 
     // If there's a "GetFlag<Flag_hasRetBuffArg>()" struct return value, it will be stored in this variable if it fits,
     // otherwise, we'll dynamically allocate memory for it.
@@ -9648,7 +9640,7 @@ void Interpreter::DoCallWork(bool virtualCall, void* thisArg, CORINFO_RESOLVED_T
 #ifdef ENREGISTERED_RETURNTYPE_MAXSIZE
                 retBuffSize = max(retTypeSz, ENREGISTERED_RETURNTYPE_MAXSIZE);
 #endif // ENREGISTERED_RETURNTYPE_MAXSIZE
-                pLargeStructRetVal = (byte*)_alloca(retBuffSize);
+                pLargeStructRetVal = (BYTE*)_alloca(retBuffSize);
                 // Clear this in case a GC happens.
                 for (unsigned i = 0; i < retTypeSz; i++) pLargeStructRetVal[i] = 0;
                 // Register this as location needing GC.
@@ -9862,7 +9854,7 @@ void Interpreter::DoCallWork(bool virtualCall, void* thisArg, CORINFO_RESOLVED_T
 #if INTERP_ILCYCLE_PROFILE
             bool b = CycleTimer::GetThreadCyclesS(&startCycles); assert(b);
 #endif // INTERP_ILCYCLE_PROFILE
-            retVal = mdcs.CallTargetWorker(args);
+            mdcs.CallTargetWorker(args, &retVal, sizeof(retVal));
 
             if (pCscd != NULL)
             {
@@ -10075,7 +10067,7 @@ void Interpreter::CallI()
     InterlockedIncrement(&s_totalInterpCalls);
 #endif // INTERP_TRACING
 
-    unsigned tok = getU4LittleEndian(m_ILCodePtr + sizeof(byte));
+    unsigned tok = getU4LittleEndian(m_ILCodePtr + sizeof(BYTE));
 
     CORINFO_SIG_INFO sigInfo;
 
@@ -10171,7 +10163,7 @@ void Interpreter::CallI()
     // (I could probably optimize this pop all the arguments first, then allocate space for the return value
     // on the large structure operand stack, and pass a pointer directly to that space, avoiding the extra
     // copy we have below.  But this seemed more expedient, and this should be a pretty rare case.)
-    byte* pLargeStructRetVal = NULL;
+    BYTE* pLargeStructRetVal = NULL;
 
     // If there's a "GetFlag<Flag_hasRetBuffArg>()" struct return value, it will be stored in this variable if it fits,
     // otherwise, we'll dynamically allocate memory for it.
@@ -10207,7 +10199,7 @@ void Interpreter::CallI()
 #ifdef ENREGISTERED_RETURNTYPE_MAXSIZE
                 retBuffSize = max(retTypeSz, ENREGISTERED_RETURNTYPE_MAXSIZE);
 #endif // ENREGISTERED_RETURNTYPE_MAXSIZE
-                pLargeStructRetVal = (byte*)_alloca(retBuffSize);
+                pLargeStructRetVal = (BYTE*)_alloca(retBuffSize);
 
                 // Clear this in case a GC happens.
                 for (unsigned i = 0; i < retTypeSz; i++)
@@ -10332,7 +10324,7 @@ void Interpreter::CallI()
             // to be a managed calling convention.)
             MethodDesc* pStubContextMD = reinterpret_cast<MethodDesc*>(m_stubContext);
             bool transitionToPreemptive = (pStubContextMD != NULL && !pStubContextMD->IsIL());
-            retVal = mdcs.CallTargetWorker(args, transitionToPreemptive);
+            mdcs.CallTargetWorker(args, &retVal, sizeof(retVal), transitionToPreemptive);
         }
         // retVal is now vulnerable.
         GCX_FORBID();
@@ -10838,7 +10830,7 @@ Interpreter::AddrToMDMap* Interpreter::GetAddrToMdMap()
 
     if (s_addrToMDMap == NULL)
     {
-        s_addrToMDMap = new AddrToMDMap(/* use default allocator */ NULL);
+        s_addrToMDMap = new AddrToMDMap();
     }
     return s_addrToMDMap;
 }
@@ -10860,7 +10852,7 @@ void Interpreter::RecordInterpreterStubForMethodDesc(CORINFO_METHOD_HANDLE md, v
     CORINFO_METHOD_HANDLE dummy;
     assert(!map->Lookup(addr, &dummy));
 #endif // DEBUG
-    map->Set(addr, md);
+    map->AddOrReplace(KeyValuePair<void*,CORINFO_METHOD_HANDLE>(addr, md));
 }
 
 MethodDesc* Interpreter::InterpretationStubToMethodInfo(PCODE addr)
@@ -10900,7 +10892,7 @@ Interpreter::MethodHandleToInterpMethInfoPtrMap* Interpreter::GetMethodHandleToI
 
     if (s_methodHandleToInterpMethInfoPtrMap == NULL)
     {
-        s_methodHandleToInterpMethInfoPtrMap = new MethodHandleToInterpMethInfoPtrMap(/* use default allocator */ NULL);
+        s_methodHandleToInterpMethInfoPtrMap = new MethodHandleToInterpMethInfoPtrMap();
     }
     return s_methodHandleToInterpMethInfoPtrMap;
 }
@@ -10936,8 +10928,8 @@ InterpreterMethodInfo* Interpreter::RecordInterpreterMethodInfoForMethodHandle(C
     mi.m_thread = GetThread();
 #endif
 
-    bool b = map->Set(md, mi);
-    _ASSERTE_MSG(!b, "Multiple InterpMethInfos for method desc.");
+    _ASSERTE_MSG(map->LookupPtr(md) == NULL, "Multiple InterpMethInfos for method desc.");
+    map->Add(md, mi);
     return methInfo;
 }
 
@@ -11817,7 +11809,7 @@ void Interpreter::PrintValue(InterpreterType it, BYTE* valAddr)
                 {
                     fprintf(GetLogFile(), " ");
                 }
-                fprintf(GetLogFile(), "0x%p", valAddr[i]);
+                fprintf(GetLogFile(), "0x%02x", valAddr[i]);
             }
             fprintf(GetLogFile(), "]");
         }

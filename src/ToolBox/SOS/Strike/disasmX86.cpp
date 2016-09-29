@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information. 
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 // ==++==
 // 
@@ -168,8 +167,6 @@ inline RegIndex FindReg (___in __in_z char *ptr, __out_opt int *plen = NULL, __o
     return NONE;
 }
 
-#ifndef FEATURE_PAL
-
 // Find the value of an expression.
 inline BOOL FindSrc (__in_z char *ptr, ___in Register *reg, INT_PTR &value, BOOL &bDigit)
 {
@@ -203,7 +200,6 @@ inline BOOL FindSrc (__in_z char *ptr, ___in Register *reg, INT_PTR &value, BOOL
     }
     return bValid;
 }
-
 
 enum ADDRESSMODE {REG, DATA, INDIRECT, NODATA, BAD};
 
@@ -387,7 +383,7 @@ void HandleCall(TADDR callee, Register *reg)
         if (MethodDescData.Request(g_sos, TO_CDADDR(methodDesc)) == S_OK)
         {
             NameForMD_s(methodDesc, g_mdName,mdNameLen);                    
-            ExtOut(" (%S, mdToken: %p)", g_mdName, (UINT64)MethodDescData.MDToken);
+            ExtOut(" (%S, mdToken: %p)", g_mdName, SOS_PTR(MethodDescData.MDToken));
             return;
         }
     }
@@ -418,7 +414,7 @@ void HandleCall(TADDR callee, Register *reg)
             if (MethodDescData.Request(g_sos, md) == S_OK)
             {
                 NameForMD_s(md, g_mdName,mdNameLen);
-                ExtOut(" (%S, mdToken: %p)", g_mdName, (UINT64)MethodDescData.MDToken);
+                ExtOut(" (%S, mdToken: %p)", g_mdName, SOS_PTR(MethodDescData.MDToken));
                 return;
             }
         }
@@ -526,7 +522,7 @@ void
     char *ptr;
 
     ULONG curLine = -1;
-    char  filename[MAX_PATH_FNAME+1];
+    WCHAR filename[MAX_LONGPATH];
     ULONG linenum;
 
     while (IP < IPEnd)
@@ -536,13 +532,12 @@ void
 
         // Print out line numbers if needed
         if (!bSuppressLines
-            && SUCCEEDED(GetLineByOffset(TO_CDADDR(IP), 
-                           &linenum, filename, MAX_PATH_FNAME+1)))
+            && SUCCEEDED(GetLineByOffset(TO_CDADDR(IP), &linenum, filename, MAX_LONGPATH)))
         {
             if (linenum != curLine)
             {
                 curLine = linenum;
-                ExtOut("\n%s @ %d:\n", filename, linenum);
+                ExtOut("\n%S @ %d:\n", filename, linenum);
             }
         }
 
@@ -755,9 +750,6 @@ void
     }
 }
 
-#endif // FEATURE_PAL
-
-
 // Find the real callee site.  Handle JMP instruction.
 // Return TRUE if we get the address, FALSE if not.
 BOOL GetCalleeSite (TADDR IP, TADDR &IPCallee)
@@ -809,8 +801,6 @@ BOOL GetCalleeSite (TADDR IP, TADDR &IPCallee)
         }
     }
 }
-
-#ifndef FEATURE_PAL
 
 // GetFinalTarget is based on HandleCall, but avoids printing anything to the output.
 // This is currently only called on x64
@@ -867,6 +857,7 @@ eTargetType GetFinalTarget(TADDR callee, TADDR* finalMDorIP)
     return ettNative;
 }
 
+#ifndef FEATURE_PAL
 
 void ExpFuncStateInit (TADDR *IPRetAddr)
 {
@@ -910,10 +901,11 @@ void ExpFuncStateInit (TADDR *IPRetAddr)
 
 #endif // FEATURE_PAL
 
+
 /**********************************************************************\
 * Routine Description:                                                 *
 *                                                                      *
-*    This function is called to fill in a crsoo platform context       *
+*    This function is called to fill in a cross platform context       *
 *    struct by looking on the stack for return addresses into          *
 *    KiUserExceptionDispatcher                                         *
 *                                                                      *
@@ -1015,7 +1007,6 @@ BOOL
 #endif
     return TRUE;
 #else
-    ExtErr("AMD64Machine::GetExceptionContext not implemented\n");
     return FALSE;
 #endif // FEATURE_PAL
 }

@@ -1,5 +1,6 @@
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 /*============================================================
 **
@@ -40,7 +41,7 @@ namespace System.Reflection
     }
 #else
     [Serializable]
-[System.Runtime.InteropServices.ComVisible(true)]
+    [System.Runtime.InteropServices.ComVisible(true)]
     public class StrongNameKeyPair : IDeserializationCallback, ISerializable 
     {
         private bool    _keyPairExported;
@@ -170,7 +171,6 @@ namespace System.Reflection
             return publicKey;
         }
 
-#if FEATURE_SERIALIZATION
         /// <internalonly/>
         [System.Security.SecurityCritical]
         void ISerializable.GetObjectData (SerializationInfo info, StreamingContext context) {
@@ -182,7 +182,6 @@ namespace System.Reflection
 
         /// <internalonly/>
         void IDeserializationCallback.OnDeserialization (Object sender) {}
-#endif
 
         // Internal routine used to retrieve key pair info from unmanaged code.
         private bool GetKeyPair(out Object arrayOrContainer)

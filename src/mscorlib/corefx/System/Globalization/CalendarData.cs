@@ -1,5 +1,6 @@
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 using System;
 using System.Runtime.InteropServices;
@@ -9,7 +10,6 @@ using System.Collections.Generic;
 
 namespace System.Globalization
 {
-    //
     // List of calendar data
     // Note the we cache overrides.
     // Note that localized names (resource names) aren't available from here.
@@ -242,6 +242,13 @@ namespace System.Globalization
                     this.saEraNames = JapaneseCalendar.EraNames();
                     break;
 
+                case CalendarId.PERSIAN:
+                    if (this.saEraNames == null || this.saEraNames.Length == 0 || String.IsNullOrEmpty(this.saEraNames[0]))
+                    {
+                        this.saEraNames = new String[] { "\x0647\x002e\x0634" };
+                    }
+                    break;
+
                 default:
                     // Most calendars are just "A.D."
                     this.saEraNames = Invariant.saEraNames;
@@ -296,6 +303,14 @@ namespace System.Globalization
                         this.saAbbrevEraNames[0] = this.saEraNames[0];
                     }
                     break;
+
+                case CalendarId.PERSIAN:
+                    if (this.saAbbrevEraNames == null || this.saAbbrevEraNames.Length == 0 || String.IsNullOrEmpty(this.saAbbrevEraNames[0]))
+                    {
+                        this.saAbbrevEraNames = this.saEraNames;
+                    }
+                    break;
+
                 default:
                     // Most calendars just use the full name
                     this.saAbbrevEraNames = this.saEraNames;
@@ -313,7 +328,7 @@ namespace System.Globalization
             //
 
             // Get a culture name
-            // TODO: NLS Arrowhead Arrowhead - note that this doesn't handle the new calendars (lunisolar, etc)
+            // TODO: Note that this doesn't handle the new calendars (lunisolar, etc)
             String culture = CalendarIdToCultureName(calendarId);
 
             // Return our calendar

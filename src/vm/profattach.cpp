@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 // 
 // ProfAttach.cpp
 // 
@@ -807,7 +806,7 @@ void ProfilingAPIAttachDetach::InitializeAttachThreadingMode()
     // Environment variable trumps all, so check it first
     DWORD dwAlwaysOn = g_pConfig->GetConfigDWORD_DontUse_(
         CLRConfig::EXTERNAL_AttachThreadAlwaysOn,
-        GCHeap::IsServerHeap() ? 1 : 0);      // Default depends on GC server mode
+        GCHeapUtilities::IsServerHeap() ? 1 : 0);      // Default depends on GC server mode
 
     if (dwAlwaysOn == 0)
     {

@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 // FRAMES.CPP
 
 
@@ -19,7 +18,7 @@
 #include "fieldmarshaler.h"
 #include "objecthandle.h"
 #include "siginfo.hpp"
-#include "gc.h"
+#include "gcheaputilities.h"
 #include "dllimportcallback.h"
 #include "stackwalk.h"
 #include "dbginterface.h"
@@ -482,21 +481,27 @@ VOID Frame::Pop(Thread *pThread)
     m_Next = NULL;
 }
 
-#ifdef FEATURE_PAL     
-Frame::~Frame()        
+#if defined(FEATURE_PAL) && !defined(DACCESS_COMPILE) && !defined(CROSSGEN_COMPILE)
+void Frame::PopIfChained()
 {      
+    CONTRACTL
+    {
+        NOTHROW;
+        GC_NOTRIGGER;
+        MODE_COOPERATIVE;
+        SO_TOLERANT;
+    }
+    CONTRACTL_END;
+
     if (m_Next != NULL)
     {
+        GCX_COOP();
         // When the frame is destroyed, make sure it is no longer in the
         // frame chain managed by the Thread.
-        Thread* pThread = GetThread();
-        if (pThread != NULL && pThread->GetFrame() == this)
-        {
-            Pop(pThread);
-        }
+        Pop();
     }
 }      
-#endif // FEATURE_PAL
+#endif // FEATURE_PAL && !DACCESS_COMPILE && !CROSSGEN_COMPILE
 
 //-----------------------------------------------------------------------
 #endif // #ifndef DACCESS_COMPILE
@@ -1127,6 +1132,56 @@ BOOL IsProtectedByGCFrame(OBJECTREF *ppObjectRef)
 
 #endif //!DACCESS_COMPILE
 
+#ifdef FEATURE_HIJACK
+
+void HijackFrame::GcScanRoots(promote_func *fn, ScanContext* sc)
+{
+    LIMITED_METHOD_CONTRACT;
+
+    ReturnKind returnKind = m_Thread->GetHijackReturnKind();
+    _ASSERTE(IsValidReturnKind(returnKind));
+
+    int regNo = 0;
+    bool moreRegisters = false;
+
+    do 
+    {
+        ReturnKind r = ExtractRegReturnKind(returnKind, regNo, moreRegisters);
+        PTR_PTR_Object objPtr = dac_cast<PTR_PTR_Object>(&m_Args->ReturnValue[regNo]);
+
+        switch (r)
+        {
+#ifdef _TARGET_X86_
+        case RT_Float: // Fall through
+#endif
+        case RT_Scalar:
+            // nothing to report
+            break;
+
+        case RT_Object:
+            LOG((LF_GC, INFO3, "Hijack Frame Promoting Object" FMT_ADDR "to",
+                DBG_ADDR(OBJECTREF_TO_UNCHECKED_OBJECTREF(*objPtr))));
+            (*fn)(objPtr, sc, CHECK_APP_DOMAIN);
+            LOG((LF_GC, INFO3, FMT_ADDR "\n", DBG_ADDR(OBJECTREF_TO_UNCHECKED_OBJECTREF(*objPtr))));
+            break;
+
+        case RT_ByRef:
+            LOG((LF_GC, INFO3, "Hijack Frame Carefully Promoting pointer" FMT_ADDR "to",
+                DBG_ADDR(OBJECTREF_TO_UNCHECKED_OBJECTREF(*objPtr))));
+            PromoteCarefully(fn, objPtr, sc, GC_CALL_INTERIOR | GC_CALL_CHECK_APP_DOMAIN);
+            LOG((LF_GC, INFO3, FMT_ADDR "\n", DBG_ADDR(OBJECTREF_TO_UNCHECKED_OBJECTREF(*objPtr))));
+            break;
+
+        default:
+            _ASSERTE(!"Impossible two bit encoding"); 
+        }
+        
+        regNo++;
+    } while (moreRegisters);
+}
+
+#endif // FEATURE_HIJACK
+
 void ProtectByRefsFrame::GcScanRoots(promote_func *fn, ScanContext *sc)
 {
     CONTRACTL
@@ -1466,6 +1521,8 @@ BOOL TransitionFrame::Protects(OBJECTREF * ppORef)
 {
     WRAPPER_NO_CONTRACT;
     IsObjRefProtectedScanContext sc (ppORef);
+    // Set the stack limit for the scan to the SP of the managed frame above the transition frame
+    sc.stack_limit = GetSP();
     GcScanRoots (IsObjRefProtected, &sc);
     return sc.oref_protected;
 }
@@ -2007,6 +2064,7 @@ VOID InlinedCallFrame::Init()
     m_pCallerReturnAddress = NULL;
 }
 
+#ifdef FEATURE_INCLUDE_ALL_INTERFACES 
 #if defined(_WIN64) && !defined(FEATURE_PAL)
 
 EXTERN_C void PInvokeStubForHostInner(DWORD dwStackSize, LPVOID pStackFrame, LPVOID pTarget);
@@ -2087,7 +2145,7 @@ void __stdcall PInvokeStubForHostWorker(DWORD dwStackSize, LPVOID pStackFrame, L
     }
 }
 #endif // _WIN64 && !FEATURE_PAL
-
+#endif // FEATURE_INCLUDE_ALL_INTERFACES 
 
 
 void UnmanagedToManagedFrame::ExceptionUnwind()

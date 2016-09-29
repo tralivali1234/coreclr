@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 //
 // File: methodtable.h
 //
@@ -18,7 +17,6 @@
 /*
  *  Include Files 
  */
-#ifndef BINDER
 #include "vars.hpp"
 #include "cor.h"
 #include "hash.h"
@@ -36,9 +34,6 @@
 #include "contractimpl.h"
 #include "generics.h"
 #include "fixuppointer.h"
-#else
-#include "classloadlevel.h"
-#endif // !BINDER
 
 /*
  * Forward Declarations
@@ -630,43 +625,43 @@ inline
 SystemVClassificationType CorInfoType2UnixAmd64Classification(CorElementType eeType)
 {
     static const SystemVClassificationType toSystemVAmd64ClassificationTypeMap[] = {
-        SystemVClassificationTypeUnknown,           // ELEMENT_TYPE_END
-        SystemVClassificationTypeUnknown,           // ELEMENT_TYPE_VOID
-        SystemVClassificationTypeInteger,           // ELEMENT_TYPE_BOOLEAN
-        SystemVClassificationTypeInteger,           // ELEMENT_TYPE_CHAR
-        SystemVClassificationTypeInteger,           // ELEMENT_TYPE_I1
-        SystemVClassificationTypeInteger,           // ELEMENT_TYPE_U1
-        SystemVClassificationTypeInteger,           // ELEMENT_TYPE_I2
-        SystemVClassificationTypeInteger,           // ELEMENT_TYPE_U2
-        SystemVClassificationTypeInteger,           // ELEMENT_TYPE_I4
-        SystemVClassificationTypeInteger,           // ELEMENT_TYPE_U4
-        SystemVClassificationTypeInteger,           // ELEMENT_TYPE_I8
-        SystemVClassificationTypeInteger,           // ELEMENT_TYPE_U8
-        SystemVClassificationTypeSSE,               // ELEMENT_TYPE_R4
-        SystemVClassificationTypeSSE,               // ELEMENT_TYPE_R8
-        SystemVClassificationTypeIntegerReference,  // ELEMENT_TYPE_STRING
-        SystemVClassificationTypeInteger,           // ELEMENT_TYPE_PTR
-        SystemVClassificationTypeIntegerReference,  // ELEMENT_TYPE_BYREF
-        SystemVClassificationTypeStruct,            // ELEMENT_TYPE_VALUETYPE
-        SystemVClassificationTypeIntegerReference,  // ELEMENT_TYPE_CLASS
-        SystemVClassificationTypeIntegerReference,  // ELEMENT_TYPE_VAR              - (type variable)
-        SystemVClassificationTypeIntegerReference,  // ELEMENT_TYPE_ARRAY
-        SystemVClassificationTypeIntegerReference,  // ELEMENT_TYPE_GENERICINST
-        SystemVClassificationTypeStruct,            // ELEMENT_TYPE_TYPEDBYREF
-        SystemVClassificationTypeUnknown,           // ELEMENT_TYPE_VALUEARRAY_UNSUPPORTED
-        SystemVClassificationTypeInteger,           // ELEMENT_TYPE_I
-        SystemVClassificationTypeInteger,           // ELEMENT_TYPE_U
-        SystemVClassificationTypeUnknown,           // ELEMENT_TYPE_R_UNSUPPORTED
+        SystemVClassificationTypeUnknown,               // ELEMENT_TYPE_END
+        SystemVClassificationTypeUnknown,               // ELEMENT_TYPE_VOID
+        SystemVClassificationTypeInteger,               // ELEMENT_TYPE_BOOLEAN
+        SystemVClassificationTypeInteger,               // ELEMENT_TYPE_CHAR
+        SystemVClassificationTypeInteger,               // ELEMENT_TYPE_I1
+        SystemVClassificationTypeInteger,               // ELEMENT_TYPE_U1
+        SystemVClassificationTypeInteger,               // ELEMENT_TYPE_I2
+        SystemVClassificationTypeInteger,               // ELEMENT_TYPE_U2
+        SystemVClassificationTypeInteger,               // ELEMENT_TYPE_I4
+        SystemVClassificationTypeInteger,               // ELEMENT_TYPE_U4
+        SystemVClassificationTypeInteger,               // ELEMENT_TYPE_I8
+        SystemVClassificationTypeInteger,               // ELEMENT_TYPE_U8
+        SystemVClassificationTypeSSE,                   // ELEMENT_TYPE_R4
+        SystemVClassificationTypeSSE,                   // ELEMENT_TYPE_R8
+        SystemVClassificationTypeIntegerReference,      // ELEMENT_TYPE_STRING
+        SystemVClassificationTypeInteger,               // ELEMENT_TYPE_PTR
+        SystemVClassificationTypeIntegerByRef,          // ELEMENT_TYPE_BYREF
+        SystemVClassificationTypeStruct,                // ELEMENT_TYPE_VALUETYPE
+        SystemVClassificationTypeIntegerReference,      // ELEMENT_TYPE_CLASS
+        SystemVClassificationTypeIntegerReference,      // ELEMENT_TYPE_VAR (type variable)
+        SystemVClassificationTypeIntegerReference,      // ELEMENT_TYPE_ARRAY
+        SystemVClassificationTypeIntegerReference,      // ELEMENT_TYPE_GENERICINST
+        SystemVClassificationTypeTypedReference,        // ELEMENT_TYPE_TYPEDBYREF
+        SystemVClassificationTypeUnknown,               // ELEMENT_TYPE_VALUEARRAY_UNSUPPORTED
+        SystemVClassificationTypeInteger,               // ELEMENT_TYPE_I
+        SystemVClassificationTypeInteger,               // ELEMENT_TYPE_U
+        SystemVClassificationTypeUnknown,               // ELEMENT_TYPE_R_UNSUPPORTED
 
         // put the correct type when we know our implementation
-        SystemVClassificationTypeInteger,           // ELEMENT_TYPE_FNPTR
-        SystemVClassificationTypeIntegerReference,  // ELEMENT_TYPE_OBJECT
-        SystemVClassificationTypeIntegerReference,  // ELEMENT_TYPE_SZARRAY
-        SystemVClassificationTypeIntegerReference,  // ELEMENT_TYPE_MVAR
+        SystemVClassificationTypeInteger,               // ELEMENT_TYPE_FNPTR
+        SystemVClassificationTypeIntegerReference,      // ELEMENT_TYPE_OBJECT
+        SystemVClassificationTypeIntegerReference,      // ELEMENT_TYPE_SZARRAY
+        SystemVClassificationTypeIntegerReference,      // ELEMENT_TYPE_MVAR
 
-        SystemVClassificationTypeUnknown,           // ELEMENT_TYPE_CMOD_REQD
-        SystemVClassificationTypeUnknown,           // ELEMENT_TYPE_CMOD_OPT
-        SystemVClassificationTypeUnknown,           // ELEMENT_TYPE_INTERNAL
+        SystemVClassificationTypeUnknown,               // ELEMENT_TYPE_CMOD_REQD
+        SystemVClassificationTypeUnknown,               // ELEMENT_TYPE_CMOD_OPT
+        SystemVClassificationTypeUnknown,               // ELEMENT_TYPE_INTERNAL
     };
 
     _ASSERTE(sizeof(toSystemVAmd64ClassificationTypeMap) == ELEMENT_TYPE_MAX);
@@ -674,7 +669,9 @@ SystemVClassificationType CorInfoType2UnixAmd64Classification(CorElementType eeT
     // spot check of the map
     _ASSERTE((SystemVClassificationType)toSystemVAmd64ClassificationTypeMap[ELEMENT_TYPE_I4] == SystemVClassificationTypeInteger);
     _ASSERTE((SystemVClassificationType)toSystemVAmd64ClassificationTypeMap[ELEMENT_TYPE_PTR] == SystemVClassificationTypeInteger);
-    _ASSERTE((SystemVClassificationType)toSystemVAmd64ClassificationTypeMap[ELEMENT_TYPE_TYPEDBYREF] == SystemVClassificationTypeStruct);
+    _ASSERTE((SystemVClassificationType)toSystemVAmd64ClassificationTypeMap[ELEMENT_TYPE_VALUETYPE] == SystemVClassificationTypeStruct);
+    _ASSERTE((SystemVClassificationType)toSystemVAmd64ClassificationTypeMap[ELEMENT_TYPE_TYPEDBYREF] == SystemVClassificationTypeTypedReference);
+    _ASSERTE((SystemVClassificationType)toSystemVAmd64ClassificationTypeMap[ELEMENT_TYPE_BYREF] == SystemVClassificationTypeIntegerByRef);
 
     return (((int)eeType) < ELEMENT_TYPE_MAX) ? (toSystemVAmd64ClassificationTypeMap[eeType]) : SystemVClassificationTypeUnknown;
 };
@@ -772,12 +769,7 @@ class MethodTable
     // Special access for setting up String object method table correctly
     friend class ClassLoader;
     friend class JIT_TrialAlloc;
-#ifndef BINDER
     friend class Module;
-#else
-    friend class MdilModule;
-    friend class CompactTypeBuilder;
-#endif
     friend class EEClass;
     friend class MethodTableBuilder;
     friend class CheckAsmOffsets;
@@ -825,11 +817,7 @@ public:
     PTR_Module GetLoaderModule();
     PTR_LoaderAllocator GetLoaderAllocator();
 
-#ifndef BINDER
     void SetLoaderModule(Module* pModule);
-#else
-    void SetLoaderModule(MdilModule* pModule);
-#endif
     void SetLoaderAllocator(LoaderAllocator* pAllocator);
 
     // Get the domain local module - useful for static init checks
@@ -1436,8 +1424,17 @@ public:
             return GetFlag(enum_flag_ContainsGenericVariables);
     }
 
+    BOOL IsByRefLike()
+    {
+        LIMITED_METHOD_DAC_CONTRACT;;
+        return GetFlag(enum_flag_IsByRefLike);
+    }
 
-    inline BOOL ContainsStackPtr();
+    void SetIsByRefLike()
+    {
+        LIMITED_METHOD_CONTRACT;
+        SetFlag(enum_flag_IsByRefLike);
+    }
 
     // class is a com object class
     Module* GetDefiningModuleForOpenType();
@@ -1490,7 +1487,6 @@ public:
         NO_SLOT = 0xffff // a unique slot number used to indicate "empty" for fields that record slot numbers
     };
 
-#ifndef BINDER // the binder works with a slightly different representation, so remove these
     PCODE GetSlot(UINT32 slotNumber)
     {
         WRAPPER_NO_CONTRACT;
@@ -1555,7 +1551,6 @@ public:
     }
 
     void SetSlot(UINT32 slotNum, PCODE slotVal);
-#endif
 
     //-------------------------------------------------------------------
     // The VTABLE
@@ -2292,15 +2287,6 @@ public:
 
     inline PTR_InterfaceInfo GetInterfaceMap();
 
-#ifdef BINDER
-    void SetNumInterfaces(DWORD dwNumInterfaces)
-    {
-        LIMITED_METHOD_DAC_CONTRACT;
-        m_wNumInterfaces = (WORD)dwNumInterfaces;
-        _ASSERTE(m_wNumInterfaces == dwNumInterfaces);
-    }
-#endif
-
 #ifndef DACCESS_COMPILE
     void SetInterfaceMap(WORD wNumInterfaces, InterfaceInfo_t* iMap);
 #endif
@@ -2721,11 +2707,8 @@ public:
 
     // Used for generics and reflection emit in memory
     DWORD GetModuleDynamicEntryID();
-#ifndef BINDER
     Module* GetModuleForStatics();
-#else // BINDER
-    MdilModule* GetModuleForStatics();
-#endif
+
     //-------------------------------------------------------------------
     // GENERICS DICT INFO
     //
@@ -2733,9 +2716,6 @@ public:
     // Number of generic arguments, whether this is a method table for 
     // a generic type instantiation, e.g. List<string> or the "generic" MethodTable
     // e.g. for List.
-#ifdef BINDER
-    DWORD GetNumGenericArgs();
-#else
     inline DWORD GetNumGenericArgs()
     {
         LIMITED_METHOD_DAC_CONTRACT;
@@ -2744,7 +2724,6 @@ public:
         else
             return 0;
     }
-#endif
 
     inline DWORD GetNumDicts()
     {
@@ -2823,7 +2802,7 @@ public:
     // A true primitive is one who's GetVerifierCorElementType() == 
     //      ELEMENT_TYPE_I, 
     //      ELEMENT_TYPE_I4, 
-    //      ELEMENT_TYPE_TYPEDREF etc.
+    //      ELEMENT_TYPE_TYPEDBYREF etc.
     // Note that GetIntenalCorElementType might return these same values for some additional
     // types such as Enums and some structs.
     BOOL IsTruePrimitive();
@@ -2845,7 +2824,7 @@ public:
         _ASSERTE(g_pObjectClass);
         return (this == g_pObjectClass);
     }
-#ifndef BINDER
+
     // Is this System.ValueType?
     inline DWORD IsValueTypeClass()
     {
@@ -2853,13 +2832,6 @@ public:
         _ASSERTE(g_pValueTypeClass);
         return (this == g_pValueTypeClass);
     }
-#else // BINDER
-    // Is this System.ValueType?
-    bool IsValueTypeClass();
-
-    // Is this System.Enum?
-    bool IsEnumClass();
-#endif // BINDER
 
     // Is this value type? Returns false for System.ValueType and System.Enum.
     inline BOOL IsValueType();
@@ -3923,9 +3895,10 @@ private:
         enum_flag_IsRegStructPassed         = 0x00000800,   // This type is a System V register passed struct.
 #endif // FEATURE_UNIX_AMD64_STRUCT_PASSING_ITF
 
+        enum_flag_IsByRefLike               = 0x00001000,
+
         // In a perfect world we would fill these flags using other flags that we already have
         // which have a constant value for something which has a component size.
-        enum_flag_UNUSED_ComponentSize_4    = 0x00001000,
         enum_flag_UNUSED_ComponentSize_5    = 0x00002000,
         enum_flag_UNUSED_ComponentSize_6    = 0x00004000,
         enum_flag_UNUSED_ComponentSize_7    = 0x00008000,
@@ -4386,11 +4359,7 @@ private:
         return dac_cast<DPTR(RelativeFixupPointer<PTR_Module>)>(GetMultipurposeSlotPtr(enum_flag_HasModuleOverride, c_ModuleOverrideOffsets));
     }
 
-#ifdef BINDER
-    void SetModule(PTR_Module pModule);
-#else
     void SetModule(Module * pModule);
-#endif
 
     /************************************
     //

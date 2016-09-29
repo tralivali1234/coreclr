@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 // ===========================================================================
 // File: perfmap.h
 //
@@ -10,6 +9,8 @@
 
 #include "sstring.h"
 #include "fstream.h"
+
+class PerfInfo;
 
 // Generates a perfmap file.
 class PerfMap
@@ -20,6 +21,9 @@ private:
 
     // The file stream to write the map to.
     CFileStream * m_FileStream;
+
+    // The perfinfo file to log images to.
+    PerfInfo* m_PerfInfo;
 
     // Set to true if an error is encountered when writing to the file.
     bool m_ErrorEncountered;
@@ -44,10 +48,10 @@ protected:
     // Does the actual work to log a method to the map.
     void LogMethod(MethodDesc * pMethod, PCODE pCode, size_t codeSize);
 
-    // Does the actual work to log a native image load to the map.
-    void LogNativeImage(PEFile * pFile);
+    // Does the actual work to log an image
+    void LogImage(PEFile * pFile);
 
-    // Get the native image signature and store it as a string.
+    // Get the image signature and store it as a string.
     static void GetNativeImageSignature(PEFile * pFile, WCHAR * pwszSig, unsigned int nSigSize);
 
 public:
@@ -55,7 +59,7 @@ public:
     static void Initialize();
 
     // Log a native image load to the map.
-    static void LogNativeImageLoad(PEFile * pFile);
+    static void LogImageLoad(PEFile * pFile);
 
     // Log a JIT compiled method to the map.
     static void LogJITCompiledMethod(MethodDesc * pMethod, PCODE pCode, size_t codeSize);

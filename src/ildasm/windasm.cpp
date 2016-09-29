@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information. 
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 /************************************************************************************************
  *                                                                                              *
@@ -61,6 +60,7 @@ extern char                    g_szAsmCodeIndent[];
 
 extern DWORD                   g_Mode;
 
+extern char*                    g_pszExeFile;
 extern char                     g_szInputFile[]; // in UTF-8
 extern WCHAR                    g_wszFullInputFile[]; // in UTF-16
 extern char                     g_szOutputFile[]; // in UTF-8
@@ -171,7 +171,11 @@ int ProcessOneArg(__in __nullterminated char* szArg, __out char** ppszObjFileNam
     if(strlen(szArg) == 0) return 0;
     if ((strcmp(szArg, "/?") == 0) || (strcmp(szArg, "-?") == 0)) return 1;
 
+#ifdef FEATURE_PAL
+    if(szArg[0] == '-')
+#else
     if((szArg[0] == '/') || (szArg[0] == '-'))
+#endif	
     {
         strncpy_s(szOpt,128, &szArg[1],10);
         szOpt[3] = 0;
@@ -379,27 +383,29 @@ int ProcessOneArg(__in __nullterminated char* szArg, __out char** ppszObjFileNam
         }
         else if ((_stricmp(szOpt, "met") == 0)&&g_fTDC)
         {
-            if(g_fTDC)
+#ifdef FEATURE_CORECLR
+            printf("Warning: 'METADATA' option is ignored for ildasm on CoreCLR.\n");
+#else
+
+            char *pStr = EqualOrColon(szArg);
+            g_fDumpMetaInfo = TRUE;
+            if(pStr)
             {
-                char *pStr = EqualOrColon(szArg);
-                g_fDumpMetaInfo = TRUE;
-                if(pStr)
-                {
-                    char szOptn[64];
-                    strncpy_s(szOptn, 64, pStr+1,10);
-                    szOptn[3] = 0; // recognize metainfo specifier by first 3 chars
-                    if     (_stricmp(szOptn, "hex") == 0) g_ulMetaInfoFilter |= MDInfo::dumpMoreHex;
-                    else if(_stricmp(szOptn, "csv") == 0) g_ulMetaInfoFilter |= MDInfo::dumpCSV;
-                    else if(_stricmp(szOptn, "mdh") == 0) g_ulMetaInfoFilter |= MDInfo::dumpHeader;
-                    else if(_stricmp(szOptn, "raw") == 0) g_ulMetaInfoFilter |= MDInfo::dumpRaw;
-                    else if(_stricmp(szOptn, "hea") == 0) g_ulMetaInfoFilter |= MDInfo::dumpRawHeaps;
-                    else if(_stricmp(szOptn, "sch") == 0) g_ulMetaInfoFilter |= MDInfo::dumpSchema;
-                    else if(_stricmp(szOptn, "unr") == 0) g_ulMetaInfoFilter |= MDInfo::dumpUnsat;
-                    else if(_stricmp(szOptn, "val") == 0) g_ulMetaInfoFilter |= MDInfo::dumpValidate;
-                    else if(_stricmp(szOptn, "sta") == 0) g_ulMetaInfoFilter |= MDInfo::dumpStats;
-                    else return -1;
-                }
+                char szOptn[64];
+                strncpy_s(szOptn, 64, pStr+1,10);
+                szOptn[3] = 0; // recognize metainfo specifier by first 3 chars
+                if     (_stricmp(szOptn, "hex") == 0) g_ulMetaInfoFilter |= MDInfo::dumpMoreHex;
+                else if(_stricmp(szOptn, "csv") == 0) g_ulMetaInfoFilter |= MDInfo::dumpCSV;
+                else if(_stricmp(szOptn, "mdh") == 0) g_ulMetaInfoFilter |= MDInfo::dumpHeader;
+                else if(_stricmp(szOptn, "raw") == 0) g_ulMetaInfoFilter |= MDInfo::dumpRaw;
+                else if(_stricmp(szOptn, "hea") == 0) g_ulMetaInfoFilter |= MDInfo::dumpRawHeaps;
+                else if(_stricmp(szOptn, "sch") == 0) g_ulMetaInfoFilter |= MDInfo::dumpSchema;
+                else if(_stricmp(szOptn, "unr") == 0) g_ulMetaInfoFilter |= MDInfo::dumpUnsat;
+                else if(_stricmp(szOptn, "val") == 0) g_ulMetaInfoFilter |= MDInfo::dumpValidate;
+                else if(_stricmp(szOptn, "sta") == 0) g_ulMetaInfoFilter |= MDInfo::dumpStats;
+                else return -1;
             }
+#endif // FEATURE_CORECLR
         }
         else if (_stricmp(szOpt, "obj") == 0)
         {
@@ -485,13 +491,13 @@ char* ANSItoUTF8(__in __nullterminated char* szANSI)
 int ParseCmdLineW(__in __nullterminated WCHAR* wzCmdLine, __out char** ppszObjFileName)
 {
     int     argc,ret=0;
-    LPWSTR* argv= CommandLineToArgvW(wzCmdLine,&argc);
+    LPWSTR* argv= SegmentCommandLine(wzCmdLine, (DWORD*)&argc);
     char*   szArg = new char[2048];
     for(int i=1; i < argc; i++)
     {
         memset(szArg,0,2048);
         WszWideCharToMultiByte(CP_UTF8,0,argv[i],-1,szArg,2048,NULL,NULL);
-        if(ret = ProcessOneArg(szArg,ppszObjFileName)) break;
+        if((ret = ProcessOneArg(szArg,ppszObjFileName)) != 0) break;
     }
     VDELETE(szArg);
     return ret;
@@ -529,7 +535,7 @@ int ParseCmdLineA(__in __nullterminated char* szCmdLine, __out char** ppszObjFil
 
     for(int i=1; i < argc; i++)
     {
-        if(ret = ProcessOneArg(argv[i],ppszObjFileName)) break;
+        if((ret = ProcessOneArg(argv[i],ppszObjFileName)) != 0) break;
     }
     VDELETE(szCmdLineUTF);
     return ret;
@@ -544,6 +550,15 @@ int APIENTRY WinMain(HINSTANCE hInstance,
                      int       nCmdShow)
 #endif
 {
+#if defined(FEATURE_CORECLR) && defined(FEATURE_PAL)
+    if (0 != PAL_Initialize(nCmdShow, lpCmdLine))
+    {
+        printError(g_pFile, "Error: Fail to PAL_Initialize\n");
+        exit(1);
+    }
+    g_pszExeFile = lpCmdLine[0];
+#endif
+
     // ildasm does not need to be SO-robust.
     SO_NOT_MAINLINE_FUNCTION;
 
@@ -581,8 +596,10 @@ int APIENTRY WinMain(HINSTANCE hInstance,
     hConsoleOut = GetStdHandle(STD_OUTPUT_HANDLE);
     hConsoleErr = GetStdHandle(STD_ERROR_HANDLE);
 
+#ifndef FEATURE_PAL
     // Dev11 #5320 - pull the localized resource loader up so if ParseCmdLineW need resources, they're already loaded
     g_hResources = LoadLocalizedResourceDLLForSDK(L"ildasmrc.dll");
+#endif
 
     iCommandLineParsed = ParseCmdLineW((wzCommandLine = GetCommandLineW()),&g_pszObjFileName);
 

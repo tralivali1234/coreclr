@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 //
 // File: METHODTABLEBUILDER.CPP
 //
@@ -953,23 +952,9 @@ MethodTableBuilder::MethodSignature::SignaturesEquivalent(
 {
     STANDARD_VM_CONTRACT;
 
-#ifdef FEATURE_LEGACYNETCF
-    BaseDomain::AppDomainCompatMode compatMode1 = sig1.GetModule()->GetDomain()->GetAppDomainCompatMode();
-    BaseDomain::AppDomainCompatMode compatMode2 = sig2.GetModule()->GetDomain()->GetAppDomainCompatMode();
-
-    if ((compatMode1 == BaseDomain::APPDOMAINCOMPAT_APP_EARLIER_THAN_WP8) || (compatMode2 == BaseDomain::APPDOMAINCOMPAT_APP_EARLIER_THAN_WP8))
-    {
-        return S_OK == MetaSig::CompareMethodSigsNT(
-            sig1.GetSignature(), static_cast<DWORD>(sig1.GetSignatureLength()), sig1.GetModule(), &sig1.GetSubstitution(), 
-            sig2.GetSignature(), static_cast<DWORD>(sig2.GetSignatureLength()), sig2.GetModule(), &sig2.GetSubstitution());
-    }
-    else
-#endif
-    {
-        return !!MetaSig::CompareMethodSigs(
-            sig1.GetSignature(), static_cast<DWORD>(sig1.GetSignatureLength()), sig1.GetModule(), &sig1.GetSubstitution(), 
-            sig2.GetSignature(), static_cast<DWORD>(sig2.GetSignatureLength()), sig2.GetModule(), &sig2.GetSubstitution());
-    }
+    return !!MetaSig::CompareMethodSigs(
+        sig1.GetSignature(), static_cast<DWORD>(sig1.GetSignatureLength()), sig1.GetModule(), &sig1.GetSubstitution(), 
+        sig2.GetSignature(), static_cast<DWORD>(sig2.GetSignatureLength()), sig2.GetModule(), &sig2.GetSubstitution());
 }
 
 //*******************************************************************************
@@ -980,27 +965,11 @@ MethodTableBuilder::MethodSignature::SignaturesExactlyEqual(
 {
     STANDARD_VM_CONTRACT;
 
-#ifdef FEATURE_LEGACYNETCF
-    BaseDomain::AppDomainCompatMode compatMode1 = sig1.GetModule()->GetDomain()->GetAppDomainCompatMode();
-    BaseDomain::AppDomainCompatMode compatMode2 = sig2.GetModule()->GetDomain()->GetAppDomainCompatMode();
-
-    if ((compatMode1 == BaseDomain::APPDOMAINCOMPAT_APP_EARLIER_THAN_WP8) || (compatMode2 == BaseDomain::APPDOMAINCOMPAT_APP_EARLIER_THAN_WP8))
-    {
-        TokenPairList newVisited = TokenPairList::AdjustForTypeEquivalenceForbiddenScope(NULL);
-        return S_OK == MetaSig::CompareMethodSigsNT(
-            sig1.GetSignature(), static_cast<DWORD>(sig1.GetSignatureLength()), sig1.GetModule(), &sig1.GetSubstitution(), 
-            sig2.GetSignature(), static_cast<DWORD>(sig2.GetSignatureLength()), sig2.GetModule(), &sig2.GetSubstitution(),
-            &newVisited);
-    }
-    else
-#endif
-    {
-        TokenPairList newVisited = TokenPairList::AdjustForTypeEquivalenceForbiddenScope(NULL);
-        return !!MetaSig::CompareMethodSigs(
-            sig1.GetSignature(), static_cast<DWORD>(sig1.GetSignatureLength()), sig1.GetModule(), &sig1.GetSubstitution(), 
-            sig2.GetSignature(), static_cast<DWORD>(sig2.GetSignatureLength()), sig2.GetModule(), &sig2.GetSubstitution(),
-            &newVisited);
-    }
+    TokenPairList newVisited = TokenPairList::AdjustForTypeEquivalenceForbiddenScope(NULL);
+    return !!MetaSig::CompareMethodSigs(
+        sig1.GetSignature(), static_cast<DWORD>(sig1.GetSignatureLength()), sig1.GetModule(), &sig1.GetSubstitution(), 
+        sig2.GetSignature(), static_cast<DWORD>(sig2.GetSignatureLength()), sig2.GetModule(), &sig2.GetSubstitution(),
+        &newVisited);
 }
 
 //*******************************************************************************
@@ -1249,7 +1218,7 @@ BOOL MethodTableBuilder::CheckIfSIMDAndUpdateSize()
 {
     STANDARD_VM_CONTRACT;
 
-#if defined(_TARGET_AMD64_) && !defined(CROSSGEN_COMPILE)
+#ifdef _TARGET_AMD64_
     if (!GetAssembly()->IsSIMDVectorAssembly())
         return false;
 
@@ -1269,6 +1238,7 @@ BOOL MethodTableBuilder::CheckIfSIMDAndUpdateSize()
         COMPlusThrow(kTypeLoadException, IDS_EE_SIMD_NGEN_DISALLOWED);
     }
 
+#ifndef CROSSGEN_COMPILE
     if (!TargetHasAVXSupport())
         return false;
 
@@ -1291,7 +1261,8 @@ BOOL MethodTableBuilder::CheckIfSIMDAndUpdateSize()
             }
         }
     }
-#endif
+#endif // !CROSSGEN_COMPILE
+#endif // _TARGET_AMD64_
     return false;
 }
 
@@ -2944,16 +2915,6 @@ MethodTableBuilder::EnumerateClassMethods()
                     }
                 }
 
-#if defined(MDIL)
-                // Interfaces with sparse vtables are not currently supported in the triton toolchain.
-                if (GetAppDomain()->IsMDILCompilationDomain())
-                {
-                    GetSvcLogger()->Log(W("Warning: Sparse v-table detected.\n"));
-                    BuildMethodTableThrowException(COR_E_BADIMAGEFORMAT,
-                                                    IDS_CLASSLOAD_BADSPECIALMETHOD,
-                                                    tok);
-                }
-#endif // defined(MDIL)
 #ifdef FEATURE_COMINTEROP 
                 // Record vtable gap in mapping list. The map is an optional field, so ensure we've allocated
                 // these fields first.
@@ -3907,13 +3868,6 @@ VOID    MethodTableBuilder::InitializeFieldDescs(FieldDesc *pFieldDescList,
     BOOL    fFieldRequiresAlign8 = HasParent() ? GetParentMethodTable()->RequiresAlign8() : FALSE;
 #endif
 
-#ifdef FEATURE_LEGACYNETCF
-    BOOL fNetCFCompat = GetModule()->GetDomain()->GetAppDomainCompatMode() == BaseDomain::APPDOMAINCOMPAT_APP_EARLIER_THAN_WP8;
-    DWORD dwStaticsSizeOnNetCF = 0;
-#else
-    const BOOL fNetCFCompat = FALSE;
-#endif
-
     for (i = 0; i < bmtMetaData->cFields; i++)
     {
         PCCOR_SIGNATURE pMemberSignature;
@@ -4258,10 +4212,10 @@ VOID    MethodTableBuilder::InitializeFieldDescs(FieldDesc *pFieldDescList,
                     goto GOT_ELEMENT_TYPE;
                 }
                 
-                // There are just few types with code:ContainsStackPtr set - arrays and few ValueTypes in mscorlib.dll (see code:CheckForSystemTypes).
-                // Note: None of them will ever have self-referencing static ValueType field (we cannot assert it now because the ContainsStackPtr 
+                // There are just few types with code:IsByRefLike set - see code:CheckForSystemTypes.
+                // Note: None of them will ever have self-referencing static ValueType field (we cannot assert it now because the IsByRefLike 
                 // status for this type has not been initialized yet).
-                if (!IsSelfRef(pByValueClass) && pByValueClass->GetClass()->ContainsStackPtr())
+                if (!IsSelfRef(pByValueClass) && pByValueClass->IsByRefLike())
                 {   // Cannot have embedded valuetypes that contain a field that require stack allocation.
                     BuildMethodTableThrowException(COR_E_BADIMAGEFORMAT, IDS_CLASSLOAD_BAD_FIELD, mdTokenNil);
                 }
@@ -4411,8 +4365,7 @@ VOID    MethodTableBuilder::InitializeFieldDescs(FieldDesc *pFieldDescList,
                   );
 
         // Check if the ValueType field containing non-publics is overlapped
-        if (!fNetCFCompat
-            && HasExplicitFieldOffsetLayout()
+        if (HasExplicitFieldOffsetLayout()
             && pLayoutFieldInfo != NULL
             && pLayoutFieldInfo->m_fIsOverlapped
             && pByValueClass != NULL
@@ -8221,8 +8174,7 @@ VOID    MethodTableBuilder::PlaceInstanceFields(MethodTable ** pByValueClassCach
                     if (bmtFP->NumInstanceFieldsOfSize[j] != 0)
                         break;
                     // TODO: since we will refuse to place GC references we should filter them out here.
-                    // otherwise the "back-filling" process stops completely. If you change it here,
-                    // please change it in the corresponding place in src\tools\mdilbind\compactLayoutReader.cpp
+                    // otherwise the "back-filling" process stops completely.
                     // (PlaceInstanceFields)
                     // the following code would fix the issue (a replacement for the code above this comment):
                     // if (bmtFP->NumInstanceFieldsOfSize[j] != 0 &&
@@ -10298,7 +10250,7 @@ void MethodTableBuilder::CheckForSystemTypes()
 
             if (type == ELEMENT_TYPE_TYPEDBYREF)
             {
-                pClass->SetContainsStackPtr();
+                pMT->SetIsByRefLike();
             }
         }
         else if (strcmp(name, g_NullableName) == 0)
@@ -10308,11 +10260,11 @@ void MethodTableBuilder::CheckForSystemTypes()
         else if (strcmp(name, g_ArgIteratorName) == 0)
         {
             // Mark the special types that have embeded stack poitners in them
-            pClass->SetContainsStackPtr();
+            pMT->SetIsByRefLike();
         }
         else if (strcmp(name, g_RuntimeArgumentHandleName) == 0)
         {
-            pClass->SetContainsStackPtr();
+            pMT->SetIsByRefLike();
 #ifndef _TARGET_X86_ 
             pMT->SetInternalCorElementType (ELEMENT_TYPE_I);
 #endif
@@ -11509,11 +11461,6 @@ void MethodTableBuilder::VerifyVirtualMethodsImplemented(MethodTable::MethodData
     if (bmtProp->fIsComObjectType)
         return;
 #endif // FEATURE_COMINTEROP
-
-#ifdef FEATURE_LEGACYNETCF
-    if (GetModule()->GetDomain()->GetAppDomainCompatMode() == BaseDomain::APPDOMAINCOMPAT_APP_EARLIER_THAN_WP8)
-        return;
-#endif
 
     // Since interfaces aren't laid out in the vtable for stub dispatch, what we need to do
     // is try to find an implementation for every interface contract by iterating through

@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 //*****************************************************************************
 // File: daccess.cpp
 // 
@@ -2340,7 +2339,7 @@ namespace serialization { namespace bin {
     };
 
     template <typename _Ty>
-    class is_blittable<_Ty, typename std::enable_if<std::is_arithmetic<_Ty>::value>::type>
+    struct is_blittable<_Ty, typename std::enable_if<std::is_arithmetic<_Ty>::value>::type>
         : std::true_type
     { // determines whether _Ty is blittable
     };
@@ -2348,7 +2347,7 @@ namespace serialization { namespace bin {
     // allow types to declare themselves blittable by including a static bool 
     // member "is_blittable".
     template <typename _Ty>
-    class is_blittable<_Ty, typename std::enable_if<_Ty::is_blittable>::type>
+    struct is_blittable<_Ty, typename std::enable_if<_Ty::is_blittable>::type>
         : std::true_type
     { // determines whether _Ty is blittable
     };
@@ -3199,7 +3198,7 @@ ClrDataAccess::ClrDataAccess(ICorDebugDataTarget * pTarget, ICLRDataTarget * pLe
 
     // Verification asserts are disabled by default because some debuggers (cdb/windbg) probe likely locations
     // for DAC and having this assert pop up all the time can be annoying.  We let derived classes enable 
-    // this if they want.  It can also be overridden at run-time with COMPLUS_DbgDACAssertOnMismatch,
+    // this if they want.  It can also be overridden at run-time with COMPlus_DbgDACAssertOnMismatch,
     // see ClrDataAccess::VerifyDlls for details.
     m_fEnableDllVerificationAsserts = false;
 #endif
@@ -3270,6 +3269,10 @@ ClrDataAccess::QueryInterface(THIS_
     else if (IsEqualIID(interfaceId, __uuidof(ISOSDacInterface3)))
     {
         ifaceRet = static_cast<ISOSDacInterface3*>(this);
+    }
+    else if (IsEqualIID(interfaceId, __uuidof(ISOSDacInterface4)))
+    {
+        ifaceRet = static_cast<ISOSDacInterface4*>(this);
     }
     else
     {
@@ -6009,7 +6012,7 @@ ClrDataAccess::GetMethodExtents(MethodDesc* methodDesc,
         EECodeInfo codeInfo(methodStart);
         _ASSERTE(codeInfo.IsValid());
 
-        TADDR codeSize = codeInfo.GetCodeManager()->GetFunctionSize(codeInfo.GetGCInfo());
+        TADDR codeSize = codeInfo.GetCodeManager()->GetFunctionSize(codeInfo.GetGCInfoToken());
 
         *extents = new (nothrow) METH_EXTENTS;
         if (!*extents)
@@ -6971,7 +6974,7 @@ void ClrDataAccess::SetTargetConsistencyChecks(bool fEnableAsserts)
 // Notes:
 //     The implementation of ASSERT accesses this via code:DacTargetConsistencyAssertsEnabled
 //     
-//     By default, this is disabled, unless COMPLUS_DbgDACEnableAssert is set (see code:ClrDataAccess::ClrDataAccess).
+//     By default, this is disabled, unless COMPlus_DbgDACEnableAssert is set (see code:ClrDataAccess::ClrDataAccess).
 //     This is necessary for compatibility.  For example, SOS expects to be able to scan for
 //     valid MethodTables etc. (which may cause ASSERTs), and also doesn't want ASSERTs when working
 //     with targets with corrupted memory.
@@ -7070,7 +7073,7 @@ HRESULT ClrDataAccess::VerifyDlls()
 
 #ifdef _DEBUG
         // Check if verbose asserts are enabled.  The default is up to the specific instantiation of
-        // ClrDataAccess, but can be overridden (in either direction) by a COMPLUS knob.
+        // ClrDataAccess, but can be overridden (in either direction) by a COMPlus_ knob.
         // Note that we check this knob every time because it may be handy to turn it on in 
         // the environment mid-flight.
         DWORD dwAssertDefault = m_fEnableDllVerificationAsserts ? 1 : 0;
@@ -7102,7 +7105,7 @@ HRESULT ClrDataAccess::VerifyDlls()
                 "Actual %s timestamp: %s\n"\
                 "DAC will now fail to initialize with a CORDBG_E_MISMATCHED_CORWKS_AND_DACWKS_DLLS\n"\
                 "error.  If you really want to try and use the mimatched DLLs, you can disable this\n"\
-                "check by setting COMPLUS_DbgDACSkipVerifyDlls=1.  However, using a mismatched DAC\n"\
+                "check by setting COMPlus_DbgDACSkipVerifyDlls=1.  However, using a mismatched DAC\n"\
                 "DLL will usually result in arbitrary debugger failures.\n",
                 MAIN_CLR_DLL_NAME_A,
                 MAIN_CLR_DLL_NAME_A,
@@ -7228,6 +7231,10 @@ ClrDataAccess::GetDacGlobals()
     if (FAILED(ReadFromDataTarget(m_pTarget, dacTableAddress, (BYTE*)&g_dacGlobals, sizeof(g_dacGlobals))))
     {
         return CORDBG_E_MISSING_DEBUGGER_EXPORTS;
+    }
+    if (g_dacGlobals.ThreadStore__s_pThreadStore == NULL)
+    {
+        return CORDBG_E_UNSUPPORTED;
     }
     return S_OK;
 #else
@@ -7967,7 +7974,7 @@ HRESULT DacHandleWalker::Init(ClrDataAccess *dac, UINT types[], UINT typeCount, 
 {
     SUPPORTS_DAC;
     
-    if (gen < 0 || gen > (int)GCHeap::GetMaxGeneration())
+    if (gen < 0 || gen > (int)GCHeapUtilities::GetMaxGeneration())
         return E_INVALIDARG;
         
     mGenerationFilter = gen;
@@ -8026,7 +8033,7 @@ bool DacHandleWalker::FetchMoreHandles(HANDLESCANPROC callback)
     int max_slots = 1;
     
 #ifdef FEATURE_SVR_GC
-    if (GCHeap::IsServerHeap())
+    if (GCHeapUtilities::IsServerHeap())
         max_slots = GCHeapCount();
 #endif // FEATURE_SVR_GC
 
@@ -8082,7 +8089,7 @@ bool DacHandleWalker::FetchMoreHandles(HANDLESCANPROC callback)
                                 HndScanHandlesForGC(hTable, callback, 
                                                     (LPARAM)&param, 0, 
                                                      &handleType, 1, 
-                                                     mGenerationFilter, GCHeap::GetMaxGeneration(), 0);
+                                                     mGenerationFilter, GCHeapUtilities::GetMaxGeneration(), 0);
                             else
                                 HndEnumHandles(hTable, &handleType, 1, callback, (LPARAM)&param, 0, FALSE);
                         }

@@ -1,5 +1,6 @@
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 
 
@@ -13,7 +14,6 @@
 }
 .assembly 'catchfault_tail'// as "catchfault_tail"
 {
-  .permission reqmin ['mscorlib']System.Security.Permissions.SecurityPermissionAttribute ( "SkipVerification" = true )
 }
 .module 'catchfault_tail.exe'
 // MVID: {7D0BA0DB-DCB6-4997-83C9-9F31894A25EF}
@@ -59,7 +59,7 @@
         IL_0024:  stelem.i4
         IL_0025:  ldstr      "Shouldn't have reached here."
         IL_002a:  call       void [System.Console]System.Console::WriteLine(class System.String)
-        IL_002f:  newobj     instance void ['mscorlib']System.ApplicationException::.ctor()
+        IL_002f:  newobj     instance void ['mscorlib']System.Exception::.ctor()
         IL_0034:  throw
 
       }  // end .try
@@ -122,7 +122,7 @@
           IL_0026:  stelem.i4
           IL_0027:  ldstr      "Shouldn't have reached here."
           IL_002c:  call       void [System.Console]System.Console::WriteLine(class System.String)
-          IL_0031:  newobj     instance void ['mscorlib']System.ApplicationException::.ctor()
+          IL_0031:  newobj     instance void ['mscorlib']System.Exception::.ctor()
           IL_0036:  throw
 
         }  // end .try

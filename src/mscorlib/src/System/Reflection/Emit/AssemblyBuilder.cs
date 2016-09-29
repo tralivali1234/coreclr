@@ -1,5 +1,6 @@
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 
 //*************************************************************************************************************
@@ -398,7 +399,7 @@ namespace System.Reflection.Emit
                     else if (attribute.m_con.DeclaringType == typeof(SecurityRulesAttribute))
                     {
                         securityRulesBlob = new byte[attribute.m_blob.Length];
-                        Array.Copy(attribute.m_blob, securityRulesBlob, securityRulesBlob.Length);
+                        Buffer.BlockCopy(attribute.m_blob, 0, securityRulesBlob, 0, securityRulesBlob.Length);
                     }
                     else if (attribute.m_con.DeclaringType == typeof(SecurityTreatAsSafeAttribute))
                     {
@@ -410,7 +411,7 @@ namespace System.Reflection.Emit
                     {
                         assemblyFlags |= DynamicAssemblyFlags.Aptca;
                         aptcaBlob = new byte[attribute.m_blob.Length];
-                        Array.Copy(attribute.m_blob, aptcaBlob, aptcaBlob.Length);
+                        Buffer.BlockCopy(attribute.m_blob, 0, aptcaBlob, 0, aptcaBlob.Length);
                     }
 #endif // FEATURE_APTCA
                 }
@@ -1459,7 +1460,7 @@ namespace System.Reflection.Emit
                 throw new ArgumentException(Environment.GetResourceString("Argument_NativeResourceAlreadyDefined"));
             
             m_assemblyData.m_resourceBytes = new byte[resource.Length];
-            System.Array.Copy(resource, m_assemblyData.m_resourceBytes, resource.Length);
+            Buffer.BlockCopy(resource, 0, m_assemblyData.m_resourceBytes, 0, resource.Length);
         }
 
         [System.Security.SecuritySafeCritical]  // auto-generated

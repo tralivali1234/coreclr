@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 // FRAMES.H
 
 
@@ -341,6 +340,18 @@ class ComCallMethodDesc;
 
 #ifndef DACCESS_COMPILE
 
+#if defined(FEATURE_PAL) && !defined(CROSSGEN_COMPILE)
+
+#define DEFINE_DTOR(klass)                      \
+    public:                                     \
+        virtual ~klass() { PopIfChained(); }
+
+#else
+
+#define DEFINE_DTOR(klass)
+
+#endif // FEATURE_PAL && !CROSSGEN_COMPILE
+
 #define DEFINE_VTABLE_GETTER(klass)             \
     public:                                     \
         static TADDR GetMethodFrameVPtr() {     \
@@ -350,9 +361,18 @@ class ComCallMethodDesc;
         }                                       \
         klass(bool dummy) { LIMITED_METHOD_CONTRACT; }
 
+#define DEFINE_VTABLE_GETTER_AND_DTOR(klass)    \
+        DEFINE_VTABLE_GETTER(klass)             \
+        DEFINE_DTOR(klass)
+
 #define DEFINE_VTABLE_GETTER_AND_CTOR(klass)    \
         DEFINE_VTABLE_GETTER(klass)             \
     protected:                                  \
+        klass() { LIMITED_METHOD_CONTRACT; }
+
+#define DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(klass)    \
+        DEFINE_VTABLE_GETTER_AND_DTOR(klass)             \
+    protected:                                           \
         klass() { LIMITED_METHOD_CONTRACT; }
 
 #else
@@ -364,8 +384,14 @@ class ComCallMethodDesc;
             return klass::VPtrTargetVTable();   \
         }                                       \
 
+#define DEFINE_VTABLE_GETTER_AND_DTOR(klass)    \
+        DEFINE_VTABLE_GETTER(klass)             \
+
 #define DEFINE_VTABLE_GETTER_AND_CTOR(klass)    \
         DEFINE_VTABLE_GETTER(klass)             \
+
+#define DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(klass)    \
+        DEFINE_VTABLE_GETTER_AND_CTOR(klass)             \
 
 #endif // #ifndef DACCESS_COMPILE
 
@@ -417,10 +443,6 @@ class Frame : public FrameBase
     VPTR_ABSTRACT_VTABLE_CLASS(Frame, FrameBase)
 
 public:
-
-#if defined(FEATURE_PAL) && !defined(DACCESS_COMPILE) && !defined(CROSSGEN_COMPILE)
-    virtual ~Frame();
-#endif // FEATURE_PAL && !DACCESS_COMPILE && !CROSSGEN_COMPILE
 
     //------------------------------------------------------------------------
     // Special characteristics of a frame
@@ -849,6 +871,12 @@ protected:
     { 
         LIMITED_METHOD_CONTRACT;
     }
+
+#if defined(FEATURE_PAL) && !defined(DACCESS_COMPILE) && !defined(CROSSGEN_COMPILE)
+    virtual ~Frame() { LIMITED_METHOD_CONTRACT; }
+
+    void PopIfChained();
+#endif // FEATURE_PAL && !DACCESS_COMPILE && !CROSSGEN_COMPILE
 };
 
 
@@ -910,7 +938,7 @@ protected:
     PTR_CONTEXT m_Regs;
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(ResumableFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(ResumableFrame)
 };
 
 
@@ -933,7 +961,7 @@ public:
 #endif
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(RedirectedThreadFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(RedirectedThreadFrame)
 };
 
 typedef DPTR(RedirectedThreadFrame) PTR_RedirectedThreadFrame;
@@ -1156,7 +1184,7 @@ public:
     virtual void UpdateRegDisplay(const PREGDISPLAY);
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER(FaultingExceptionFrame)
+    DEFINE_VTABLE_GETTER_AND_DTOR(FaultingExceptionFrame)
 };
 
 //-----------------------------------------------------------------------
@@ -1235,7 +1263,7 @@ public:
     }
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(FuncEvalFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(FuncEvalFrame)
 };
 
 typedef VPTR(FuncEvalFrame) PTR_FuncEvalFrame;
@@ -1393,7 +1421,7 @@ protected:
     LazyMachState m_MachState;       // pRetAddr points to the return address and the stack arguments
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(HelperMethodFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(HelperMethodFrame)
 };
 
 // Restores registers saved in m_MachState
@@ -1478,7 +1506,7 @@ private:
     PTR_OBJECTREF gcPtrs[1];
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(HelperMethodFrame_1OBJ)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(HelperMethodFrame_1OBJ)
 };
 
 
@@ -1539,7 +1567,7 @@ private:
     PTR_OBJECTREF gcPtrs[2];
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(HelperMethodFrame_2OBJ)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(HelperMethodFrame_2OBJ)
 };
 
 
@@ -1605,7 +1633,7 @@ private:
     UINT       m_numObjRefs;
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(HelperMethodFrame_PROTECTOBJ)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(HelperMethodFrame_PROTECTOBJ)
 };
 
 class FramedMethodFrame : public TransitionFrame
@@ -1761,7 +1789,7 @@ public:
                             TraceDestination *trace, REGDISPLAY *regs);
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(TPMethodFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(TPMethodFrame)
 };
 #endif // FEATURE_REMOTING
 
@@ -1834,7 +1862,7 @@ public:
                             TraceDestination *trace, REGDISPLAY *regs);
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(SecureDelegateFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(SecureDelegateFrame)
 };
 
 
@@ -1865,7 +1893,7 @@ class MulticastFrame : public SecureDelegateFrame
                             TraceDestination *trace, REGDISPLAY *regs);
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(MulticastFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(MulticastFrame)
 };
 
 
@@ -2006,7 +2034,7 @@ public:
 
 protected:
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(ComMethodFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(ComMethodFrame)
 };
 
 typedef DPTR(class ComMethodFrame) PTR_ComMethodFrame;
@@ -2044,7 +2072,7 @@ public:
                     TraceDestination *trace, REGDISPLAY *regs);
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(ComPlusMethodFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(ComPlusMethodFrame)
 };
 
 #endif // FEATURE_COMINTEROP
@@ -2111,7 +2139,7 @@ public:
     }
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(PInvokeCalliFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(PInvokeCalliFrame)
 };
 
 // Some context-related forwards.
@@ -2143,10 +2171,11 @@ public:
     }
 
     virtual void UpdateRegDisplay(const PREGDISPLAY);
+    virtual void GcScanRoots(promote_func *fn, ScanContext* sc);
 
-    // HijackFrames are created by trip functions. See OnHijackObjectTripThread()
-    // and OnHijackScalarTripThread().  They are real C++ objects on the stack.  So
-    // it's a public function -- but that doesn't mean you should make some.
+    // HijackFrames are created by trip functions. See OnHijackTripThread()
+    // They are real C++ objects on the stack. 
+    // So, it's a public function -- but that doesn't mean you should make some.
     HijackFrame(LPVOID returnAddress, Thread *thread, HijackArgs *args);
 
 protected:
@@ -2156,7 +2185,7 @@ protected:
     DPTR(HijackArgs)    m_Args;
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(HijackFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(HijackFrame)
 };
 
 #endif // FEATURE_HIJACK
@@ -2200,7 +2229,7 @@ public:
     Interception GetInterception();
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(PrestubMethodFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(PrestubMethodFrame)
 };
 
 //------------------------------------------------------------------------
@@ -2288,7 +2317,7 @@ private:
     friend class VirtualCallStubManager;
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(StubDispatchFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(StubDispatchFrame)
 };
 
 typedef VPTR(class StubDispatchFrame) PTR_StubDispatchFrame;
@@ -2342,7 +2371,7 @@ public:
 #endif
     
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(ExternalMethodFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(ExternalMethodFrame)
 };
 
 typedef VPTR(class ExternalMethodFrame) PTR_ExternalMethodFrame;
@@ -2374,7 +2403,7 @@ public:
     }
     
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(DynamicHelperFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(DynamicHelperFrame)
 };
 
 typedef VPTR(class DynamicHelperFrame) PTR_DynamicHelperFrame;
@@ -2410,7 +2439,7 @@ class StubHelperFrame : public TransitionFrame
 
 private:
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(StubHelperFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(StubHelperFrame)
 };
 #endif // _TARGET_X86_
 
@@ -2461,7 +2490,7 @@ public:
 
 private:
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(ComPrestubMethodFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(ComPrestubMethodFrame)
 };
 
 #endif // FEATURE_COMINTEROP
@@ -2532,7 +2561,7 @@ private:
     BOOL          m_MaybeInterior;
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER(GCFrame)
+    DEFINE_VTABLE_GETTER_AND_DTOR(GCFrame)
 };
 
 #ifdef FEATURE_INTERPRETER
@@ -2555,7 +2584,7 @@ public:
     MethodDesc* GetFunction();
 #endif
 
-    DEFINE_VTABLE_GETTER(InterpreterFrame)
+    DEFINE_VTABLE_GETTER_AND_DTOR(InterpreterFrame)
 
 };
 
@@ -2581,7 +2610,7 @@ class GCSafeCollectionFrame : public Frame
 
         VOID Pop();
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER(GCSafeCollectionFrame)
+    DEFINE_VTABLE_GETTER_AND_DTOR(GCSafeCollectionFrame)
 };
 #endif // FEATURE_REMOTING
 
@@ -2623,7 +2652,7 @@ private:
     PTR_ByRefInfo m_brInfo;
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(ProtectByRefsFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(ProtectByRefsFrame)
 };
 
 
@@ -2683,7 +2712,7 @@ private:
     ValueClassInfo *m_pVCInfo;
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER(ProtectValueClassFrame)
+    DEFINE_VTABLE_GETTER_AND_DTOR(ProtectValueClassFrame)
 };
 
 
@@ -2726,7 +2755,7 @@ public:
     }
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER(DebuggerClassInitMarkFrame)
+    DEFINE_VTABLE_GETTER_AND_DTOR(DebuggerClassInitMarkFrame)
 };
 
 
@@ -2763,7 +2792,7 @@ public:
     }
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER(DebuggerSecurityCodeMarkFrame)
+    DEFINE_VTABLE_GETTER_AND_DTOR(DebuggerSecurityCodeMarkFrame)
 };
 
 //------------------------------------------------------------------------
@@ -2818,7 +2847,7 @@ public:
     }
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER(DebuggerExitFrame)
+    DEFINE_VTABLE_GETTER_AND_DTOR(DebuggerExitFrame)
 };
 
 //---------------------------------------------------------------------------------------
@@ -2858,7 +2887,7 @@ public:
     }
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER(DebuggerU2MCatchHandlerFrame)
+    DEFINE_VTABLE_GETTER_AND_DTOR(DebuggerU2MCatchHandlerFrame)
 };
 
 
@@ -2894,7 +2923,7 @@ public:
 protected:
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(UMThkCallFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(UMThkCallFrame)
 };
 #endif // _TARGET_X86_
 
@@ -2952,7 +2981,7 @@ public:
     }
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(ReverseEnterRuntimeFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(ReverseEnterRuntimeFrame)
 };
 
 //-----------------------------------------------------------------------------
@@ -2976,7 +3005,7 @@ public:
 #endif
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(LeaveRuntimeFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(LeaveRuntimeFrame)
 };
 #endif
 
@@ -3151,7 +3180,7 @@ public:
     VOID Init();
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(InlinedCallFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(InlinedCallFrame)
 };
 
 //------------------------------------------------------------------------
@@ -3242,7 +3271,7 @@ public:
 #endif
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER(ContextTransitionFrame)
+    DEFINE_VTABLE_GETTER_AND_DTOR(ContextTransitionFrame)
 };
 
 // TODO [DAVBR]: For the full fix for VsWhidbey 450273, this
@@ -3380,7 +3409,7 @@ public:
 
 private:
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(TailCallFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(TailCallFrame)
 };
 
 //------------------------------------------------------------------------
@@ -3426,7 +3455,7 @@ public:
 
 private:
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(ExceptionFilterFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(ExceptionFilterFrame)
 };
 
 #ifdef _DEBUG
@@ -3455,7 +3484,7 @@ private:
     OBJECTREF *m_pObjRef;
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER(AssumeByrefFromJITStack)
+    DEFINE_VTABLE_GETTER_AND_DTOR(AssumeByrefFromJITStack)
 }; //AssumeByrefFromJITStack
 
 #endif //_DEBUG
@@ -3648,72 +3677,8 @@ public:
     void SetAssembly(Assembly *pAssembly) { LIMITED_METHOD_CONTRACT; m_pAssembly = pAssembly; }
 
     // Keep as last entry in class
-    DEFINE_VTABLE_GETTER_AND_CTOR(SecurityContextFrame)
+    DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(SecurityContextFrame)
 };
-
-
-// This holder is defined for addressing a very specific issue:
-// Frames that use GCPROTECT_BEGIN/GCPROTECT_END can end up referencing corrupted object refs
-// when an exception is thrown until the point where the Frame is actually popped from the thread's Frame-chain.
-// Stack space allocated for OBJECTREFs in a try block may be reused in the catch block by other structures, 
-// corrupting our protected OBJECTREFs and the Frame containing them. While the Frame is still on the callstack
-// a GC may occur, detecting the corrupt OBJECTREF and taking down the process. The FrameWithCookieHolder 
-// forces the Frame to be popped out when exiting the current scope, therefore before the OBJECTREF is corrupted.
-//
-// This holder explicitly calls Thread::SetFrame, therefore potentially removing Frames from the thread's frame 
-// chain without properly calling their corresponding ExceptionUnwind() method. This is extremely dangerous to 
-// use unless it is backed by a call to UnwindAndContinueRethrowHelperInsideCatch() which does the same thing
-// (and has been vetted to be correct in doing so). Using this holder in any other circumstances may lead to bugs that 
-// are extremely difficult to track down.
-template <typename TYPE>
-class FrameWithCookieHolder 
-{
-    protected:
-		FrameWithCookie<TYPE>	m_frame;
-
-	public:
-		FORCEINLINE FrameWithCookieHolder()
-			: m_frame()
-		{
-		}
-
-		//	GCFrame 
-		FORCEINLINE	FrameWithCookieHolder(OBJECTREF *pObjRefs, UINT numObjRefs, BOOL maybeInterior)
-			: m_frame(pObjRefs, numObjRefs, maybeInterior)
-		{
-		}
-
-		FORCEINLINE ~FrameWithCookieHolder()
-		{
-#ifndef DACCESS_COMPILE
-
-			Thread* pThread = GetThread();
-			if (pThread)
-			{
-			    GCX_COOP();
-			    pThread->SetFrame(&m_frame);
-			    m_frame.Pop();
-			}
-
-#endif // #ifndef DACCESS_COMPILE
-		}
-
-};
-
-#ifndef DACCESS_COMPILE
-// Restrictions from FrameWithCookieHolder are also applying for GCPROTECT_HOLDER. 
-// Please read the FrameWithCookieHolder comments before using GCPROTECT_HOLDER.  
-#define	GCPROTECT_HOLDER(ObjRefStruct)									\
-                FrameWithCookieHolder<GCFrame>	__gcframe((OBJECTREF*)&(ObjRefStruct),  \
-                        sizeof(ObjRefStruct)/sizeof(OBJECTREF),         \
-                        FALSE);                                          
-
-#else // #ifndef DACCESS_COMPILE
-
-#define	GCPROTECT_HOLDER(ObjRefStruct)
-
-#endif // #ifndef DACCESS_COMPILE
-
 
 //------------------------------------------------------------------------
 // These macros GC-protect OBJECTREF pointers on the EE's behalf.
@@ -3837,7 +3802,7 @@ class FrameWithCookieHolder
 #endif // #ifndef DACCESS_COMPILE
 
 
-#define ASSERT_ADDRESS_IN_STACK(address) _ASSERTE (GetThread () && GetThread ()->IsAddressInStack (address));
+#define ASSERT_ADDRESS_IN_STACK(address) _ASSERTE (Thread::IsAddressInCurrentStack (address));
 
 #if defined (_DEBUG) && !defined (DACCESS_COMPILE)
 #define ASSUME_BYREF_FROM_JIT_STACK_BEGIN(__objRef)                                      \

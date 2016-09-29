@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 // ===========================================================================
 // File: Method.CPP
 //
@@ -140,7 +139,6 @@ BOOL MethodDesc::IsIntrospectionOnly()
 }
 
 /*********************************************************************/
-#ifndef FEATURE_CORECLR
 #ifndef DACCESS_COMPILE
 BOOL NDirectMethodDesc::HasDefaultDllImportSearchPathsAttribute()
 {
@@ -173,7 +171,6 @@ BOOL NDirectMethodDesc::HasDefaultDllImportSearchPathsAttribute()
     return (ndirect.m_wFlags  & kDefaultDllImportSearchPathsStatus) != 0;
 }
 #endif //!DACCESS_COMPILE
-#endif // !FEATURE_CORECLR
 
 //*******************************************************************************
 #ifndef DACCESS_COMPILE
@@ -3112,13 +3109,11 @@ void MethodDesc::Save(DataImage *image)
         // Make sure that the marshaling required flag is computed
         pNMD->MarshalingRequired();
         
-#ifndef FEATURE_CORECLR
         if (!pNMD->IsQCall())
         {
             //Cache DefaultImportDllImportSearchPaths attribute.
             pNMD->HasDefaultDllImportSearchPathsAttribute();
         }
-#endif
 
         image->StoreStructure(pNMD->GetWriteableData(),
                                 sizeof(NDirectWriteableData),
@@ -5194,7 +5189,7 @@ LPVOID NDirectMethodDesc::FindEntryPoint(HINSTANCE hMod) const
     if (GetEntrypointName()[0] == '#')
     {
         long ordinal = atol(GetEntrypointName()+1);
-        return GetProcAddress(hMod, (LPCSTR)(size_t)((UINT16)ordinal));
+        return reinterpret_cast<LPVOID>(GetProcAddress(hMod, (LPCSTR)(size_t)((UINT16)ordinal)));
     }
 
     // Just look for the unmangled name.  If it is unicode fcn, we are going
@@ -5394,18 +5389,17 @@ BOOL MethodDesc::HasNativeCallableAttribute()
     }
     CONTRACTL_END;
 
-// enable only for amd64 now, other platforms are not tested.
-#if defined(_TARGET_AMD64_) 
-
 #ifdef FEATURE_CORECLR
     HRESULT hr = GetMDImport()->GetCustomAttributeByName(GetMemberDef(),
         g_NativeCallableAttribute,
         NULL,
         NULL);
-    return (hr == S_OK);
+    if (hr == S_OK)
+    {
+        return TRUE;
+    }
 #endif //FEATURE_CORECLR
 
-#endif //_TARGET_AMD64_
     return FALSE;
 }
 

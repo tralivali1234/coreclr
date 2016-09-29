@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 // optimize for speed
 
 
@@ -25,7 +24,7 @@
 
 inline void FATAL_GC_ERROR()
 {
-    DebugBreak();
+    GCToOSInterface::DebugBreak();
     _ASSERTE(!"Fatal Error in GC.");
     EEPOLICY_HANDLE_FATAL_ERROR(COR_E_EXECUTIONENGINE);
 }
@@ -107,7 +106,7 @@ inline void FATAL_GC_ERROR()
 #define MARK_ARRAY      //Mark bit in an array
 #endif //BACKGROUND_GC
 
-#if defined(BACKGROUND_GC) || defined (CARD_BUNDLE)
+#if defined(BACKGROUND_GC) || defined (CARD_BUNDLE) || defined(FEATURE_USE_SOFTWARE_WRITE_WATCH_FOR_GC_HEAP)
 #define WRITE_WATCH     //Write Watch feature
 #endif //BACKGROUND_GC || CARD_BUNDLE
 
@@ -129,8 +128,6 @@ inline void FATAL_GC_ERROR()
 //#define TRACE_GC          //debug trace gc operation
 //#define SIMPLE_DPRINTF
 
-//#define CATCH_GC          //catches exception during GC
-
 //#define TIME_GC           //time allocation and garbage collection
 //#define TIME_WRITE_WATCH  //time GetWriteWatch and ResetWriteWatch calls
 //#define COUNT_CYCLES  //Use cycle counter for timing
@@ -142,13 +139,13 @@ inline void FATAL_GC_ERROR()
 
 #if defined (SYNCHRONIZATION_STATS) || defined (STAGE_STATS)
 #define BEGIN_TIMING(x) \
-    LARGE_INTEGER x##_start; \
-    QueryPerformanceCounter (&x##_start)
+    int64_t x##_start; \
+    x##_start = GCToOSInterface::QueryPerformanceCounter()
 
 #define END_TIMING(x) \
-    LARGE_INTEGER x##_end; \
-    QueryPerformanceCounter (&x##_end); \
-    x += x##_end.QuadPart - x##_start.QuadPart
+    int64_t x##_end; \
+    x##_end = GCToOSInterface::QueryPerformanceCounter(); \
+    x += x##_end - x##_start
 
 #else
 #define BEGIN_TIMING(x)
@@ -156,8 +153,6 @@ inline void FATAL_GC_ERROR()
 #define BEGIN_TIMING_CYCLES(x)
 #define END_TIMING_CYCLES(x)
 #endif //SYNCHRONIZATION_STATS || STAGE_STATS
-
-#define NO_CATCH_HANDLERS  //to debug gc1, remove the catch handlers
 
 /* End of optional features */
 
@@ -179,19 +174,19 @@ void GCLogConfig (const char *fmt, ... );
 
 #ifdef SERVER_GC
 
-#ifdef _WIN64
+#ifdef BIT64
 #define MAX_INDEX_POWER2 30
 #else
 #define MAX_INDEX_POWER2 26
-#endif  // _WIN64
+#endif  // BIT64
 
 #else //SERVER_GC
 
-#ifdef _WIN64
+#ifdef BIT64
 #define MAX_INDEX_POWER2 28
 #else
 #define MAX_INDEX_POWER2 24
-#endif  // _WIN64
+#endif  // BIT64
 
 #endif //SERVER_GC
 
@@ -204,70 +199,7 @@ void GCLogConfig (const char *fmt, ... );
 
 #define CLREvent CLREventStatic
 
-#ifdef CreateFileMapping
-
-#undef CreateFileMapping
-
-#endif //CreateFileMapping
-
-#define CreateFileMapping WszCreateFileMapping
-
 // hosted api
-#ifdef InitializeCriticalSection
-#undef InitializeCriticalSection
-#endif //ifdef InitializeCriticalSection
-#define InitializeCriticalSection UnsafeInitializeCriticalSection
-
-#ifdef DeleteCriticalSection
-#undef DeleteCriticalSection
-#endif //ifdef DeleteCriticalSection
-#define DeleteCriticalSection UnsafeDeleteCriticalSection
-
-#ifdef EnterCriticalSection
-#undef EnterCriticalSection
-#endif //ifdef EnterCriticalSection
-#define EnterCriticalSection UnsafeEEEnterCriticalSection
-
-#ifdef LeaveCriticalSection
-#undef LeaveCriticalSection
-#endif //ifdef LeaveCriticalSection
-#define LeaveCriticalSection UnsafeEELeaveCriticalSection
-
-#ifdef TryEnterCriticalSection
-#undef TryEnterCriticalSection
-#endif //ifdef TryEnterCriticalSection
-#define TryEnterCriticalSection UnsafeEETryEnterCriticalSection
-
-#ifdef CreateSemaphore
-#undef CreateSemaphore
-#endif //CreateSemaphore
-#define CreateSemaphore UnsafeCreateSemaphore
-
-#ifdef CreateEvent
-#undef CreateEvent
-#endif //ifdef CreateEvent
-#define CreateEvent UnsafeCreateEvent
-
-#ifdef VirtualAlloc
-#undef VirtualAlloc
-#endif //ifdef VirtualAlloc
-#define VirtualAlloc ClrVirtualAlloc
-
-#ifdef VirtualFree
-#undef VirtualFree
-#endif //ifdef VirtualFree
-#define VirtualFree ClrVirtualFree
-
-#ifdef VirtualQuery
-#undef VirtualQuery
-#endif //ifdef VirtualQuery
-#define VirtualQuery ClrVirtualQuery
-
-#ifdef VirtualProtect
-#undef VirtualProtect
-#endif //ifdef VirtualProtect
-#define VirtualProtect ClrVirtualProtect
-
 #ifdef memcpy
 #undef memcpy
 #endif //memcpy
@@ -554,6 +486,7 @@ enum gc_type
     gc_type_max = 3
 };
 
+#define v_high_memory_load_th 97
 
 //encapsulates the mechanism for the current gc
 class gc_mechanisms
@@ -626,9 +559,9 @@ public:
     bool stress_induced;
 #endif // STRESS_HEAP
 
-#ifdef _WIN64
+#ifdef BIT64
     uint32_t entry_memory_load;
-#endif //_WIN64
+#endif // BIT64
 
     void store (gc_mechanisms* gm)
     {
@@ -657,9 +590,9 @@ public:
         stress_induced          = (gm->stress_induced != 0);
 #endif // STRESS_HEAP
 
-#ifdef _WIN64
+#ifdef BIT64
         entry_memory_load       = gm->entry_memory_load;
-#endif //_WIN64        
+#endif // BIT64        
     }
 };
 
@@ -667,13 +600,13 @@ public:
 
 // GC specific statistics, tracking counts and timings for GCs occuring in the system.
 // This writes the statistics to a file every 60 seconds, if a file is specified in
-// COMPLUS_GcMixLog
+// COMPlus_GcMixLog
 
 struct GCStatistics
     : public StatisticsBase
 {
-    // initialized to the contents of COMPLUS_GcMixLog, or NULL, if not present
-    static WCHAR* logFileName;
+    // initialized to the contents of COMPlus_GcMixLog, or NULL, if not present
+    static TCHAR* logFileName;
     static FILE*  logFile;
 
     // number of times we executed a background GC, a foreground GC, or a
@@ -1044,7 +977,7 @@ struct spinlock_info
 {
     msl_enter_state enter_state;
     msl_take_state take_state;
-    uint32_t thread_id;
+    EEThreadId thread_id;
 };
 
 const unsigned HS_CACHE_LINE_SIZE = 128;
@@ -1292,7 +1225,7 @@ public:
     static 
     gc_heap* balance_heaps_loh (alloc_context* acontext, size_t size);
     static
-    uint32_t __stdcall gc_thread_stub (void* arg);
+    void __stdcall gc_thread_stub (void* arg);
 #endif //MULTIPLE_HEAPS
 
     CObjectHeader* try_fast_alloc (size_t jsize);
@@ -1343,6 +1276,11 @@ public:
     PER_HEAP
     BOOL is_mark_set (uint8_t* o);
 
+#ifdef FEATURE_BASICFREEZE
+    PER_HEAP_ISOLATED
+    bool frozen_object_p(Object* obj);
+#endif // FEATURE_BASICFREEZE
+
 protected:
 
     PER_HEAP
@@ -1384,11 +1322,11 @@ protected:
     int joined_generation_to_condemn (BOOL should_evaluate_elevation, int n_initial, BOOL* blocking_collection
                                         STRESS_HEAP_ARG(int n_original));
 
-    PER_HEAP_ISOLATED
-    size_t min_reclaim_fragmentation_threshold(uint64_t total_mem, uint32_t num_heaps);
+    PER_HEAP
+    size_t min_reclaim_fragmentation_threshold (uint32_t num_heaps);
 
     PER_HEAP_ISOLATED
-    uint64_t min_high_fragmentation_threshold(uint64_t available_mem, uint32_t num_heaps);
+    uint64_t min_high_fragmentation_threshold (uint64_t available_mem, uint32_t num_heaps);
 
     PER_HEAP
     void concurrent_print_time_delta (const char* msg);
@@ -1615,13 +1553,13 @@ protected:
     struct loh_state_info
     {
         allocation_state alloc_state;
-        uint32_t thread_id;
+        EEThreadId thread_id;
     };
 
     PER_HEAP
     loh_state_info last_loh_states[max_saved_loh_states];
     PER_HEAP
-    void add_saved_loh_state (allocation_state loh_state_to_save, uint32_t thread_id);
+    void add_saved_loh_state (allocation_state loh_state_to_save, EEThreadId thread_id);
 #endif //RECORD_LOH_STATE
     PER_HEAP
     BOOL allocate_large (int gen_number,
@@ -1706,6 +1644,12 @@ protected:
     void rearrange_large_heap_segments();
     PER_HEAP
     void rearrange_heap_segments(BOOL compacting);
+
+    PER_HEAP_ISOLATED
+    void reset_write_watch_for_gc_heap(void* base_address, size_t region_size);
+    PER_HEAP_ISOLATED
+    void get_write_watch_for_gc_heap(bool reset, void *base_address, size_t region_size, void** dirty_pages, uintptr_t* dirty_page_count_ref, bool is_runtime_suspended);
+
     PER_HEAP
     void switch_one_quantum();
     PER_HEAP
@@ -1715,7 +1659,7 @@ protected:
     PER_HEAP
     void reset_write_watch (BOOL concurrent_p);
     PER_HEAP
-    void adjust_ephemeral_limits ();
+    void adjust_ephemeral_limits (bool is_runtime_suspended);
     PER_HEAP
     void make_generation (generation& gen, heap_segment* seg,
                           uint8_t* start, uint8_t* pointer);
@@ -1814,7 +1758,11 @@ protected:
     PER_HEAP
     void mark_array_clear_marked (uint8_t* add);
     PER_HEAP
-    void clear_mark_array (uint8_t* from, uint8_t* end, BOOL check_only=TRUE);
+    void clear_mark_array (uint8_t* from, uint8_t* end, BOOL check_only=TRUE
+#ifdef FEATURE_BASICFREEZE
+        , BOOL read_only=FALSE
+#endif // FEATURE_BASICFREEZE
+        );
 #ifdef BACKGROUND_GC
     PER_HEAP
     void seg_clear_mark_array_bits_soh (heap_segment* seg);
@@ -2120,6 +2068,12 @@ protected:
 
     PER_HEAP
     void pin_object (uint8_t* o, uint8_t** ppObject, uint8_t* low, uint8_t* high);
+
+#if defined(ENABLE_PERF_COUNTERS) || defined(FEATURE_EVENT_TRACE)
+    PER_HEAP_ISOLATED
+    size_t get_total_pinned_objects();
+#endif //ENABLE_PERF_COUNTERS || FEATURE_EVENT_TRACE
+
     PER_HEAP
     void reset_mark_stack ();
     PER_HEAP
@@ -2460,6 +2414,8 @@ protected:
     PER_HEAP
     void compute_new_ephemeral_size();
     PER_HEAP
+    BOOL expand_reused_seg_p();
+    PER_HEAP
     BOOL can_expand_into_p (heap_segment* seg, size_t min_free_size,
                             size_t min_cont_size, allocator* al);
     PER_HEAP
@@ -2505,8 +2461,6 @@ protected:
     PER_HEAP
     void save_ephemeral_generation_starts();
 
-    static size_t get_time_now();
-
     PER_HEAP
     bool init_dynamic_data ();
     PER_HEAP
@@ -2521,16 +2475,23 @@ protected:
     PER_HEAP
     void decommit_ephemeral_segment_pages();
 
-#ifdef _WIN64
+#ifdef BIT64
     PER_HEAP_ISOLATED
     size_t trim_youngest_desired (uint32_t memory_load,
                                   size_t total_new_allocation,
                                   size_t total_min_allocation);
     PER_HEAP_ISOLATED
     size_t joined_youngest_desired (size_t new_allocation);
-#endif //_WIN64
+#endif // BIT64
     PER_HEAP_ISOLATED
     size_t get_total_heap_size ();
+    PER_HEAP_ISOLATED
+    size_t get_total_committed_size();
+
+    PER_HEAP_ISOLATED
+    void get_memory_info (uint32_t* memory_load, 
+                          uint64_t* available_physical=NULL,
+                          uint64_t* available_page_file=NULL);
     PER_HEAP
     size_t generation_size (int gen_number);
     PER_HEAP_ISOLATED
@@ -2560,6 +2521,8 @@ protected:
     PER_HEAP
     size_t generation_sizes (generation* gen);
     PER_HEAP
+    size_t committed_size();
+    PER_HEAP
     size_t approximate_new_allocation();
     PER_HEAP
     size_t end_space_after_gc();
@@ -2584,9 +2547,9 @@ protected:
     PER_HEAP
     void descr_generations (BOOL begin_gc_p);
 
-#if defined(GC_PROFILING) || defined(FEATURE_EVENT_TRACE)
     PER_HEAP_ISOLATED
     void descr_generations_to_profiler (gen_walk_fn fn, void *context);
+#if defined(GC_PROFILING) || defined(FEATURE_EVENT_TRACE)
     PER_HEAP
     void record_survived_for_profiler(int condemned_gen_number, uint8_t * first_condemned_address);
     PER_HEAP
@@ -2600,9 +2563,9 @@ protected:
     PER_HEAP_ISOLATED
     void destroy_thread_support ();
     PER_HEAP
-    HANDLE create_gc_thread();
+    bool create_gc_thread();
     PER_HEAP
-    uint32_t gc_thread_function();
+    void gc_thread_function();
 #ifdef MARK_LIST
 #ifdef PARALLEL_MARK_LIST_SORT
     PER_HEAP
@@ -2691,6 +2654,7 @@ protected:
     PER_HEAP_ISOLATED
     BOOL commit_mark_array_new_seg (gc_heap* hp, 
                                     heap_segment* seg,
+                                    uint32_t* new_card_table = 0,
                                     uint8_t* new_lowest_address = 0);
 
     PER_HEAP_ISOLATED
@@ -2773,19 +2737,6 @@ protected:
     void do_background_gc();
     static
     uint32_t __stdcall bgc_thread_stub (void* arg);
-
-#ifdef FEATURE_REDHAWK
-    // Helper used to wrap the start routine of background GC threads so we can do things like initialize the
-    // Redhawk thread state which requires running in the new thread's context.
-    static uint32_t WINAPI rh_bgc_thread_stub(void * pContext);
-
-    // Context passed to the above.
-    struct rh_bgc_thread_ctx
-    {
-        PTHREAD_START_ROUTINE   m_pRealStartRoutine;
-        gc_heap *               m_pRealContext;
-    };
-#endif //FEATURE_REDHAWK
 
 #endif //BACKGROUND_GC
  
@@ -2937,6 +2888,9 @@ public:
 
 #ifdef MULTIPLE_HEAPS
     PER_HEAP_ISOLATED
+    bool gc_thread_no_affinitize_p;
+
+    PER_HEAP_ISOLATED
     CLREvent gc_start_event;
 
     PER_HEAP_ISOLATED
@@ -2976,22 +2930,25 @@ public:
 
 #ifdef SHORT_PLUGS
     PER_HEAP_ISOLATED
-    float short_plugs_pad_ratio;
+    double short_plugs_pad_ratio;
 #endif //SHORT_PLUGS
 
-#ifdef _WIN64
+#ifdef BIT64
     PER_HEAP_ISOLATED
     size_t youngest_gen_desired_th;
+#endif //BIT64
 
     PER_HEAP_ISOLATED
-    size_t mem_one_percent;
+    uint32_t high_memory_load_th;
+
+    PER_HEAP_ISOLATED
+    uint64_t mem_one_percent;
 
     PER_HEAP_ISOLATED
     uint64_t total_physical_mem;
 
     PER_HEAP_ISOLATED
-    uint64_t available_physical_mem;
-#endif //_WIN64
+    uint64_t entry_available_physical_mem;
 
     PER_HEAP_ISOLATED
     size_t last_gc_index;
@@ -3021,7 +2978,7 @@ protected:
     PER_HEAP
     VOLATILE(int) alloc_context_count;
 #else //MULTIPLE_HEAPS
-#define vm_heap ((GCHeap*) g_pGCHeap)
+#define vm_heap ((GCHeap*) g_theGCHeap)
 #define heap_number (0)
 #endif //MULTIPLE_HEAPS
 
@@ -3054,10 +3011,15 @@ protected:
     mark*       mark_stack_array;
 
     PER_HEAP
-    BOOL       verify_pinned_queue_p;
+    BOOL        verify_pinned_queue_p;
 
     PER_HEAP
-    uint8_t*       oldest_pinned_plug;
+    uint8_t*    oldest_pinned_plug;
+
+#if defined(ENABLE_PERF_COUNTERS) || defined(FEATURE_EVENT_TRACE)
+    PER_HEAP
+    size_t      num_pinned_objects;
+#endif //ENABLE_PERF_COUNTERS || FEATURE_EVENT_TRACE
 
 #ifdef FEATURE_LOH_COMPACTION
     PER_HEAP
@@ -3094,7 +3056,7 @@ protected:
 #ifdef BACKGROUND_GC
 
     PER_HEAP
-    uint32_t bgc_thread_id;
+    EEThreadId bgc_thread_id;
 
 #ifdef WRITE_WATCH
     PER_HEAP
@@ -3137,13 +3099,10 @@ protected:
     Thread* bgc_thread;
 
     PER_HEAP
-    CRITICAL_SECTION bgc_threads_timeout_cs;
+    CLRCriticalSection bgc_threads_timeout_cs;
 
     PER_HEAP_ISOLATED
     CLREvent background_gc_done_event;
-
-    PER_HEAP
-    CLREvent background_gc_create_event;
 
     PER_HEAP_ISOLATED
     CLREvent ee_proceed_event;
@@ -3462,11 +3421,11 @@ protected:
     alloc_list loh_alloc_list[NUM_LOH_ALIST-1];
 
 #define NUM_GEN2_ALIST (12)
-#ifdef _WIN64
+#ifdef BIT64
 #define BASE_GEN2_ALIST (1*256)
 #else
 #define BASE_GEN2_ALIST (1*128)
-#endif //_WIN64
+#endif // BIT64
     PER_HEAP
     alloc_list gen2_alloc_list[NUM_GEN2_ALIST-1];
 
@@ -3491,7 +3450,7 @@ protected:
     BOOL dt_high_frag_p (gc_tuning_point tp, int gen_number, BOOL elevate_p=FALSE);
     PER_HEAP
     BOOL 
-    dt_estimate_reclaim_space_p (gc_tuning_point tp, int gen_number, uint64_t total_mem);
+    dt_estimate_reclaim_space_p (gc_tuning_point tp, int gen_number);
     PER_HEAP
     BOOL dt_estimate_high_frag_p (gc_tuning_point tp, int gen_number, uint64_t available_mem);
     PER_HEAP
@@ -3713,8 +3672,6 @@ public:
     SPTR_DECL(PTR_gc_heap, g_heaps);
 
     static
-    HANDLE*   g_gc_threads; // keep all of the gc threads.
-    static
     size_t*   g_promoted;
 #ifdef BACKGROUND_GC
     static
@@ -3769,7 +3726,7 @@ private:
     
     VOLATILE(int32_t) lock;
 #ifdef _DEBUG
-    uint32_t lockowner_threadid;
+    EEThreadId lockowner_threadid;
 #endif // _DEBUG
 
     BOOL GrowArray();
@@ -4371,11 +4328,11 @@ extern "C" uint8_t* g_ephemeral_high;
 // The value of card_size is determined empirically according to the average size of an object
 // In the code we also rely on the assumption that one card_table entry (uint32_t) covers an entire os page
 //
-#if defined (_WIN64)
+#if defined (BIT64)
 #define card_size ((size_t)(2*OS_PAGE_SIZE/card_word_width))
 #else
 #define card_size ((size_t)(OS_PAGE_SIZE/card_word_width))
-#endif //_WIN64
+#endif // BIT64
 
 inline
 size_t card_word (size_t card)

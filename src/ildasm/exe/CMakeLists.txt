@@ -7,6 +7,21 @@ add_definitions(-D__ILDASM__)
 
 add_definitions(-DFEATURE_CORECLR)
 
+include_directories(..)
+
+if(CLR_CMAKE_PLATFORM_UNIX)
+    add_compile_options(-fPIE)
+    include_directories(../unixcoreclrloader)
+    build_resources(${CMAKE_CURRENT_SOURCE_DIR}/../dasm.rc dasm_rc TARGET_CPP_FILE)
+
+    set(ILDASM_RESOURCES
+        ${TARGET_CPP_FILE}
+    )
+else()
+    set(ILDASM_RESOURCES ../dasm.rc)
+    add_definitions(-DFX_VER_INTERNALNAME_STR=ildasm.exe)
+endif(CLR_CMAKE_PLATFORM_UNIX)
+
 set(ILDASM_SOURCES
     ../ceeload.cpp
     ../dasm.cpp
@@ -22,7 +37,7 @@ set(ILDASM_SOURCES
     ../windasm.cpp
 )
 
-add_executable(ildasm
+_add_executable(ildasm
     ${ILDASM_SOURCES}
     ${ILDASM_RESOURCES}
 )
@@ -31,28 +46,31 @@ set(ILDASM_LINK_LIBRARIES
     utilcodestaticnohost
     mdhotdata_full
     corguids
-    coreclr
 )
 
 if(CLR_CMAKE_PLATFORM_UNIX)
-    # TODO
     target_link_libraries(ildasm
+        ${ILDASM_LINK_LIBRARIES}
+        unixcoreclrloader
         mscorrc_debug
         coreclrpal
         palrt
     )
+
+    # FreeBSD and NetBSD implement dlopen(3) in libc
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL FreeBSD AND NOT CMAKE_SYSTEM_NAME STREQUAL NetBSD)
+        target_link_libraries(ildasm
+            dl
+        )
+    endif(NOT CMAKE_SYSTEM_NAME STREQUAL FreeBSD AND NOT CMAKE_SYSTEM_NAME STREQUAL NetBSD)
 else()
     target_link_libraries(ildasm
         ${ILDASM_LINK_LIBRARIES}
-         msvcrt
-         ole32
-         oleaut32
-         shell32
+        coreclr
+        ole32
+        oleaut32
+        shell32
     )
-
-    # We will generate PDB only for the debug configuration
-    install (FILES ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/ildasm.pdb DESTINATION PDB)
-
 endif(CLR_CMAKE_PLATFORM_UNIX)
 
-install (TARGETS ildasm DESTINATION .)
+install_clr(ildasm)

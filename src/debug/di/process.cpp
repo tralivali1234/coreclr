@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 //*****************************************************************************
 // File: process.cpp
 // 
@@ -977,7 +976,7 @@ CordbProcess::CordbProcess(ULONG64 clrInstanceId,
     // On Debug builds, we'll ASSERT by default whenever the target appears to be corrupt or 
     // otherwise inconsistent (both in DAC and DBI).  But we also need the ability to 
     // explicitly test corrupt targets.
-    // Tests should set COMPLUS_DbgIgnoreInconsistentTarget=1 to suppress these asserts
+    // Tests should set COMPlus_DbgIgnoreInconsistentTarget=1 to suppress these asserts
     // Note that this controls two things:
     //     1) DAC behavior - see code:IDacDbiInterface::DacSetTargetConsistencyChecks
     //     2) RS-only consistency asserts - see code:CordbProcess::TargetConsistencyCheck
@@ -2506,39 +2505,12 @@ COM_METHOD CordbProcess::EnableExceptionCallbacksOutsideOfMyCode(BOOL enableExce
 
 COM_METHOD CordbProcess::InvokePauseCallback()
 {
-    HRESULT hr = S_OK;
-    PUBLIC_API_ENTRY(this);
-    ATT_REQUIRE_STOPPED_MAY_FAIL(this);
-    
-    EX_TRY
-    {
-        DebuggerIPCEvent * pIPCEvent = (DebuggerIPCEvent *) _alloca(CorDBIPC_BUFFER_SIZE);
-        InitIPCEvent(pIPCEvent, DB_IPCE_NETCF_HOST_CONTROL_PAUSE, true, VMPTR_AppDomain::NullPtr());
-
-        hr = m_cordb->SendIPCEvent(this, pIPCEvent, CorDBIPC_BUFFER_SIZE);
-        hr = WORST_HR(hr, pIPCEvent->hr);
-    } 
-    EX_CATCH_HRESULT(hr);
-    
-    return hr;
+    return S_OK;
 }
 
 COM_METHOD CordbProcess::InvokeResumeCallback()
 {
-    HRESULT hr = S_OK;
-    PUBLIC_API_ENTRY(this);
-    ATT_REQUIRE_STOPPED_MAY_FAIL(this);
-    
-    EX_TRY
-    {
-        DebuggerIPCEvent * pIPCEvent = (DebuggerIPCEvent *) _alloca(CorDBIPC_BUFFER_SIZE);
-        InitIPCEvent(pIPCEvent, DB_IPCE_NETCF_HOST_CONTROL_RESUME, true, VMPTR_AppDomain::NullPtr());
-
-        hr = m_cordb->SendIPCEvent(this, pIPCEvent, CorDBIPC_BUFFER_SIZE);
-        hr = WORST_HR(hr, pIPCEvent->hr);
-    } 
-    EX_CATCH_HRESULT(hr);
-    return hr;
+    return S_OK;
 }
 
 #endif
@@ -14463,13 +14435,12 @@ void ExitProcessWorkItem::Do()
         PUBLIC_CALLBACK_IN_THIS_SCOPE0_NO_LOCK(GetProcess());
         pCordb->m_managedCallback->ExitProcess(GetProcess());
     }
+
     // This CordbProcess object now has no reservations against a client calling ICorDebug::Terminate.
     // That call may race against the CordbProcess::Neuter below, but since we already neutered the children,
     // that neuter call will not do anything interesting that will conflict with Terminate.
     
-    
     LOG((LF_CORDB, LL_INFO1000,"W32ET::EP: returned from ExitProcess callback\n"));
-
 
     {
         RSLockHolder ch(GetProcess()->GetStopGoLock());
@@ -14623,6 +14594,10 @@ void CordbWin32EventThread::ExitProcess(bool fDetach)
     // and dispatch it inband w/the other callbacks.
     if (!fDetach)
     {
+#ifdef FEATURE_PAL
+        // Cleanup the transport pipe and semaphore files that might be left by the target (LS) process.
+        m_pNativePipeline->CleanupTargetProcess();
+#endif
         ExitProcessWorkItem * pItem = new (nothrow) ExitProcessWorkItem(m_pProcess);
         if (pItem != NULL)
         {

@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 //
 // File: stubs.cpp
 //
@@ -379,7 +378,7 @@ void ValidateWriteBarriers()
 // Update the instructions in our various write barrier implementations that refer directly to the values
 // of GC globals such as g_lowest_address and g_card_table. We don't particularly care which values have
 // changed on each of these callbacks, it's pretty cheap to refresh them all.
-void UpdateGCWriteBarriers(BOOL postGrow = false)
+void UpdateGCWriteBarriers(bool postGrow = false)
 {
     // Define a helper macro that abstracts the minutia of patching the instructions to access the value of a
     // particular GC global.
@@ -456,7 +455,7 @@ void UpdateGCWriteBarriers(BOOL postGrow = false)
     FlushInstructionCache(GetCurrentProcess(), pbAlteredRange, cbAlteredRange);
 }
 
-void StompWriteBarrierResize(BOOL bReqUpperBoundsCheck)
+void StompWriteBarrierResize(bool isRuntimeSuspended, bool bReqUpperBoundsCheck)
 {
     // The runtime is not always suspended when this is called (unlike StompWriteBarrierEphemeral) but we have
     // no way to update the barrier code atomically on ARM since each 32-bit value we change is loaded over
@@ -470,7 +469,7 @@ void StompWriteBarrierResize(BOOL bReqUpperBoundsCheck)
     GCStressPolicy::InhibitHolder iholder;
 
     bool fSuspended = false;
-    if (!g_fEEInit && !GCHeap::IsGCInProgress())
+    if (!isRuntimeSuspended)
     {
         ThreadSuspend::SuspendEE(ThreadSuspend::SUSPEND_OTHER);
         fSuspended = true;
@@ -482,9 +481,10 @@ void StompWriteBarrierResize(BOOL bReqUpperBoundsCheck)
         ThreadSuspend::RestartEE(FALSE, TRUE);
 }
 
-void StompWriteBarrierEphemeral(void)
+void StompWriteBarrierEphemeral(bool isRuntimeSuspended)
 {
-    _ASSERTE(GCHeap::IsGCInProgress() || g_fEEInit);
+    UNREFERENCED_PARAMETER(isRuntimeSuspended);
+    _ASSERTE(isRuntimeSuspended);
     UpdateGCWriteBarriers();
 }
 #endif // CROSSGEN_COMPILE
@@ -537,10 +537,22 @@ void LazyMachState::unwindLazyState(LazyMachState* baseState,
 #ifndef FEATURE_PAL
         pvControlPc = Thread::VirtualUnwindCallFrame(&ctx, &nonVolRegPtrs);
 #else // !FEATURE_PAL
-        PAL_VirtualUnwind(&ctx, &nonVolRegPtrs);
+#ifdef DACCESS_COMPILE
+        HRESULT hr = DacVirtualUnwind(threadId, &ctx, &nonVolRegPtrs);
+        if (FAILED(hr))
+        {
+            DacError(hr);
+        }
+#else // DACCESS_COMPILE
+        BOOL success = PAL_VirtualUnwind(&ctx, &nonVolRegPtrs);
+        if (!success)
+        {
+            _ASSERTE(!"unwindLazyState: Unwinding failed");
+            EEPOLICY_HANDLE_FATAL_ERROR(COR_E_EXECUTIONENGINE);
+        }
+#endif // DACCESS_COMPILE
         pvControlPc = GetIP(&ctx);
 #endif // !FEATURE_PAL
-
         if (funCallDepth > 0)
         {
             --funCallDepth;
@@ -2638,7 +2650,7 @@ void InitJITHelpers1()
         ))
     {
 
-        _ASSERTE(GCHeap::UseAllocationContexts());
+        _ASSERTE(GCHeapUtilities::UseAllocationContexts());
         // If the TLS for Thread is low enough use the super-fast helpers
         if (gThreadTLSIndex < TLS_MINIMUM_AVAILABLE)
         {
@@ -3922,6 +3934,13 @@ PCODE DynamicHelpers::CreateHelperWithTwoArgs(LoaderAllocator * pAllocator, TADD
     END_DYNAMIC_HELPER_EMIT();
 }
 
+PCODE DynamicHelpers::CreateDictionaryLookupHelper(LoaderAllocator * pAllocator, CORINFO_RUNTIME_LOOKUP * pLookup, DWORD dictionaryIndexAndSlot, Module * pModule)
+{
+    STANDARD_VM_CONTRACT;
+
+    // TODO (NYI)
+    ThrowHR(E_NOTIMPL);
+}
 #endif // FEATURE_READYTORUN
 
 #endif // CROSSGEN_COMPILE

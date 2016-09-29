@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 
 // NOTE on Frame Size C_ASSERT usage in this file 
@@ -3639,7 +3638,7 @@ extern "C" VOID __cdecl DebugCheckStubUnwindInfoWorker (CONTEXT *pStubContext)
         LOG((LF_STUBS, LL_INFO1000000, "pc %p, sp %p\n", ControlPc, GetSP(&ctx)));
 
         ULONG64 ImageBase;
-        RUNTIME_FUNCTION *pFunctionEntry = RtlLookupFunctionEntry(
+        T_RUNTIME_FUNCTION *pFunctionEntry = RtlLookupFunctionEntry(
                 ControlPc,
                 &ImageBase,
                 NULL);
@@ -5920,8 +5919,8 @@ void TailCallFrame::GcScanRoots(promote_func *fn, ScanContext* sc)
                     atEnd = (offsetEnd & 1);
                     offsetEnd = (offsetEnd & ~1) << 1;
                     // range encoding starts with a range of 3 (2 is better to encode as
-                    // 2 offsets), so 0 == 3
-                    offsetEnd += sizeof(void*) * 3;
+                    // 2 offsets), so 0 == 2 (the last offset in the range)
+                    offsetEnd += sizeof(void*) * 2;
                     rangeEnd = prevOffset - offsetEnd;
                 }
 
@@ -6049,8 +6048,8 @@ static void EncodeGCOffsets(CPUSTUBLINKER *pSl, /* const */ ULONGARRAY & gcOffse
             {
                 EncodeOneGCOffset(pSl, delta, FALSE, TRUE, last); 
                 i = j - 1;
-                _ASSERTE(rangeOffset >= (offset + (sizeof(void*) * 3)));
-                delta = rangeOffset - (offset + (sizeof(void*) * 3));
+                _ASSERTE(rangeOffset >= (offset + (sizeof(void*) * 2)));
+                delta = rangeOffset - (offset + (sizeof(void*) * 2));
                 offset = rangeOffset;
             }
         }

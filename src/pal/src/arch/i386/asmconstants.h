@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 #ifdef BIT64
 
@@ -14,6 +13,8 @@
 #define CONTEXT_DEBUG_REGISTERS 16 // Dr0-Dr3 and Dr6-Dr7
 
 #define CONTEXT_FULL (CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_FLOATING_POINT)
+
+#define CONTEXT_XSTATE 64
 
 #define CONTEXT_ContextFlags 6*8
 #define CONTEXT_SegCs CONTEXT_ContextFlags+8
@@ -48,7 +49,7 @@
 #define CONTEXT_Rip CONTEXT_R15+8
 #define CONTEXT_FltSave CONTEXT_Rip+8
 #define FLOATING_SAVE_AREA_SIZE 4*8+24*16+96
-#define CONTEXT_Xmm0 CONTEXT_FltSave+FLOATING_SAVE_AREA_SIZE // was 10*16
+#define CONTEXT_Xmm0 CONTEXT_FltSave+10*16
 #define CONTEXT_Xmm1 CONTEXT_Xmm0+16
 #define CONTEXT_Xmm2 CONTEXT_Xmm1+16
 #define CONTEXT_Xmm3 CONTEXT_Xmm2+16
@@ -64,7 +65,7 @@
 #define CONTEXT_Xmm13 CONTEXT_Xmm12+16
 #define CONTEXT_Xmm14 CONTEXT_Xmm13+16
 #define CONTEXT_Xmm15 CONTEXT_Xmm14+16
-#define CONTEXT_VectorRegister CONTEXT_Xmm15+16
+#define CONTEXT_VectorRegister CONTEXT_FltSave+FLOATING_SAVE_AREA_SIZE
 #define CONTEXT_VectorControl CONTEXT_VectorRegister+16*26
 #define CONTEXT_DebugControl CONTEXT_VectorControl+8
 #define CONTEXT_LastBranchToRip CONTEXT_DebugControl+8

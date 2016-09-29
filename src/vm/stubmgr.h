@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 // StubMgr.h
 //
 
@@ -934,7 +933,7 @@ public:
 #elif defined(_TARGET_ARM_)
         return pContext->R12;
 #elif defined(_TARGET_ARM64_)
-        return pContext->X15;
+        return pContext->X12;
 #else
         PORTABILITY_ASSERT("StubManagerHelpers::GetHiddenArg");
         return NULL;

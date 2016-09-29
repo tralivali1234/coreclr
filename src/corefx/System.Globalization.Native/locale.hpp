@@ -1,18 +1,8 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 #include "unicode/locid.h"
-
-/*
-PAL Function:
-GetLocaleName
-
-Obtains a canonical locale name given a user-specified locale name
-Returns 1 for success, 0 otherwise
-*/
-extern "C" int32_t GetLocaleName(const UChar* localeName, UChar* value, int32_t valueLength);
 
 /*
 Function:
@@ -51,3 +41,12 @@ Replace underscores with hyphens to interop with existing .NET code.
 Returns the length of the string.
 */
 int FixupLocaleName(UChar* value, int32_t valueLength);
+
+/*
+Function:
+DetectDefaultLocaleName
+
+Detect the default locale for the machine, defaulting to Invaraint if
+we can't compute one (different from uloc_getDefault()) would do.
+*/
+const char* DetectDefaultLocaleName();

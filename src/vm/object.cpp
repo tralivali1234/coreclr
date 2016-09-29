@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 //
 // OBJECT.CPP
 //
@@ -18,7 +17,7 @@
 #include "threads.h"
 #include "excep.h"
 #include "eeconfig.h"
-#include "gc.h"
+#include "gcheaputilities.h"
 #ifdef FEATURE_REMOTING
 #include "remoting.h"
 #endif
@@ -244,7 +243,7 @@ TypeHandle Object::GetGCSafeTypeHandleIfPossible() const
     // 
     // where MyRefType2's module was unloaded by the time the GC occurred. In at least
     // one case, the GC was caused by the AD unload itself (AppDomain::Unload ->
-    // AppDomain::Exit -> GCInterface::AddMemoryPressure -> WKS::GCHeap::GarbageCollect).
+    // AppDomain::Exit -> GCInterface::AddMemoryPressure -> WKS::GCHeapUtilities::GarbageCollect).
     // 
     // To protect against all scenarios, verify that
     // 
@@ -409,6 +408,31 @@ void Object::SetAppDomain(AppDomain *pDomain)
     _ASSERTE(GetHeader()->GetAppDomainIndex().m_dwIndex != 0);
 }
 
+BOOL Object::SetAppDomainNoThrow()
+{
+    CONTRACTL
+    {
+        NOTHROW;
+        GC_NOTRIGGER;
+        SO_INTOLERANT;
+    }
+    CONTRACTL_END;
+
+    BOOL success = FALSE;
+
+    EX_TRY
+    {
+        SetAppDomain();
+        success = TRUE;
+    }
+    EX_CATCH
+    {
+        _ASSERTE (!"Exception happened during Object::SetAppDomain");
+    }
+    EX_END_CATCH(RethrowTerminalExceptions)
+
+    return success;
+}
 
 AppDomain *Object::GetAppDomain()
 {
@@ -1740,9 +1764,9 @@ VOID Object::ValidateInner(BOOL bDeep, BOOL bVerifyNextHeader, BOOL bVerifySyncB
         BOOL bSmallObjectHeapPtr = FALSE, bLargeObjectHeapPtr = FALSE;
         if (!noRangeChecks)
         {
-            bSmallObjectHeapPtr = GCHeap::GetGCHeap()->IsHeapPointer(this, TRUE);
+            bSmallObjectHeapPtr = GCHeapUtilities::GetGCHeap()->IsHeapPointer(this, TRUE);
             if (!bSmallObjectHeapPtr)
-                bLargeObjectHeapPtr = GCHeap::GetGCHeap()->IsHeapPointer(this);
+                bLargeObjectHeapPtr = GCHeapUtilities::GetGCHeap()->IsHeapPointer(this);
                 
             CHECK_AND_TEAR_DOWN(bSmallObjectHeapPtr || bLargeObjectHeapPtr);
         }
@@ -1757,7 +1781,7 @@ VOID Object::ValidateInner(BOOL bDeep, BOOL bVerifyNextHeader, BOOL bVerifySyncB
         lastTest = 4;
 
         if (bDeep && (g_pConfig->GetHeapVerifyLevel() & EEConfig::HEAPVERIFY_GC)) {
-            GCHeap::GetGCHeap()->ValidateObjectMember(this);
+            GCHeapUtilities::GetGCHeap()->ValidateObjectMember(this);
         }
 
         lastTest = 5;
@@ -1766,7 +1790,7 @@ VOID Object::ValidateInner(BOOL bDeep, BOOL bVerifyNextHeader, BOOL bVerifySyncB
         // we skip checking noRangeChecks since if skipping
         // is enabled bSmallObjectHeapPtr will always be false.
         if (bSmallObjectHeapPtr) {
-            CHECK_AND_TEAR_DOWN(!GCHeap::GetGCHeap()->IsObjectInFixedHeap(this));
+            CHECK_AND_TEAR_DOWN(!GCHeapUtilities::GetGCHeap()->IsObjectInFixedHeap(this));
         }
 
         lastTest = 6;
@@ -1789,11 +1813,11 @@ VOID Object::ValidateInner(BOOL bDeep, BOOL bVerifyNextHeader, BOOL bVerifySyncB
         // try to validate next object's header
         if (bDeep 
             && bVerifyNextHeader 
-            && CNameSpace::GetGcRuntimeStructuresValid ()
+            && GCScan::GetGcRuntimeStructuresValid ()
             //NextObj could be very slow if concurrent GC is going on
-            && !(GCHeap::IsGCHeapInitialized() && GCHeap::GetGCHeap ()->IsConcurrentGCInProgress ()))
+            && !(GCHeapUtilities::IsGCHeapInitialized() && GCHeapUtilities::GetGCHeap ()->IsConcurrentGCInProgress ()))
         {
-            Object * nextObj = GCHeap::GetGCHeap ()->NextObj (this);
+            Object * nextObj = GCHeapUtilities::GetGCHeap ()->NextObj (this);
             if ((nextObj != NULL) &&
                 (nextObj->GetGCSafeMethodTable() != g_pFreeObjectMethodTable))
             {
@@ -1925,7 +1949,7 @@ STRINGREF StringObject::NewString(const WCHAR *pwsz)
         // pinning and then later put into a struct and that struct is
         // then marshalled to managed.  
         //
-        _ASSERTE(!GCHeap::GetGCHeap()->IsHeapPointer((BYTE *) pwsz) ||
+        _ASSERTE(!GCHeapUtilities::GetGCHeap()->IsHeapPointer((BYTE *) pwsz) ||
                  !"pwsz can not point to GC Heap");
 #endif // 0
 
@@ -1964,7 +1988,7 @@ STRINGREF StringObject::NewString(const WCHAR *pwsz, int length) {
         // pinning and then later put into a struct and that struct is
         // then marshalled to managed.  
         //
-        _ASSERTE(!GCHeap::GetGCHeap()->IsHeapPointer((BYTE *) pwsz) ||
+        _ASSERTE(!GCHeapUtilities::GetGCHeap()->IsHeapPointer((BYTE *) pwsz) ||
                  !"pwsz can not point to GC Heap");
 #endif // 0
         STRINGREF pString = AllocateString(length);
@@ -2097,9 +2121,11 @@ STRINGREF __stdcall StringObject::StringInitCharHelper(LPCSTR pszSource, int len
     if (!pszSource || length == 0) {
         return StringObject::GetEmptyString();
     }
+#ifndef FEATURE_PAL
     else if ((size_t)pszSource < 64000) {
         COMPlusThrow(kArgumentException, W("Arg_MustBeStringPtrNotAtom"));
     }    
+#endif // FEATURE_PAL
 
     // Make sure we can read from the pointer.
     // This is better than try to read from the pointer and catch the access violation exceptions.
@@ -2640,7 +2666,7 @@ OBJECTREF::OBJECTREF(const OBJECTREF & objref)
     // !!! Either way you need to fix the code.
     _ASSERTE(Thread::IsObjRefValid(&objref));
     if ((objref.m_asObj != 0) &&
-        ((GCHeap*)GCHeap::GetGCHeap())->IsHeapPointer( (BYTE*)this ))
+        ((IGCHeap*)GCHeapUtilities::GetGCHeap())->IsHeapPointer( (BYTE*)this ))
     {
         _ASSERTE(!"Write Barrier violation. Must use SetObjectReference() to assign OBJECTREF's into the GC heap!");
     }
@@ -2694,7 +2720,7 @@ OBJECTREF::OBJECTREF(Object *pObject)
     DEBUG_ONLY_FUNCTION;
     
     if ((pObject != 0) &&
-        ((GCHeap*)GCHeap::GetGCHeap())->IsHeapPointer( (BYTE*)this ))
+        ((IGCHeap*)GCHeapUtilities::GetGCHeap())->IsHeapPointer( (BYTE*)this ))
     {
         _ASSERTE(!"Write Barrier violation. Must use SetObjectReference() to assign OBJECTREF's into the GC heap!");
     }
@@ -2877,7 +2903,7 @@ OBJECTREF& OBJECTREF::operator=(const OBJECTREF &objref)
     _ASSERTE(Thread::IsObjRefValid(&objref));
 
     if ((objref.m_asObj != 0) &&
-        ((GCHeap*)GCHeap::GetGCHeap())->IsHeapPointer( (BYTE*)this ))
+        ((IGCHeap*)GCHeapUtilities::GetGCHeap())->IsHeapPointer( (BYTE*)this ))
     {
         _ASSERTE(!"Write Barrier violation. Must use SetObjectReference() to assign OBJECTREF's into the GC heap!");
     }
@@ -2924,14 +2950,14 @@ void* __cdecl GCSafeMemCpy(void * dest, const void * src, size_t len)
     {
         Thread* pThread = GetThread();
 
-        // GCHeap::IsHeapPointer has race when called in preemptive mode. It walks the list of segments
+        // GCHeapUtilities::IsHeapPointer has race when called in preemptive mode. It walks the list of segments
         // that can be modified by GC. Do the check below only if it is safe to do so.
         if (pThread != NULL && pThread->PreemptiveGCDisabled())
         {
             // Note there is memcpyNoGCRefs which will allow you to do a memcpy into the GC
             // heap if you really know you don't need to call the write barrier
 
-            _ASSERTE(!GCHeap::GetGCHeap()->IsHeapPointer((BYTE *) dest) ||
+            _ASSERTE(!GCHeapUtilities::GetGCHeap()->IsHeapPointer((BYTE *) dest) ||
                      !"using memcpy to copy into the GC heap, use CopyValueClass");
         }
     }

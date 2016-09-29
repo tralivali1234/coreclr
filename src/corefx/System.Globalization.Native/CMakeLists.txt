@@ -26,29 +26,15 @@ if(NOT CLR_CMAKE_PLATFORM_DARWIN)
         message(FATAL_ERROR "Cannot find libicui18n, try installing libicu-dev (or the appropriate package for your platform)")
         return()
     endif()
-
-    set(CMAKE_REQUIRED_INCLUDES ${ICU_HOMEBREW_INC_PATH})
-    CHECK_CXX_SOURCE_COMPILES("
-     #include <unicode/udat.h>
-     int main() { UDateFormatSymbolType e = UDAT_STANDALONE_SHORTER_WEEKDAYS; }
-    " HAVE_UDAT_STANDALONE_SHORTER_WEEKDAYS)
-
-    if(HAVE_UDAT_STANDALONE_SHORTER_WEEKDAYS)
-        add_definitions(-DHAVE_UDAT_STANDALONE_SHORTER_WEEKDAYS=1)
-    endif(HAVE_UDAT_STANDALONE_SHORTER_WEEKDAYS)
-
 else()
-
     find_library(ICUCORE icucore)
     if(ICUI18N STREQUAL ICUCORE-NOTFOUND)
         message(FATAL_ERROR "Cannot find libicucore, skipping build for System.Globalization.Native. .NET globalization is not expected to function.")
         return()
     endif()
-
-    # libicucore supports UDAT_STANDALONE_SHORTER_WEEKDAYS
-    add_definitions(-DHAVE_UDAT_STANDALONE_SHORTER_WEEKDAYS=1)
-
 endif()
+
+include(configure.cmake)
 
 add_compile_options(-fPIC)
 
@@ -66,7 +52,7 @@ set(NATIVEGLOBALIZATION_SOURCES
 
 include_directories(${UTYPES_H})
 
-add_library(System.Globalization.Native
+_add_library(System.Globalization.Native
     SHARED
     ${NATIVEGLOBALIZATION_SOURCES}
 )
@@ -87,4 +73,5 @@ else()
     add_definitions(-DU_DISABLE_RENAMING=1)
 endif()
 
-install (TARGETS System.Globalization.Native DESTINATION .)
+# add the install targets
+install_clr(System.Globalization.Native)

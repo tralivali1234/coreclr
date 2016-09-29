@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 // METASIG.H
 //
 
@@ -676,8 +675,14 @@ DEFINE_METASIG(SM(RefObject_Object_Object_RetObject, r(j) j j, j))
 DEFINE_METASIG_T(SM(RefCleanupWorkList_RetVoid, r(C(CLEANUP_WORK_LIST)), v))
 DEFINE_METASIG_T(SM(RefCleanupWorkList_SafeHandle_RetIntPtr, r(C(CLEANUP_WORK_LIST)) C(SAFE_HANDLE), I))
 
-DEFINE_METASIG_T(IM(RuntimeTypeHandle_RefException_RetBool, g(RT_TYPE_HANDLE) r(C(EXCEPTION)), F))
-DEFINE_METASIG_T(IM(RuntimeTypeHandle_RetRuntimeTypeHandle, g(RT_TYPE_HANDLE), g(RT_TYPE_HANDLE)))
+#ifdef FEATURE_ICASTABLE
+DEFINE_METASIG_T(SM(ICastable_RtType_RefException_RetBool, C(ICASTABLE) C(CLASS) r(C(EXCEPTION)), F))
+DEFINE_METASIG_T(SM(ICastable_RtType_RetRtType, C(ICASTABLE) C(CLASS), C(CLASS)))
+#endif // FEATURE_ICASTABLE
+
+DEFINE_METASIG_T(IM(ArrByte_Int_Int_AsyncCallback_Object_RetIAsyncResult, a(b) i i C(ASYNCCALLBACK) j, C(IASYNCRESULT)))
+DEFINE_METASIG_T(IM(IAsyncResult_RetInt, C(IASYNCRESULT), i))
+DEFINE_METASIG_T(IM(IAsyncResult_RetVoid, C(IASYNCRESULT), v))
 
 // Undefine macros in case we include the file again in the compilation unit
 

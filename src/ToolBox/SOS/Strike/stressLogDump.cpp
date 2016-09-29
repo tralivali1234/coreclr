@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information. 
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 // ==++==
 // 
@@ -21,10 +20,8 @@
 #include "stresslog.h"
 
 
-#ifndef FEATURE_PAL
 void GcHistClear();
 void GcHistAddLog(LPCSTR msg, StressMsg* stressMsg);
-#endif
 
 
 /*********************************************************************************/
@@ -335,12 +332,7 @@ HRESULT StressLog::Dump(ULONG64 outProcLog, const char* fileName, struct IDebugD
 
     if (bDoGcHist)
     {
-#ifdef FEATURE_PAL
-        ExtOut ("GC history not supported\n");
-        return S_FALSE;
-#else
         GcHistClear();
-#endif
     }
     else
     {
@@ -432,7 +424,7 @@ HRESULT StressLog::Dump(ULONG64 outProcLog, const char* fileName, struct IDebugD
         threadCtr++;
     }
 
-    if (!bDoGcHist && ((file = fopen(fileName, "w")) != NULL))
+    if (!bDoGcHist && ((file = fopen(fileName, "w")) == NULL))
     {
         hr = GetLastError();
         goto FREE_MEM;
@@ -497,13 +489,11 @@ HRESULT StressLog::Dump(ULONG64 outProcLog, const char* fileName, struct IDebugD
             double deltaTime = ((double) (latestMsg->timeStamp - inProcLog.startTimeStamp)) / inProcLog.tickFrequency;
             if (bDoGcHist)
             {
-#ifndef FEATURE_PAL
                 if (strcmp(format, ThreadStressLog::TaskSwitchMsg()) == 0)
                 {
                     latestLog->threadId = (unsigned)(size_t)latestMsg->args[0];
                 }
                 GcHistAddLog(format, latestMsg);                                
-#endif // FEATURE_PAL
             }
             else
             {

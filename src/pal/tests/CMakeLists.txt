@@ -10,7 +10,6 @@ endif()
 
 # Compile options
 add_definitions(-DPLATFORM_UNIX=1)
-add_definitions(-D__LINUX__=1)
 add_definitions(-DLP64COMPATIBLE=1)
 add_definitions(-DFEATURE_PAL=1)
 add_definitions(-DCORECLR=1)
@@ -20,7 +19,6 @@ if(PAL_CMAKE_PLATFORM_ARCH_AMD64)
   add_definitions(-D_WIN64=1)
 elseif(PAL_CMAKE_PLATFORM_ARCH_ARM)
   add_definitions(-DBIT32=1)
-  add_definitions(-D_WIN32=1)
 elseif(PAL_CMAKE_PLATFORM_ARCH_ARM64)
   add_definitions(-DBIT64=1)
   add_definitions(-D_WIN64=1)
@@ -28,7 +26,12 @@ else()
   message(FATAL_ERROR "Only ARM, ARM64 and AMD64 is supported")
 endif()
 
+# C++ emits errors and warnings for c-string literal fed into char* parameter
+# this is just to take care of the warnings
+add_compile_options(-Wno-writable-strings)
+
 add_compile_options(-Wno-empty-body)
 
 add_subdirectory(palsuite)
+
 

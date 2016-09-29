@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information. 
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 /*++
 
@@ -27,6 +26,7 @@ Revision History:
 #include "pal/cruntime.h"
 #include "pal/locale.h"
 #include "pal/printfcpp.hpp"
+#include "pal/thread.hpp"
 
 /* clip strings (%s, %S) at this number of characters */
 #define MAX_STR_LEN 300
@@ -281,7 +281,7 @@ INT Silent_PAL_vsnprintf(LPSTR Buffer, INT Count, LPCSTR Format, va_list aparg)
                     }                                     
                     va_list apcopy;
                     va_copy(apcopy, ap);
-                    TempInt = PAL__vsnprintf(BufferPtr, TempCount, TempBuff, apcopy);
+                    TempInt = InternalVsnprintf(CorUnix::InternalGetCurrentThread(), BufferPtr, TempCount, TempBuff, apcopy);
                     va_end(apcopy);
                     PAL_printf_arg_remover(&ap, Width, Precision, Type, Prefix);
                 }
@@ -988,4 +988,3 @@ size_t Silent_PAL_wcslen(const wchar_16 *string)
     
     return nChar;
 }
-

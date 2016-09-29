@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 //*****************************************************************************
 // File: module.cpp
@@ -2569,8 +2568,9 @@ HRESULT CordbModule::CreateReaderForInMemorySymbols(REFIID riid, void** ppObj)
 #ifndef FEATURE_PAL
             // PDB format - use diasymreader.dll with COM activation
             InlineSString<_MAX_PATH> ssBuf;
+            IfFailThrow(GetHModuleDirectory(GetModuleInst(), ssBuf));
             IfFailThrow(FakeCoCreateInstanceEx(CLSID_CorSymBinder_SxS,
-                                               GetHModuleDirectory(GetModuleInst(), ssBuf).GetUnicode(),
+                                               ssBuf.GetUnicode(),
                                                IID_ISymUnmanagedBinder,
                                                (void**)&pBinder,
                                                NULL));
@@ -4114,9 +4114,9 @@ HRESULT CordbNativeCode::GetReturnValueLiveOffset(ULONG32 ILoffset, ULONG32 buff
 int CordbNativeCode::GetCallInstructionLength(BYTE *ip, ULONG32 count)
 {
 #if defined(DBG_TARGET_ARM)
-    return E_NOTIMPL;
+    return MAX_INSTRUCTION_LENGTH;
 #elif defined(DBG_TARGET_ARM64)
-    return E_NOTIMPL;
+    return MAX_INSTRUCTION_LENGTH;
 #elif defined(DBG_TARGET_X86)
     if (count < 2)
         return -1;

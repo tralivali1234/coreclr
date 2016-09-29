@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information. 
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 /*++
 
@@ -20,8 +19,10 @@ Abstract:
 
 --*/
 
-#include "pal/palinternal.h"
 #include "pal/dbgmsg.h"
+SET_DEFAULT_DEBUG_CHANNEL(THREAD); // some headers have code with asserts, so do this first
+
+#include "pal/palinternal.h"
 #include "pal/context.h"
 #include "pal/debug.h"
 #include "pal/thread.hpp"
@@ -30,7 +31,7 @@ Abstract:
 #include <errno.h>
 #include <unistd.h>
 
-SET_DEFAULT_DEBUG_CHANNEL(DEBUG);
+extern PGET_GCMARKER_EXCEPTION_CODE g_getGcMarkerExceptionCode;
 
 // in context2.S
 extern void CONTEXT_CaptureContext(LPCONTEXT lpContext);
@@ -49,10 +50,17 @@ extern void CONTEXT_CaptureContext(LPCONTEXT lpContext);
 
 #if !HAVE_MACH_EXCEPTIONS
 
-#if HAVE_BSD_REGS_T
+#ifndef __GLIBC__
+typedef int __ptrace_request;
+#endif
+
+#if HAVE_MACHINE_REG_H
 #include <machine/reg.h>
+#endif  // HAVE_MACHINE_REG_H
+#if HAVE_MACHINE_NPX_H
 #include <machine/npx.h>
-#endif  // HAVE_BSD_REGS_T
+#endif  // HAVE_MACHINE_NPX_H
+
 #if HAVE_PT_REGS
 #include <asm/ptrace.h>
 #endif  // HAVE_PT_REGS
@@ -173,11 +181,11 @@ Abstract
 
 Parameter
   processId: process ID
-  registers: reg structure in which the machine registers value will be returned.
+  lpContext: context structure in which the machine registers value will be returned.
 Return
  returns TRUE if it succeeds, FALSE otherwise
 --*/
-BOOL CONTEXT_GetRegisters(DWORD processId, ucontext_t *registers)
+BOOL CONTEXT_GetRegisters(DWORD processId, LPCONTEXT lpContext)
 {
 #if HAVE_BSD_REGS_T
     int regFd = -1;
@@ -186,52 +194,17 @@ BOOL CONTEXT_GetRegisters(DWORD processId, ucontext_t *registers)
 
     if (processId == GetCurrentProcessId()) 
     {
-#if HAVE_GETCONTEXT
-        if (getcontext(registers) != 0)
-        {
-            ASSERT("getcontext() failed %d (%s)\n", errno, strerror(errno));
-            return FALSE;
-        }
-#elif HAVE_BSD_REGS_T
-        char buf[MAX_PATH];
-        struct reg bsd_registers;
-
-        sprintf_s(buf, sizeof(buf), "/proc/%d/regs", processId);
-
-        if ((regFd = PAL__open(buf, O_RDONLY)) == -1) 
-        {
-          ASSERT("PAL__open() failed %d (%s) \n", errno, strerror(errno));
-          return FALSE;
-        }
-
-        if (lseek(regFd, 0, 0) == -1)
-        {
-            ASSERT("lseek() failed %d (%s)\n", errno, strerror(errno));
-            goto EXIT;
-        }
-
-        if (read(regFd, &bsd_registers, sizeof(bsd_registers)) != sizeof(bsd_registers))
-        {
-            ASSERT("read() failed %d (%s)\n", errno, strerror(errno));
-            goto EXIT;
-        }
-
-#define ASSIGN_REG(reg) MCREG_##reg(registers->uc_mcontext) = BSDREG_##reg(bsd_registers);
-        ASSIGN_ALL_REGS
-#undef ASSIGN_REG
-
-#else
-#error "Don't know how to get current context on this platform!"
-#endif
+        CONTEXT_CaptureContext(lpContext);
     }
     else
     {
+        ucontext_t registers;
 #if HAVE_PT_REGS
         struct pt_regs ptrace_registers;
         if (ptrace((__ptrace_request)PT_GETREGS, processId, (caddr_t) &ptrace_registers, 0) == -1)
 #elif HAVE_BSD_REGS_T
         struct reg ptrace_registers;
-        if (ptrace(PT_GETREGS, processId, (caddr_t) &ptrace_registers, 0) == -1)
+        if (PAL_PTRACE(PT_GETREGS, processId, &ptrace_registers, 0) == -1)
 #endif
         {
             ASSERT("Failed ptrace(PT_GETREGS, processId:%d) errno:%d (%s)\n",
@@ -239,9 +212,9 @@ BOOL CONTEXT_GetRegisters(DWORD processId, ucontext_t *registers)
         }
 
 #if HAVE_PT_REGS
-#define ASSIGN_REG(reg) MCREG_##reg(registers->uc_mcontext) = PTREG_##reg(ptrace_registers);
+#define ASSIGN_REG(reg) MCREG_##reg(registers.uc_mcontext) = PTREG_##reg(ptrace_registers);
 #elif HAVE_BSD_REGS_T
-#define ASSIGN_REG(reg) MCREG_##reg(registers->uc_mcontext) = BSDREG_##reg(ptrace_registers);
+#define ASSIGN_REG(reg) MCREG_##reg(registers.uc_mcontext) = BSDREG_##reg(ptrace_registers);
 #else
 #define ASSIGN_REG(reg)
 	ASSERT("Don't know how to get the context of another process on this platform!");
@@ -249,11 +222,12 @@ BOOL CONTEXT_GetRegisters(DWORD processId, ucontext_t *registers)
 #endif
         ASSIGN_ALL_REGS
 #undef ASSIGN_REG
+
+        CONTEXTFromNativeContext(&registers, lpContext, lpContext->ContextFlags);
     }
     
     bRet = TRUE;
 #if HAVE_BSD_REGS_T
-EXIT :
     if (regFd != -1)
     {
         close(regFd);
@@ -275,7 +249,6 @@ CONTEXT_GetThreadContext(
          LPCONTEXT lpContext)
 {    
     BOOL ret = FALSE;
-    ucontext_t registers;
 
     if (lpContext == NULL)
     {
@@ -317,13 +290,11 @@ CONTEXT_GetThreadContext(
     if (lpContext->ContextFlags & 
         (CONTEXT_CONTROL | CONTEXT_INTEGER))
     {        
-        if (CONTEXT_GetRegisters(dwProcessId, &registers) == FALSE)
+        if (CONTEXT_GetRegisters(dwProcessId, lpContext) == FALSE)
         {
             SetLastError(ERROR_INTERNAL_ERROR);
             goto EXIT;
-        }
-
-        CONTEXTFromNativeContext(&registers, lpContext, lpContext->ContextFlags);        
+        }  
     }
 
     ret = TRUE;
@@ -382,7 +353,7 @@ CONTEXT_SetThreadContext(
 #if HAVE_PT_REGS
         if (ptrace((__ptrace_request)PT_GETREGS, dwProcessId, (caddr_t)&ptrace_registers, 0) == -1)
 #elif HAVE_BSD_REGS_T
-        if (ptrace(PT_GETREGS, dwProcessId, (caddr_t)&ptrace_registers, 0) == -1)
+        if (PAL_PTRACE(PT_GETREGS, dwProcessId, &ptrace_registers, 0) == -1)
 #endif
         {
             ASSERT("Failed ptrace(PT_GETREGS, processId:%d) errno:%d (%s)\n",
@@ -413,7 +384,7 @@ CONTEXT_SetThreadContext(
 #if HAVE_PT_REGS        
         if (ptrace((__ptrace_request)PT_SETREGS, dwProcessId, (caddr_t)&ptrace_registers, 0) == -1)
 #elif HAVE_BSD_REGS_T
-        if (ptrace(PT_SETREGS, dwProcessId, (caddr_t)&ptrace_registers, 0) == -1)
+        if (PAL_PTRACE(PT_SETREGS, dwProcessId, &ptrace_registers, 0) == -1)
 #endif
         {
             ASSERT("Failed ptrace(PT_SETREGS, processId:%d) errno:%d (%s)\n",
@@ -456,6 +427,20 @@ void CONTEXTToNativeContext(CONST CONTEXT *lpContext, native_context_t *native)
     }
 #undef ASSIGN_REG
 
+#if HAVE_GREGSET_T || HAVE_GREGSET_T
+#if HAVE_GREGSET_T
+    if (native->uc_mcontext.fpregs == nullptr)
+#elif HAVE___GREGSET_T
+    if (native->uc_mcontext.__fpregs == nullptr)
+#endif
+    {
+        // If the pointer to the floating point state in the native context
+        // is not valid, we can't copy floating point registers regardless of
+        // whether CONTEXT_FLOATING_POINT is set in the CONTEXT's flags.
+        return;
+    }
+#endif
+
     if ((lpContext->ContextFlags & CONTEXT_FLOATING_POINT) == CONTEXT_FLOATING_POINT)
     {
 #ifdef _AMD64_
@@ -471,15 +456,24 @@ void CONTEXTToNativeContext(CONST CONTEXT *lpContext, native_context_t *native)
 
         for (int i = 0; i < 8; i++)
         {
-            FPREG_St(native, i) = ((M128U*)lpContext->FltSave.FloatRegisters)[i];
+            FPREG_St(native, i) = lpContext->FltSave.FloatRegisters[i];
         }
 
         for (int i = 0; i < 16; i++)
         {
-            FPREG_Xmm(native, i) = ((M128U*)lpContext->FltSave.XmmRegisters)[i];
+            FPREG_Xmm(native, i) = lpContext->FltSave.XmmRegisters[i];
         }
 #endif
     }
+
+    // TODO: Enable for all Unix systems
+#if defined(_AMD64_) && defined(__linux__)
+    if ((lpContext->ContextFlags & CONTEXT_XSTATE) == CONTEXT_XSTATE)
+    {
+        _ASSERTE(FPREG_HasExtendedState(native));
+        memcpy_s(FPREG_Xstate_Ymmh(native), sizeof(M128A) * 16, lpContext->VectorRegister, sizeof(M128A) * 16);
+    }
+#endif // _AMD64_
 }
 
 /*++
@@ -507,6 +501,12 @@ void CONTEXTFromNativeContext(const native_context_t *native, LPCONTEXT lpContex
     if ((contextFlags & CONTEXT_CONTROL) == CONTEXT_CONTROL)
     {
         ASSIGN_CONTROL_REGS
+#ifdef _ARM_
+        // WinContext assumes that the least bit of Pc is always 1 (denoting thumb)
+        // although the pc value retrived from native context might not have set the least bit.
+        // This becomes especially problematic if the context is on the JIT_WRITEBARRIER.
+        lpContext->Pc |= 0x1;
+#endif
     }
 
     if ((contextFlags & CONTEXT_INTEGER) == CONTEXT_INTEGER)
@@ -514,7 +514,31 @@ void CONTEXTFromNativeContext(const native_context_t *native, LPCONTEXT lpContex
         ASSIGN_INTEGER_REGS
     }
 #undef ASSIGN_REG
-    
+
+#if HAVE_GREGSET_T || HAVE___GREGSET_T
+#if HAVE_GREGSET_T
+    if (native->uc_mcontext.fpregs == nullptr)
+#elif HAVE___GREGSET_T
+    if (native->uc_mcontext.__fpregs == nullptr)
+#endif
+    {
+        // Reset the CONTEXT_FLOATING_POINT bit(s) and the CONTEXT_XSTATE bit(s) so it's
+        // clear that the floating point and extended state data in the CONTEXT is not
+        // valid. Since these flags are defined as the architecture bit(s) OR'd with one
+        // or more other bits, we first get the bits that are unique to each by resetting
+        // the architecture bits. We determine what those are by inverting the union of
+        // CONTEXT_CONTROL and CONTEXT_INTEGER, both of which should also have the 
+        // architecture bit(s) set.
+        const ULONG floatingPointFlags = CONTEXT_FLOATING_POINT & ~(CONTEXT_CONTROL & CONTEXT_INTEGER);
+        const ULONG xstateFlags = CONTEXT_XSTATE & ~(CONTEXT_CONTROL & CONTEXT_INTEGER);
+
+        lpContext->ContextFlags &= ~(floatingPointFlags | xstateFlags);
+
+        // Bail out regardless of whether the caller wanted CONTEXT_FLOATING_POINT or CONTEXT_XSTATE
+        return;
+    }
+#endif
+
     if ((contextFlags & CONTEXT_FLOATING_POINT) == CONTEXT_FLOATING_POINT)
     {
 #ifdef _AMD64_
@@ -530,15 +554,33 @@ void CONTEXTFromNativeContext(const native_context_t *native, LPCONTEXT lpContex
 
         for (int i = 0; i < 8; i++)
         {
-            ((M128U*)lpContext->FltSave.FloatRegisters)[i] = FPREG_St(native, i);
+            lpContext->FltSave.FloatRegisters[i] = FPREG_St(native, i);
         }
 
         for (int i = 0; i < 16; i++)
         {
-            ((M128U*)lpContext->FltSave.XmmRegisters)[i] = FPREG_Xmm(native, i);
+            lpContext->FltSave.XmmRegisters[i] = FPREG_Xmm(native, i);
         }
 #endif
     }
+
+    // TODO: Enable for all Unix systems
+#if defined(_AMD64_) && defined(__linux__)
+    if ((contextFlags & CONTEXT_XSTATE) == CONTEXT_XSTATE)
+    {
+        if (FPREG_HasExtendedState(native))
+        {
+            memcpy_s(lpContext->VectorRegister, sizeof(M128A) * 16, FPREG_Xstate_Ymmh(native), sizeof(M128A) * 16);
+        }
+        else
+        {
+            // Reset the CONTEXT_XSTATE bit(s) so it's clear that the extended state data in
+            // the CONTEXT is not valid.
+            const ULONG xstateFlags = CONTEXT_XSTATE & ~(CONTEXT_CONTROL & CONTEXT_INTEGER);
+            lpContext->ContextFlags &= ~xstateFlags;
+        }
+    } 
+#endif // _AMD64_
 }
 
 /*++
@@ -589,6 +631,10 @@ Return value :
 DWORD CONTEXTGetExceptionCodeForSignal(const siginfo_t *siginfo,
                                        const native_context_t *context)
 {
+    // IMPORTANT NOTE: This function must not call any signal unsafe functions
+    // since it is called from signal handlers.
+    // That includes ASSERT and TRACE macros.
+
     switch (siginfo->si_signo)
     {
         case SIGILL:
@@ -640,6 +686,22 @@ DWORD CONTEXTGetExceptionCodeForSignal(const siginfo_t *siginfo,
                 case SEGV_MAPERR:   // Address not mapped to object
                 case SEGV_ACCERR:   // Invalid permissions for mapped object
                     return EXCEPTION_ACCESS_VIOLATION;
+
+#ifdef SI_KERNEL
+                case SI_KERNEL:
+                {
+                    // Identify privileged instructions that are not identified as such by the system
+                    if (g_getGcMarkerExceptionCode != nullptr)
+                    {
+                        DWORD exceptionCode = g_getGcMarkerExceptionCode(GetNativeContextPC(context));
+                        if (exceptionCode != 0)
+                        {
+                            return exceptionCode;
+                        }
+                    }
+                    return EXCEPTION_ACCESS_VIOLATION;
+                }
+#endif
                 default:
                     break;
             }
@@ -658,32 +720,33 @@ DWORD CONTEXTGetExceptionCodeForSignal(const siginfo_t *siginfo,
         case SIGTRAP:
             switch (siginfo->si_code)
             {
+#ifdef SI_KERNEL
                 case SI_KERNEL:
+#endif
                 case SI_USER:
                 case TRAP_BRKPT:    // Process breakpoint
                     return EXCEPTION_BREAKPOINT;
                 case TRAP_TRACE:    // Process trace trap
                     return EXCEPTION_SINGLE_STEP;
                 default:
-                    // We don't want to use ASSERT here since it raises SIGTRAP and we
-                    // might again end up here resulting in an infinite loop! 
-                    // so, we print out an error message and return 
-                    DBG_PRINTF(DLI_ASSERT, defdbgchan, TRUE) 
-                    ("Got unknown SIGTRAP signal (%d) with code %d\n", SIGTRAP, siginfo->si_code);
-
+                    // Got unknown SIGTRAP signal with code siginfo->si_code;
                     return EXCEPTION_ILLEGAL_INSTRUCTION;
             }
         default:
             break;
     }
-    ASSERT("Got unknown signal number %d with code %d\n",
-           siginfo->si_signo, siginfo->si_code);
+
+    // Got unknown signal number siginfo->si_signo with code siginfo->si_code;
     return EXCEPTION_ILLEGAL_INSTRUCTION;
 }
 #else   // ILL_ILLOPC
 DWORD CONTEXTGetExceptionCodeForSignal(const siginfo_t *siginfo,
                                        const native_context_t *context)
 {
+    // IMPORTANT NOTE: This function must not call any signal unsafe functions
+    // since it is called from signal handlers.
+    // That includes ASSERT and TRACE macros.
+
     int trap;
 
     if (siginfo->si_signo == SIGFPE)
@@ -692,48 +755,24 @@ DWORD CONTEXTGetExceptionCodeForSignal(const siginfo_t *siginfo,
         switch (siginfo->si_code)
         {
             case FPE_INTDIV :
-                TRACE("Got signal SIGFPE:FPE_INTDIV; raising "
-                      "EXCEPTION_INT_DIVIDE_BY_ZERO\n");
                 return EXCEPTION_INT_DIVIDE_BY_ZERO;
-                break;
             case FPE_INTOVF :
-                TRACE("Got signal SIGFPE:FPE_INTOVF; raising "
-                      "EXCEPTION_INT_OVERFLOW\n");
                 return EXCEPTION_INT_OVERFLOW;
-                break;
             case FPE_FLTDIV :
-                TRACE("Got signal SIGFPE:FPE_FLTDIV; raising "
-                      "EXCEPTION_FLT_DIVIDE_BY_ZERO\n");
                 return EXCEPTION_FLT_DIVIDE_BY_ZERO;
-                break;
             case FPE_FLTOVF :
-                TRACE("Got signal SIGFPE:FPE_FLTOVF; raising "
-                      "EXCEPTION_FLT_OVERFLOW\n");
                 return EXCEPTION_FLT_OVERFLOW;
-                break;
             case FPE_FLTUND :
-                TRACE("Got signal SIGFPE:FPE_FLTUND; raising "
-                      "EXCEPTION_FLT_UNDERFLOW\n");
                 return EXCEPTION_FLT_UNDERFLOW;
-                break;
             case FPE_FLTRES :
-                TRACE("Got signal SIGFPE:FPE_FLTRES; raising "
-                      "EXCEPTION_FLT_INEXACT_RESULT\n");
                 return EXCEPTION_FLT_INEXACT_RESULT;
-                break;
             case FPE_FLTINV :
-                TRACE("Got signal SIGFPE:FPE_FLTINV; raising "
-                      "EXCEPTION_FLT_INVALID_OPERATION\n");
                 return EXCEPTION_FLT_INVALID_OPERATION;
-                break;
             case FPE_FLTSUB :/* subscript out of range */
-                TRACE("Got signal SIGFPE:FPE_FLTSUB; raising "
-                      "EXCEPTION_FLT_INVALID_OPERATION\n");
                 return EXCEPTION_FLT_INVALID_OPERATION;
-                break;
             default:
-                ASSERT("Got unknown signal code %d\n", siginfo->si_code);
-                break;
+                // Got unknown signal code siginfo->si_code;
+                return 0;
         }
     }
 
@@ -741,71 +780,52 @@ DWORD CONTEXTGetExceptionCodeForSignal(const siginfo_t *siginfo,
     switch (trap)
     {
         case T_PRIVINFLT : /* privileged instruction */
-            TRACE("Trap code T_PRIVINFLT mapped to EXCEPTION_PRIV_INSTRUCTION\n");
             return EXCEPTION_PRIV_INSTRUCTION; 
         case T_BPTFLT :    /* breakpoint instruction */
-            TRACE("Trap code T_BPTFLT mapped to EXCEPTION_BREAKPOINT\n");
             return EXCEPTION_BREAKPOINT;
         case T_ARITHTRAP : /* arithmetic trap */
-            TRACE("Trap code T_ARITHTRAP maps to floating point exception...\n");
             return 0;      /* let the caller pick an exception code */
 #ifdef T_ASTFLT
         case T_ASTFLT :    /* system forced exception : ^C, ^\. SIGINT signal 
                               handler shouldn't be calling this function, since
                               it doesn't need an exception code */
-            ASSERT("Trap code T_ASTFLT received, shouldn't get here\n");
+            // Trap code T_ASTFLT received, shouldn't get here;
             return 0;
 #endif  // T_ASTFLT
         case T_PROTFLT :   /* protection fault */
-            TRACE("Trap code T_PROTFLT mapped to EXCEPTION_ACCESS_VIOLATION\n");
             return EXCEPTION_ACCESS_VIOLATION; 
         case T_TRCTRAP :   /* debug exception (sic) */
-            TRACE("Trap code T_TRCTRAP mapped to EXCEPTION_SINGLE_STEP\n");
             return EXCEPTION_SINGLE_STEP;
         case T_PAGEFLT :   /* page fault */
-            TRACE("Trap code T_PAGEFLT mapped to EXCEPTION_ACCESS_VIOLATION\n");
             return EXCEPTION_ACCESS_VIOLATION;
         case T_ALIGNFLT :  /* alignment fault */
-            TRACE("Trap code T_ALIGNFLT mapped to EXCEPTION_DATATYPE_MISALIGNMENT\n");
             return EXCEPTION_DATATYPE_MISALIGNMENT;
         case T_DIVIDE :
-            TRACE("Trap code T_DIVIDE mapped to EXCEPTION_INT_DIVIDE_BY_ZERO\n");
             return EXCEPTION_INT_DIVIDE_BY_ZERO;
         case T_NMI :       /* non-maskable trap */
-            TRACE("Trap code T_NMI mapped to EXCEPTION_ILLEGAL_INSTRUCTION\n");
             return EXCEPTION_ILLEGAL_INSTRUCTION;
         case T_OFLOW :
-            TRACE("Trap code T_OFLOW mapped to EXCEPTION_INT_OVERFLOW\n");
             return EXCEPTION_INT_OVERFLOW;
         case T_BOUND :     /* bound instruction fault */
-            TRACE("Trap code T_BOUND mapped to EXCEPTION_ARRAY_BOUNDS_EXCEEDED\n");
             return EXCEPTION_ARRAY_BOUNDS_EXCEEDED; 
         case T_DNA :       /* device not available fault */
-            TRACE("Trap code T_DNA mapped to EXCEPTION_ILLEGAL_INSTRUCTION\n");
             return EXCEPTION_ILLEGAL_INSTRUCTION; 
         case T_DOUBLEFLT : /* double fault */
-            TRACE("Trap code T_DOUBLEFLT mapped to EXCEPTION_ILLEGAL_INSTRUCTION\n");
             return EXCEPTION_ILLEGAL_INSTRUCTION; 
         case T_FPOPFLT :   /* fp coprocessor operand fetch fault */
-            TRACE("Trap code T_FPOPFLT mapped to EXCEPTION_FLT_INVALID_OPERATION\n");
             return EXCEPTION_FLT_INVALID_OPERATION; 
         case T_TSSFLT :    /* invalid tss fault */
-            TRACE("Trap code T_TSSFLT mapped to EXCEPTION_ILLEGAL_INSTRUCTION\n");
             return EXCEPTION_ILLEGAL_INSTRUCTION; 
         case T_SEGNPFLT :  /* segment not present fault */
-            TRACE("Trap code T_SEGNPFLT mapped to EXCEPTION_ACCESS_VIOLATION\n");
             return EXCEPTION_ACCESS_VIOLATION; 
         case T_STKFLT :    /* stack fault */
-            TRACE("Trap code T_STKFLT mapped to EXCEPTION_STACK_OVERFLOW\n");
             return EXCEPTION_STACK_OVERFLOW; 
         case T_MCHK :      /* machine check trap */
-            TRACE("Trap code T_MCHK mapped to EXCEPTION_ILLEGAL_INSTRUCTION\n");
             return EXCEPTION_ILLEGAL_INSTRUCTION; 
         case T_RESERVED :  /* reserved (unknown) */
-            TRACE("Trap code T_RESERVED mapped to EXCEPTION_ILLEGAL_INSTRUCTION\n");
             return EXCEPTION_ILLEGAL_INSTRUCTION; 
         default:
-            ASSERT("Got unknown trap code %d\n", trap);
+            // Got unknown trap code trap;
             break;
     }
     return EXCEPTION_ILLEGAL_INSTRUCTION;
@@ -826,8 +846,8 @@ Function:
 --*/
 kern_return_t
 CONTEXT_GetThreadContextFromPort(
-        mach_port_t Port,
-        LPCONTEXT lpContext)
+    mach_port_t Port,
+    LPCONTEXT lpContext)
 {
     // Extract the CONTEXT from the Mach thread.
     
@@ -835,7 +855,7 @@ CONTEXT_GetThreadContextFromPort(
     mach_msg_type_number_t StateCount;
     thread_state_flavor_t StateFlavor;
   
-    if (lpContext->ContextFlags & (CONTEXT_CONTROL|CONTEXT_INTEGER))
+    if (lpContext->ContextFlags & (CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_SEGMENTS))
     {
 #ifdef _X86_  
         x86_thread_state32_t State;
@@ -846,67 +866,15 @@ CONTEXT_GetThreadContextFromPort(
 #else
 #error Unexpected architecture.
 #endif
-
         StateCount = sizeof(State) / sizeof(natural_t);
-
-        MachRet = thread_get_state(Port,
-           StateFlavor,
-           (thread_state_t)&State,
-           &StateCount);
+        MachRet = thread_get_state(Port, StateFlavor, (thread_state_t)&State, &StateCount);
         if (MachRet != KERN_SUCCESS)
         {
             ASSERT("thread_get_state(THREAD_STATE) failed: %d\n", MachRet);
-            goto EXIT;
+            goto exit;
         }
 
-        // Copy in the GPRs and the various other control registers
-#ifdef _X86_
-        lpContext->Eax = State.eax;
-        lpContext->Ebx = State.ebx;
-        lpContext->Ecx = State.ecx;
-        lpContext->Edx = State.edx;
-        lpContext->Edi = State.edi;
-        lpContext->Esi = State.esi;
-        lpContext->Ebp = State.ebp;
-        lpContext->Esp = State.esp;
-        lpContext->SegSs = State.ss;
-        lpContext->EFlags = State.eflags;
-        lpContext->Eip = State.eip;
-        lpContext->SegCs = State.cs;
-        lpContext->SegDs_PAL_Undefined = State.ds;
-        lpContext->SegEs_PAL_Undefined = State.es;
-        lpContext->SegFs_PAL_Undefined = State.fs;
-        lpContext->SegGs_PAL_Undefined = State.gs;
-#elif defined(_AMD64_)
-        lpContext->Rax = State.__rax;
-        lpContext->Rbx = State.__rbx;
-        lpContext->Rcx = State.__rcx;
-        lpContext->Rdx = State.__rdx;
-        lpContext->Rdi = State.__rdi;
-        lpContext->Rsi = State.__rsi;
-        lpContext->Rbp = State.__rbp;
-        lpContext->Rsp = State.__rsp;
-        lpContext->R8 = State.__r8;
-        lpContext->R9 = State.__r9;
-        lpContext->R10 = State.__r10;
-        lpContext->R11 = State.__r11;
-        lpContext->R12 = State.__r12;
-        lpContext->R13 = State.__r13;
-        lpContext->R14 = State.__r14;
-        lpContext->R15 = State.__r15;
-        lpContext->EFlags = State.__rflags;
-        lpContext->Rip = State.__rip;
-        lpContext->SegCs = State.__cs;
-        // RtlRestoreContext uses the actual ss instead of this one
-        // to build the iret frame so just set it zero.
-        lpContext->SegSs = 0;
-        lpContext->SegDs = 0;
-        lpContext->SegEs = 0;
-        lpContext->SegFs = State.__fs;
-        lpContext->SegGs = State.__gs;
-#else
-#error Unexpected architecture.
-#endif
+        CONTEXT_GetThreadContextFromThreadState(StateFlavor, (thread_state_t)&State, lpContext);
     }
     
     if (lpContext->ContextFlags & CONTEXT_ALL_FLOATING) {
@@ -920,73 +888,173 @@ CONTEXT_GetThreadContextFromPort(
 #error Unexpected architecture.
 #endif
         StateCount = sizeof(State) / sizeof(natural_t);
-        
-        MachRet = thread_get_state(Port,
-            StateFlavor,
-            (thread_state_t)&State,
-            &StateCount);
+        MachRet = thread_get_state(Port, StateFlavor, (thread_state_t)&State, &StateCount);
         if (MachRet != KERN_SUCCESS)
         {
             ASSERT("thread_get_state(FLOAT_STATE) failed: %d\n", MachRet);
-            goto EXIT;
+            goto exit;
         }
         
-        if (lpContext->ContextFlags & CONTEXT_FLOATING_POINT)
-        {
-            // Copy the FPRs
+        CONTEXT_GetThreadContextFromThreadState(StateFlavor, (thread_state_t)&State, lpContext);
+    }
+
+exit:
+    return MachRet;
+}
+
+/*++
+Function:
+  CONTEXT_GetThreadContextFromThreadState
+
+--*/
+void
+CONTEXT_GetThreadContextFromThreadState(
+    thread_state_flavor_t threadStateFlavor,
+    thread_state_t threadState,
+    LPCONTEXT lpContext)
+{
+    switch (threadStateFlavor)
+    {
 #ifdef _X86_
-            lpContext->FloatSave.ControlWord = *(DWORD*)&State.fpu_fcw;
-            lpContext->FloatSave.StatusWord = *(DWORD*)&State.fpu_fsw;
-            lpContext->FloatSave.TagWord = State.fpu_ftw;
-            lpContext->FloatSave.ErrorOffset = State.fpu_ip;
-            lpContext->FloatSave.ErrorSelector = State.fpu_cs;
-            lpContext->FloatSave.DataOffset = State.fpu_dp;
-            lpContext->FloatSave.DataSelector = State.fpu_ds;
-            lpContext->FloatSave.Cr0NpxState = State.fpu_mxcsr;
-            
-            // Windows stores the floating point registers in a packed layout (each 10-byte register end to end
-            // for a total of 80 bytes). But Mach returns each register in an 16-bit structure (presumably for
-            // alignment purposes). So we can't just memcpy the registers over in a single block, we need to copy
-            // them individually.
-            for (int i = 0; i < 8; i++)
-                memcpy(&lpContext->FloatSave.RegisterArea[i * 10], (&State.fpu_stmm0)[i].mmst_reg, 10);
+        case x86_THREAD_STATE32:
+            if (lpContext->ContextFlags & (CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_SEGMENTS))
+            {
+                x86_thread_state32_t *pState = (x86_thread_state32_t *)threadState;
+
+                lpContext->Eax = pState->eax;
+                lpContext->Ebx = pState->ebx;
+                lpContext->Ecx = pState->ecx;
+                lpContext->Edx = pState->edx;
+                lpContext->Edi = pState->edi;
+                lpContext->Esi = pState->esi;
+                lpContext->Ebp = pState->ebp;
+                lpContext->Esp = pState->esp;
+                lpContext->SegSs = pState->ss;
+                lpContext->EFlags = pState->eflags;
+                lpContext->Eip = pState->eip;
+                lpContext->SegCs = pState->cs;
+                lpContext->SegDs_PAL_Undefined = pState->ds;
+                lpContext->SegEs_PAL_Undefined = pState->es;
+                lpContext->SegFs_PAL_Undefined = pState->fs;
+                lpContext->SegGs_PAL_Undefined = pState->gs;
+            }
+            break;
+
+        case x86_FLOAT_STATE32:
+        {
+            x86_float_state32_t *pState = (x86_float_state32_t *)threadState;
+
+            if (lpContext->ContextFlags & CONTEXT_FLOATING_POINT)
+            {
+                lpContext->FloatSave.ControlWord = *(DWORD*)&pState->fpu_fcw;
+                lpContext->FloatSave.StatusWord = *(DWORD*)&pState->fpu_fsw;
+                lpContext->FloatSave.TagWord = pState->fpu_ftw;
+                lpContext->FloatSave.ErrorOffset = pState->fpu_ip;
+                lpContext->FloatSave.ErrorSelector = pState->fpu_cs;
+                lpContext->FloatSave.DataOffset = pState->fpu_dp;
+                lpContext->FloatSave.DataSelector = pState->fpu_ds;
+                lpContext->FloatSave.Cr0NpxState = pState->fpu_mxcsr;
+
+                // Windows stores the floating point registers in a packed layout (each 10-byte register end to end
+                // for a total of 80 bytes). But Mach returns each register in an 16-bit structure (presumably for
+                // alignment purposes). So we can't just memcpy the registers over in a single block, we need to copy
+                // them individually.
+                for (int i = 0; i < 8; i++)
+                    memcpy(&lpContext->FloatSave.RegisterArea[i * 10], (&pState->fpu_stmm0)[i].mmst_reg, 10);
+            }
+
+            if (lpContext->ContextFlags & CONTEXT_EXTENDED_REGISTERS)
+            {
+                // The only extended register information that Mach will tell us about are the xmm register values.
+                // Both Windows and Mach store the registers in a packed layout (each of the 8 registers is 16 bytes)
+                // so we can simply memcpy them across.
+                memcpy(lpContext->ExtendedRegisters + CONTEXT_EXREG_XMM_OFFSET, &pState->fpu_xmm0, 8 * 16);
+            }
+        }
+        break;
+
 #elif defined(_AMD64_)
-            lpContext->FltSave.ControlWord = *(DWORD*)&State.__fpu_fcw;
-            lpContext->FltSave.StatusWord = *(DWORD*)&State.__fpu_fsw;
-            lpContext->FltSave.TagWord = State.__fpu_ftw;
-            lpContext->FltSave.ErrorOffset = State.__fpu_ip;
-            lpContext->FltSave.ErrorSelector = State.__fpu_cs;
-            lpContext->FltSave.DataOffset = State.__fpu_dp;
-            lpContext->FltSave.DataSelector = State.__fpu_ds;
-            lpContext->FltSave.MxCsr = State.__fpu_mxcsr;
-            lpContext->FltSave.MxCsr_Mask = State.__fpu_mxcsrmask; // note: we don't save the mask for x86
-            
-            // Windows stores the floating point registers in a packed layout (each 10-byte register end to end
-            // for a total of 80 bytes). But Mach returns each register in an 16-bit structure (presumably for
-            // alignment purposes). So we can't just memcpy the registers over in a single block, we need to copy
-            // them individually.
-            for (int i = 0; i < 8; i++)
-                memcpy(&lpContext->FltSave.FloatRegisters[i], (&State.__fpu_stmm0)[i].__mmst_reg, 10);
-            
-            // AMD64's FLOATING_POINT includes the xmm registers.
-            memcpy(&lpContext->Xmm0, &State.__fpu_xmm0, 8 * 16);
+        case x86_THREAD_STATE64:
+            if (lpContext->ContextFlags & (CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_SEGMENTS))
+            {
+                x86_thread_state64_t *pState = (x86_thread_state64_t *)threadState;
+
+                lpContext->Rax = pState->__rax;
+                lpContext->Rbx = pState->__rbx;
+                lpContext->Rcx = pState->__rcx;
+                lpContext->Rdx = pState->__rdx;
+                lpContext->Rdi = pState->__rdi;
+                lpContext->Rsi = pState->__rsi;
+                lpContext->Rbp = pState->__rbp;
+                lpContext->Rsp = pState->__rsp;
+                lpContext->R8 = pState->__r8;
+                lpContext->R9 = pState->__r9;
+                lpContext->R10 = pState->__r10;
+                lpContext->R11 = pState->__r11;
+                lpContext->R12 = pState->__r12;
+                lpContext->R13 = pState->__r13;
+                lpContext->R14 = pState->__r14;
+                lpContext->R15 = pState->__r15;
+                lpContext->EFlags = pState->__rflags;
+                lpContext->Rip = pState->__rip;
+                lpContext->SegCs = pState->__cs;
+                // RtlRestoreContext uses the actual ss instead of this one
+                // to build the iret frame so just set it zero.
+                lpContext->SegSs = 0;
+                lpContext->SegDs = 0;
+                lpContext->SegEs = 0;
+                lpContext->SegFs = pState->__fs;
+                lpContext->SegGs = pState->__gs;
+            }
+            break;
+
+        case x86_FLOAT_STATE64:
+            if (lpContext->ContextFlags & CONTEXT_FLOATING_POINT)
+            {
+                x86_float_state64_t *pState = (x86_float_state64_t *)threadState;
+
+                lpContext->FltSave.ControlWord = *(DWORD*)&pState->__fpu_fcw;
+                lpContext->FltSave.StatusWord = *(DWORD*)&pState->__fpu_fsw;
+                lpContext->FltSave.TagWord = pState->__fpu_ftw;
+                lpContext->FltSave.ErrorOffset = pState->__fpu_ip;
+                lpContext->FltSave.ErrorSelector = pState->__fpu_cs;
+                lpContext->FltSave.DataOffset = pState->__fpu_dp;
+                lpContext->FltSave.DataSelector = pState->__fpu_ds;
+                lpContext->FltSave.MxCsr = pState->__fpu_mxcsr;
+                lpContext->FltSave.MxCsr_Mask = pState->__fpu_mxcsrmask; // note: we don't save the mask for x86
+
+                // Windows stores the floating point registers in a packed layout (each 10-byte register end to end
+                // for a total of 80 bytes). But Mach returns each register in an 16-bit structure (presumably for
+                // alignment purposes). So we can't just memcpy the registers over in a single block, we need to copy
+                // them individually.
+                for (int i = 0; i < 8; i++)
+                    memcpy(&lpContext->FltSave.FloatRegisters[i], (&pState->__fpu_stmm0)[i].__mmst_reg, 10);
+
+                // AMD64's FLOATING_POINT includes the xmm registers.
+                memcpy(&lpContext->Xmm0, &pState->__fpu_xmm0, 8 * 16);
+            }
+            break;
 #else
 #error Unexpected architecture.
 #endif
+        case x86_THREAD_STATE:
+        {
+            x86_thread_state_t *pState = (x86_thread_state_t *)threadState;
+            CONTEXT_GetThreadContextFromThreadState((thread_state_flavor_t)pState->tsh.flavor, (thread_state_t)&pState->uts, lpContext);
         }
+        break;
 
-#ifdef _X86_
-        if (lpContext->ContextFlags & CONTEXT_EXTENDED_REGISTERS) {
-            // The only extended register information that Mach will tell us about are the xmm register values.
-            // Both Windows and Mach store the registers in a packed layout (each of the 8 registers is 16 bytes)
-            // so we can simply memcpy them across.
-            memcpy(lpContext->ExtendedRegisters + CONTEXT_EXREG_XMM_OFFSET, &State.fpu_xmm0, 8 * 16);
+        case x86_FLOAT_STATE:
+        {
+            x86_float_state_t *pState = (x86_float_state_t *)threadState;
+            CONTEXT_GetThreadContextFromThreadState((thread_state_flavor_t)pState->fsh.flavor, (thread_state_t)&pState->ufs, lpContext);
         }
-#endif
+        break;
+
+        default:
+            ASSERT("Invalid thread state flavor %d\n", threadStateFlavor);
+            break;
     }
-
-EXIT:
-    return MachRet;
 }
 
 /*++

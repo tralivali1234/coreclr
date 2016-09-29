@@ -1,7 +1,6 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information. 
-//
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 
 /*++
 
@@ -31,11 +30,6 @@ using namespace CorUnix;
 /* ------------------- Definitions ------------------------------*/
 SET_DEFAULT_DEBUG_CHANNEL(SYNC);
 
-enum
-{
-    c_cchMaxEvent = MAX_LONGPATH + 1
-};
-
 CObjectType CorUnix::otManualResetEvent(
                 otiManualResetEvent,
                 NULL,   // No cleanup routine
@@ -46,8 +40,8 @@ CObjectType CorUnix::otManualResetEvent(
                 EVENT_ALL_ACCESS, // Currently ignored (no Win32 security)
                 CObjectType::SecuritySupported,
                 CObjectType::SecurityInfoNotPersisted,
-                CObjectType::ObjectCanHaveName,
-                CObjectType::CrossProcessDuplicationAllowed,
+                CObjectType::UnnamedObject,
+                CObjectType::LocalDuplicationOnly,
                 CObjectType::WaitableObject,
                 CObjectType::ObjectCanBeUnsignaled,
                 CObjectType::ThreadReleaseHasNoSideEffects,
@@ -64,8 +58,8 @@ CObjectType CorUnix::otAutoResetEvent(
                 EVENT_ALL_ACCESS, // Currently ignored (no Win32 security)
                 CObjectType::SecuritySupported,
                 CObjectType::SecurityInfoNotPersisted,
-                CObjectType::ObjectCanHaveName,
-                CObjectType::CrossProcessDuplicationAllowed,
+                CObjectType::UnnamedObject,
+                CObjectType::LocalDuplicationOnly,
                 CObjectType::WaitableObject,
                 CObjectType::ObjectCanBeUnsignaled,
                 CObjectType::ThreadReleaseAltersSignalCount,

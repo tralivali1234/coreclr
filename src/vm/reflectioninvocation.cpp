@@ -1,11 +1,8 @@
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
 //
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
 //
-//
-
-//
-
 
 #include "common.h"
 #include "reflectioninvocation.h"
@@ -524,34 +521,8 @@ FCIMPL6(Object*, RuntimeTypeHandle::CreateInstance, ReflectClassBaseObject* refT
 
     HELPER_METHOD_FRAME_BEGIN_RET_2(rv, refThis);
 
-#ifdef FEATURE_LEGACYNETCF
-    BOOL fNetCFCompat = GetAppDomain()->GetAppDomainCompatMode() == BaseDomain::APPDOMAINCOMPAT_APP_EARLIER_THAN_WP8;
-#else
-    const BOOL fNetCFCompat = FALSE;
-#endif
-
     MethodTable* pVMT;
     bool bNeedAccessCheck;
-    
-    if (fNetCFCompat && !thisTH.IsNull() && thisTH.IsArray())
-    {
-        ArrayTypeDesc *atd = thisTH.AsArray();
-        if (atd->GetTypeParam().IsArray())
-        {
-            // We could do this, but Mango doesn't support creating 
-            // arrays of arrays here
-            COMPlusThrow(kMissingMethodException,W("Arg_NoDefCTor"));
-        }
- 
-        INT32 rank = atd->GetRank();
-        INT32* lengths = (INT32*) _alloca(sizeof(INT32) * rank);
-        for (INT32 i = 0; i < rank; ++i)
-        {
-            lengths[i] = 0;
-        }
-        rv = AllocateArrayEx(thisTH, lengths, rank);
-        goto Exit;
-    }
 
     // Get the type information associated with refThis
     if (thisTH.IsNull() || thisTH.IsTypeDesc())
@@ -605,8 +576,8 @@ FCIMPL6(Object*, RuntimeTypeHandle::CreateInstance, ReflectClassBaseObject* refT
             COMPlusThrow(kArgumentException,W("Acc_CreateGeneric"));
         }
         
-        if (pVMT->ContainsStackPtr()) 
-            COMPlusThrow(kNotSupportedException, W("NotSupported_ContainsStackPtr"));
+        if (pVMT->IsByRefLike())
+            COMPlusThrow(kNotSupportedException, W("NotSupported_ByRefLike"));
         
         if (pVMT->IsSharedByGenericInstantiations())
             COMPlusThrow(kNotSupportedException, W("NotSupported_Type"));
@@ -739,8 +710,7 @@ FCIMPL6(Object*, RuntimeTypeHandle::CreateInstance, ReflectClassBaseObject* refT
             }
         }
     }
-    
-Exit:
+
     HELPER_METHOD_FRAME_END();
     return OBJECTREFToObject(rv);
 }
@@ -776,7 +746,7 @@ FCIMPL2(Object*, RuntimeTypeHandle::CreateInstanceForGenericType, ReflectClassBa
     _ASSERTE (pVMT != 0 &&  !instantiatedType.IsTypeDesc());
     _ASSERTE(!(pVMT->GetAssembly()->IsDynamic() && !pVMT->GetAssembly()->HasRunAccess()));
     _ASSERTE( !pVMT->IsAbstract() ||! instantiatedType.ContainsGenericVariables());
-    _ASSERTE(!pVMT->ContainsStackPtr() && pVMT->HasDefaultConstructor()); 
+    _ASSERTE(!pVMT->IsByRefLike() && pVMT->HasDefaultConstructor());
 
     pMeth = pVMT->GetDefaultConstructor();            
     MethodDescCallSite ctor(pMeth);
@@ -879,7 +849,7 @@ FCIMPL1(DWORD, ReflectionInvocation::GetSpecialSecurityFlags, ReflectMethodObjec
 
     // If either the declaring type or the return type contains stack pointers (ByRef or typedbyref), 
     // the type cannot be boxed and thus cannot be invoked through reflection invocation.
-    if ( pMT->ContainsStackPtr() || (pRetMT != NULL && pRetMT->ContainsStackPtr()) )
+    if ( pMT->IsByRefLike() || (pRetMT != NULL && pRetMT->IsByRefLike()) )
         dwFlags |= INVOCATION_FLAGS_CONTAINS_STACK_POINTERS;
 
     // Is this a call to a potentially dangerous method? (If so, we're going
@@ -900,6 +870,8 @@ FCIMPL1(DWORD, ReflectionInvocation::GetSpecialSecurityFlags, ReflectMethodObjec
     return dwFlags;
 }
 FCIMPLEND
+
+#ifndef FEATURE_CORECLR
 
 // Can not inline this function.
 #ifdef _MSC_VER
@@ -1000,6 +972,8 @@ FCIMPL4(void, ReflectionInvocation::PerformSecurityCheck, Object *target, Method
     HELPER_METHOD_FRAME_END();
 }
 FCIMPLEND
+
+#endif // FEATURE_CORECLR
 
 /****************************************************************************/
 /* boxed Nullable<T> are represented as a boxed T, so there is no unboxed
@@ -2663,7 +2637,6 @@ FCIMPL0(void, ReflectionInvocation::EnsureSufficientExecutionStack)
 }
 FCIMPLEND
 
-#ifdef FEATURE_CORECLR
 // As with EnsureSufficientExecutionStack, this method checks and returns whether there is 
 // sufficient stack to execute the average Framework method, but rather than throwing,
 // it simply returns a Boolean: true for sufficient stack space, otherwise false.
@@ -2680,7 +2653,6 @@ FCIMPL0(FC_BOOL_RET, ReflectionInvocation::TryEnsureSufficientExecutionStack)
 	FC_RETURN_BOOL(current >= limit);
 }
 FCIMPLEND
-#endif // FEATURE_CORECLR
 
 struct ECWGCFContext
 {
@@ -2927,7 +2899,7 @@ FCIMPL4(void, ReflectionInvocation::MakeTypedReference, TypedByRef * value, Obje
     }
 
         // Fields already are prohibted from having ArgIterator and RuntimeArgumentHandles
-    _ASSERTE(!gc.target->GetTypeHandle().GetMethodTable()->ContainsStackPtr());
+    _ASSERTE(!gc.target->GetTypeHandle().GetMethodTable()->IsByRefLike());
 
     // Create the ByRef
     value->data = ((BYTE *)(gc.target->GetAddress() + offset)) + sizeof(Object);
@@ -2989,7 +2961,7 @@ FCIMPLEND
 FCIMPL1(FC_BOOL_RET, ReflectionInvocation::IsAddressInStack, void * ptr)
 {
     FCALL_CONTRACT;
-    FC_RETURN_BOOL(GetThread()->IsAddressInStack(ptr));
+    FC_RETURN_BOOL(Thread::IsAddressInCurrentStack(ptr));
 }
 FCIMPLEND
 #endif
