@@ -319,23 +319,57 @@ namespace System {
             }
         }
 
+#if PLATFORM_UNIX
+        // The rules we use in Unix cares mostly about the start and end dates but doesnâ€™t fill the transition start and end info. 
+        // as the rules now is public, we should fill it properly so the caller doesnâ€™t have to know how we use it internally 
+        // and can use it as it is used in Windows
+
+        private AdjustmentRule[] GetFilledRules()
+        {
+            Contract.Assert(m_adjustmentRules != null, "m_adjustmentRules expected to be not null");
+            AdjustmentRule[] rules = new AdjustmentRule[m_adjustmentRules.Length];
+
+            for (int i = 0; i < m_adjustmentRules.Length; i++)
+            {
+                var rule = m_adjustmentRules[i];
+                var start = rule.DateStart.Kind == DateTimeKind.Utc ?
+                            new DateTime(TimeZoneInfo.ConvertTime(rule.DateStart, this).Ticks, DateTimeKind.Unspecified) :
+                            rule.DateStart;
+                var end = rule.DateEnd.Kind == DateTimeKind.Utc ?
+                            new DateTime(TimeZoneInfo.ConvertTime(rule.DateEnd, this).Ticks - 1, DateTimeKind.Unspecified) :
+                            rule.DateEnd;
+
+                var startTransition = TimeZoneInfo.TransitionTime.CreateFixedDateRule(new DateTime(1, 1, 1, start.Hour, start.Minute, start.Second), start.Month, start.Day);
+                var endTransition = TimeZoneInfo.TransitionTime.CreateFixedDateRule(new DateTime(1, 1, 1, end.Hour, end.Minute, end.Second), end.Month, end.Day);
+
+                rules[i] = TimeZoneInfo.AdjustmentRule.CreateAdjustmentRule(start.Date, end.Date, rule.DaylightDelta, startTransition, endTransition);
+            }
+
+            return rules;
+        }
+#endif // PLATFORM_UNIX        
 
         // ---- SECTION: public methods --------------*
-
         //
         // GetAdjustmentRules -
         //
         // returns a cloned array of AdjustmentRule objects
         //
-        public AdjustmentRule [] GetAdjustmentRules() {
-            if (m_adjustmentRules == null) {
-                return new AdjustmentRule[0];
+        public AdjustmentRule [] GetAdjustmentRules()
+        {
+            if (m_adjustmentRules == null)
+            {
+                return Array.Empty<AdjustmentRule>();
             }
-            else {
-                return (AdjustmentRule[])m_adjustmentRules.Clone();
+            else
+            {
+#if PLATFORM_UNIX
+                return GetFilledRules(); 
+#else
+                return (AdjustmentRule[]) m_adjustmentRules.Clone();
+#endif // PLATFORM_UNIX        
             }
         }
-
 
         //
         // GetAmbiguousTimeOffsets -
@@ -345,7 +379,7 @@ namespace System {
         //
         public TimeSpan[] GetAmbiguousTimeOffsets(DateTimeOffset dateTimeOffset) {
             if (!SupportsDaylightSavingTime) {
-                throw new ArgumentException(Environment.GetResourceString("Argument_DateTimeOffsetIsNotAmbiguous"), "dateTimeOffset");
+                throw new ArgumentException(Environment.GetResourceString("Argument_DateTimeOffsetIsNotAmbiguous"), nameof(dateTimeOffset));
             }
             Contract.EndContractBlock();
 
@@ -354,12 +388,12 @@ namespace System {
             Boolean isAmbiguous = false;
             AdjustmentRule rule = GetAdjustmentRuleForAmbiguousOffsets(adjustedTime);
             if (rule != null && rule.HasDaylightSaving) {
-                DaylightTime daylightTime = GetDaylightTime(adjustedTime.Year, rule);
+                DaylightTimeStruct daylightTime = GetDaylightTime(adjustedTime.Year, rule);
                 isAmbiguous = GetIsAmbiguousTime(adjustedTime, rule, daylightTime);
             }
 
             if (!isAmbiguous) {
-                throw new ArgumentException(Environment.GetResourceString("Argument_DateTimeOffsetIsNotAmbiguous"), "dateTimeOffset");
+                throw new ArgumentException(Environment.GetResourceString("Argument_DateTimeOffsetIsNotAmbiguous"), nameof(dateTimeOffset));
             }
 
             // the passed in dateTime is ambiguous in this TimeZoneInfo instance
@@ -382,7 +416,7 @@ namespace System {
 
         public TimeSpan[] GetAmbiguousTimeOffsets(DateTime dateTime) {
             if (!SupportsDaylightSavingTime) {
-                throw new ArgumentException(Environment.GetResourceString("Argument_DateTimeIsNotAmbiguous"), "dateTime");
+                throw new ArgumentException(Environment.GetResourceString("Argument_DateTimeIsNotAmbiguous"), nameof(dateTime));
             }
             Contract.EndContractBlock();
 
@@ -402,12 +436,12 @@ namespace System {
             Boolean isAmbiguous = false;
             AdjustmentRule rule = GetAdjustmentRuleForAmbiguousOffsets(adjustedTime);
             if (rule != null && rule.HasDaylightSaving) {
-                DaylightTime daylightTime = GetDaylightTime(adjustedTime.Year, rule);
+                DaylightTimeStruct daylightTime = GetDaylightTime(adjustedTime.Year, rule);
                 isAmbiguous = GetIsAmbiguousTime(adjustedTime, rule, daylightTime);
             }
 
             if (!isAmbiguous) {
-                throw new ArgumentException(Environment.GetResourceString("Argument_DateTimeIsNotAmbiguous"), "dateTime");
+                throw new ArgumentException(Environment.GetResourceString("Argument_DateTimeIsNotAmbiguous"), nameof(dateTime));
             }
 
             // the passed in dateTime is ambiguous in this TimeZoneInfo instance
@@ -566,7 +600,7 @@ namespace System {
 
             AdjustmentRule rule = GetAdjustmentRuleForTime(adjustedTime);
             if (rule != null && rule.HasDaylightSaving) {
-                DaylightTime daylightTime = GetDaylightTime(adjustedTime.Year, rule);
+                DaylightTimeStruct daylightTime = GetDaylightTime(adjustedTime.Year, rule);
                 return GetIsAmbiguousTime(adjustedTime, rule, daylightTime);
             }
             return false;
@@ -644,7 +678,7 @@ namespace System {
             //
             AdjustmentRule rule = GetAdjustmentRuleForTime(adjustedTime);
             if (rule != null && rule.HasDaylightSaving) {
-                DaylightTime daylightTime = GetDaylightTime(adjustedTime.Year, rule);
+                DaylightTimeStruct daylightTime = GetDaylightTime(adjustedTime.Year, rule);
                 return GetIsDaylightSavings(adjustedTime, rule, daylightTime, flags);
             }
             else {
@@ -668,7 +702,7 @@ namespace System {
                 AdjustmentRule rule = GetAdjustmentRuleForTime(dateTime);
 
                 if (rule != null && rule.HasDaylightSaving) {
-                    DaylightTime daylightTime = GetDaylightTime(dateTime.Year, rule);
+                    DaylightTimeStruct daylightTime = GetDaylightTime(dateTime.Year, rule);
                     isInvalid = GetIsInvalidTime(dateTime, rule, daylightTime);
                 }
                 else {
@@ -690,22 +724,25 @@ namespace System {
             s_cachedData = new CachedData();
         }
 
-#if FEATURE_WIN32_REGISTRY
         //
         // ConvertTimeBySystemTimeZoneId -
         //
         // Converts the value of a DateTime object from sourceTimeZone to destinationTimeZone
         //
-        static public DateTimeOffset ConvertTimeBySystemTimeZoneId(DateTimeOffset dateTimeOffset, String destinationTimeZoneId) {
+        static public DateTimeOffset ConvertTimeBySystemTimeZoneId(DateTimeOffset dateTimeOffset, String destinationTimeZoneId)
+        {
             return ConvertTime(dateTimeOffset, FindSystemTimeZoneById(destinationTimeZoneId));
         }
 
-        static public DateTime ConvertTimeBySystemTimeZoneId(DateTime dateTime, String destinationTimeZoneId) {
+        static public DateTime ConvertTimeBySystemTimeZoneId(DateTime dateTime, String destinationTimeZoneId)
+        {
             return ConvertTime(dateTime, FindSystemTimeZoneById(destinationTimeZoneId));
         }
 
-        static public DateTime ConvertTimeBySystemTimeZoneId(DateTime dateTime, String sourceTimeZoneId, String destinationTimeZoneId) {
-            if (dateTime.Kind == DateTimeKind.Local && String.Compare(sourceTimeZoneId, TimeZoneInfo.Local.Id, StringComparison.OrdinalIgnoreCase) == 0) {
+        static public DateTime ConvertTimeBySystemTimeZoneId(DateTime dateTime, String sourceTimeZoneId, String destinationTimeZoneId)
+        {
+            if (dateTime.Kind == DateTimeKind.Local && String.Compare(sourceTimeZoneId, TimeZoneInfo.Local.Id, StringComparison.OrdinalIgnoreCase) == 0)
+            {
                 // TimeZoneInfo.Local can be cleared by another thread calling TimeZoneInfo.ClearCachedData.
                 // Take snapshot of cached data to guarantee this method will not be impacted by the ClearCachedData call.
                 // Without the snapshot, there is a chance that ConvertTime will throw since 'source' won't
@@ -714,7 +751,8 @@ namespace System {
                 CachedData cachedData = s_cachedData;
                 return ConvertTime(dateTime, cachedData.Local, FindSystemTimeZoneById(destinationTimeZoneId), TimeZoneInfoOptions.None, cachedData);
             }    
-            else if (dateTime.Kind == DateTimeKind.Utc && String.Compare(sourceTimeZoneId, TimeZoneInfo.Utc.Id, StringComparison.OrdinalIgnoreCase) == 0) {
+            else if (dateTime.Kind == DateTimeKind.Utc && String.Compare(sourceTimeZoneId, TimeZoneInfo.Utc.Id, StringComparison.OrdinalIgnoreCase) == 0)
+            {
                 // TimeZoneInfo.Utc can be cleared by another thread calling TimeZoneInfo.ClearCachedData.
                 // Take snapshot of cached data to guarantee this method will not be impacted by the ClearCachedData call.
                 // Without the snapshot, there is a chance that ConvertTime will throw since 'source' won't
@@ -723,12 +761,11 @@ namespace System {
                 CachedData cachedData = s_cachedData;
                 return ConvertTime(dateTime, cachedData.Utc, FindSystemTimeZoneById(destinationTimeZoneId), TimeZoneInfoOptions.None, cachedData);
             }
-            else {
+            else
+            {
                 return ConvertTime(dateTime, FindSystemTimeZoneById(sourceTimeZoneId), FindSystemTimeZoneById(destinationTimeZoneId));
             }
         }
-#endif // FEATURE_WIN32_REGISTRY
-
 
         //
         // ConvertTime -
@@ -738,7 +775,7 @@ namespace System {
 
         static public DateTimeOffset ConvertTime(DateTimeOffset dateTimeOffset, TimeZoneInfo destinationTimeZone) {
             if (destinationTimeZone == null) {
-                throw new ArgumentNullException("destinationTimeZone");
+                throw new ArgumentNullException(nameof(destinationTimeZone));
             }
 
             Contract.EndContractBlock();
@@ -762,7 +799,7 @@ namespace System {
 
         static public DateTime ConvertTime(DateTime dateTime, TimeZoneInfo destinationTimeZone) {
             if (destinationTimeZone == null) {
-                throw new ArgumentNullException("destinationTimeZone");
+                throw new ArgumentNullException(nameof(destinationTimeZone));
             }
             Contract.EndContractBlock();
 
@@ -790,17 +827,17 @@ namespace System {
 
         static private DateTime ConvertTime(DateTime dateTime, TimeZoneInfo sourceTimeZone, TimeZoneInfo destinationTimeZone, TimeZoneInfoOptions flags, CachedData cachedData) {
             if (sourceTimeZone == null) {
-                throw new ArgumentNullException("sourceTimeZone");
+                throw new ArgumentNullException(nameof(sourceTimeZone));
             }
 
             if (destinationTimeZone == null) {
-                throw new ArgumentNullException("destinationTimeZone");
+                throw new ArgumentNullException(nameof(destinationTimeZone));
             }
             Contract.EndContractBlock();
 
             DateTimeKind sourceKind = cachedData.GetCorrespondingKind(sourceTimeZone);
             if ( ((flags & TimeZoneInfoOptions.NoThrowOnInvalidTime) == 0) && (dateTime.Kind != DateTimeKind.Unspecified) && (dateTime.Kind != sourceKind) ) {
-                    throw new ArgumentException(Environment.GetResourceString("Argument_ConvertMismatch"), "sourceTimeZone");
+                    throw new ArgumentException(Environment.GetResourceString("Argument_ConvertMismatch"), nameof(sourceTimeZone));
             }
 
             //
@@ -818,12 +855,12 @@ namespace System {
                 sourceOffset = sourceOffset + sourceRule.BaseUtcOffsetDelta;
                 if (sourceRule.HasDaylightSaving) {
                     Boolean sourceIsDaylightSavings = false;
-                    DaylightTime sourceDaylightTime = sourceTimeZone.GetDaylightTime(dateTime.Year, sourceRule);
+                    DaylightTimeStruct sourceDaylightTime = sourceTimeZone.GetDaylightTime(dateTime.Year, sourceRule);
 
                     // 'dateTime' might be in an invalid time range since it is in an AdjustmentRule
                     // period that supports DST 
                     if (((flags & TimeZoneInfoOptions.NoThrowOnInvalidTime) == 0) && GetIsInvalidTime(dateTime, sourceRule, sourceDaylightTime)) {
-                        throw new ArgumentException(Environment.GetResourceString("Argument_DateTimeIsInvalid"), "dateTime");
+                        throw new ArgumentException(Environment.GetResourceString("Argument_DateTimeIsInvalid"), nameof(dateTime));
                     }
                     sourceIsDaylightSavings = GetIsDaylightSavings(dateTime, sourceRule, sourceDaylightTime, flags);
 
@@ -921,10 +958,10 @@ namespace System {
         //
         static public TimeZoneInfo FromSerializedString(string source) {
             if (source == null) {
-                throw new ArgumentNullException("source");
+                throw new ArgumentNullException(nameof(source));
             }
             if (source.Length == 0) {
-                throw new ArgumentException(Environment.GetResourceString("Argument_InvalidSerializedString", source), "source");
+                throw new ArgumentException(Environment.GetResourceString("Argument_InvalidSerializedString", source), nameof(source));
             }
             Contract.EndContractBlock();
 
@@ -1025,7 +1062,7 @@ namespace System {
         //
         public Boolean HasSameRules(TimeZoneInfo other) {
             if (other == null) {
-                throw new ArgumentNullException("other");
+                throw new ArgumentNullException(nameof(other));
             }
 
             // check the utcOffset and supportsDaylightSavingTime members
@@ -1376,7 +1413,7 @@ namespace System {
         [System.Security.SecurityCritical]  // auto-generated_required
         void ISerializable.GetObjectData(SerializationInfo info, StreamingContext context) {
             if (info == null) {
-                throw new ArgumentNullException("info");
+                throw new ArgumentNullException(nameof(info));
             }
             Contract.EndContractBlock();
 
@@ -1392,7 +1429,7 @@ namespace System {
         
         TimeZoneInfo(SerializationInfo info, StreamingContext context) {
             if (info == null) {
-                throw new ArgumentNullException("info");
+                throw new ArgumentNullException(nameof(info));
             }
 
             m_id                  = (String)info.GetValue("Id", typeof(String));
@@ -1712,7 +1749,7 @@ namespace System {
         //
         // Helper function that returns a DaylightTime from a year and AdjustmentRule
         //
-        private DaylightTime GetDaylightTime(Int32 year, AdjustmentRule rule) {
+        private DaylightTimeStruct GetDaylightTime(Int32 year, AdjustmentRule rule) {
             TimeSpan delta = rule.DaylightDelta;
             DateTime startTime;
             DateTime endTime;
@@ -1733,7 +1770,7 @@ namespace System {
                 startTime = TransitionTimeToDateTime(year, rule.DaylightTransitionStart);
                 endTime = TransitionTimeToDateTime(year, rule.DaylightTransitionEnd);
             }
-            return new DaylightTime(startTime, endTime, delta);
+            return new DaylightTimeStruct(startTime, endTime, delta);
         }
 
         //
@@ -1742,7 +1779,7 @@ namespace System {
         // Helper function that checks if a given dateTime is in Daylight Saving Time (DST)
         // This function assumes the dateTime and AdjustmentRule are both in the same time zone
         //
-        static private Boolean GetIsDaylightSavings(DateTime time, AdjustmentRule rule, DaylightTime daylightTime, TimeZoneInfoOptions flags) {
+        static private Boolean GetIsDaylightSavings(DateTime time, AdjustmentRule rule, DaylightTimeStruct daylightTime, TimeZoneInfoOptions flags) {
             if (rule == null) {
                 return false;
             }
@@ -1837,7 +1874,7 @@ namespace System {
 
 
             // Get the daylight changes for the year of the specified time.
-            DaylightTime daylightTime = zone.GetDaylightTime(Year, rule);
+            DaylightTimeStruct daylightTime = zone.GetDaylightTime(Year, rule);
 
             // The start and end times represent the range of universal times that are in DST for that year.                
             // Within that there is an ambiguous hour, usually right at the end, but at the beginning in
@@ -1856,7 +1893,7 @@ namespace System {
             if (rule.IsStartDateMarkerForBeginningOfYear() && daylightTime.Start.Year > DateTime.MinValue.Year) {
                 AdjustmentRule previousYearRule = zone.GetAdjustmentRuleForTime(new DateTime(daylightTime.Start.Year - 1, 12, 31));
                 if (previousYearRule != null && previousYearRule.IsEndDateMarkerForEndOfYear()) {
-                    DaylightTime previousDaylightTime = zone.GetDaylightTime(daylightTime.Start.Year - 1, previousYearRule);
+                    DaylightTimeStruct previousDaylightTime = zone.GetDaylightTime(daylightTime.Start.Year - 1, previousYearRule);
                     startTime = previousDaylightTime.Start - utc - previousYearRule.BaseUtcOffsetDelta;
                     ignoreYearAdjustment = true;
                 } else {
@@ -1874,7 +1911,7 @@ namespace System {
                     if (nextYearRule.IsEndDateMarkerForEndOfYear()) {// next year end with daylight saving on too
                         endTime = new DateTime(daylightTime.End.Year + 1, 12, 31) - utc - nextYearRule.BaseUtcOffsetDelta - nextYearRule.DaylightDelta;
                     } else {
-                        DaylightTime nextdaylightTime = zone.GetDaylightTime(daylightTime.End.Year + 1, nextYearRule);
+                        DaylightTimeStruct nextdaylightTime = zone.GetDaylightTime(daylightTime.End.Year + 1, nextYearRule);
                         endTime = nextdaylightTime.End - utc - nextYearRule.BaseUtcOffsetDelta - nextYearRule.DaylightDelta;
                     }
                     ignoreYearAdjustment = true;
@@ -1980,7 +2017,7 @@ namespace System {
         // In this example, any DateTime values that fall into the [1AM - 1:59:59AM] range
         // are ambiguous; as it is unclear if these times are in Daylight Saving Time.
         //
-        static private Boolean GetIsAmbiguousTime(DateTime time, AdjustmentRule rule, DaylightTime daylightTime) {
+        static private Boolean GetIsAmbiguousTime(DateTime time, AdjustmentRule rule, DaylightTimeStruct daylightTime) {
             Boolean isAmbiguous = false;
             if (rule == null || rule.DaylightDelta == TimeSpan.Zero) {
                 return isAmbiguous;
@@ -2044,7 +2081,7 @@ namespace System {
         // A "time hole" is not limited to only occurring at the start of DST, and may occur at
         // the end of DST as well.
         //
-        static private Boolean GetIsInvalidTime(DateTime time, AdjustmentRule rule, DaylightTime daylightTime) {
+        static private Boolean GetIsInvalidTime(DateTime time, AdjustmentRule rule, DaylightTimeStruct daylightTime) {
             Boolean isInvalid = false;
             if (rule == null || rule.DaylightDelta == TimeSpan.Zero) {
                 return isInvalid;
@@ -2582,7 +2619,7 @@ namespace System {
             }
 
             if (id == null) {
-                throw new ArgumentNullException("id");
+                throw new ArgumentNullException(nameof(id));
             }
             else if (!IsValidSystemTimeZoneId(id)) {
                 throw new TimeZoneNotFoundException(Environment.GetResourceString("TimeZoneNotFound_MissingData", id));
@@ -2647,7 +2684,7 @@ namespace System {
             if (rule != null) {
                 baseOffset = baseOffset + rule.BaseUtcOffsetDelta;
                 if (rule.HasDaylightSaving) {
-                    DaylightTime daylightTime = zone.GetDaylightTime(time.Year, rule);
+                    DaylightTimeStruct daylightTime = zone.GetDaylightTime(time.Year, rule);
                     Boolean isDaylightSavings = GetIsDaylightSavings(time, rule, daylightTime, flags);
                     baseOffset += (isDaylightSavings ? rule.DaylightDelta : TimeSpan.Zero /* FUTURE: rule.StandardDelta */);
                 }
@@ -2719,7 +2756,7 @@ namespace System {
 
                 // As we get the associated rule using the adjusted targetTime, we should use the adjusted year (targetTime.Year) too as after adding the baseOffset, 
                 // sometimes the year value can change if the input datetime was very close to the beginning or the end of the year. Examples of such cases:
-                //      “Libya Standard Time” when used with the date 2011-12-31T23:59:59.9999999Z
+                //      Libya Standard Time when used with the date 2011-12-31T23:59:59.9999999Z
                 //      "W. Australia Standard Time" used with date 2005-12-31T23:59:00.0000000Z
                 DateTime targetTime = time + baseOffset;
                 year = targetTime.Year;
@@ -2856,7 +2893,7 @@ namespace System {
         //
         // Helper function that converts a year and TransitionTime into a DateTime
         //
-        static private DateTime TransitionTimeToDateTime(Int32 year, TransitionTime transitionTime) {
+        internal static DateTime TransitionTimeToDateTime(Int32 year, TransitionTime transitionTime) {
             DateTime value;
             DateTime timeOfDay = transitionTime.TimeOfDay;
 
@@ -4386,20 +4423,20 @@ namespace System {
                 out Boolean adjustmentRulesSupportDst) {
 
             if (id == null) {
-                throw new ArgumentNullException("id");
+                throw new ArgumentNullException(nameof(id));
             }
 
             if (id.Length == 0) {
-                throw new ArgumentException(Environment.GetResourceString("Argument_InvalidId", id), "id");
+                throw new ArgumentException(Environment.GetResourceString("Argument_InvalidId", id), nameof(id));
             }
 
             if (UtcOffsetOutOfRange(baseUtcOffset)) {
 
-                throw new ArgumentOutOfRangeException("baseUtcOffset", Environment.GetResourceString("ArgumentOutOfRange_UtcOffset"));
+                throw new ArgumentOutOfRangeException(nameof(baseUtcOffset), Environment.GetResourceString("ArgumentOutOfRange_UtcOffset"));
             }
 
             if (baseUtcOffset.Ticks % TimeSpan.TicksPerMinute != 0) {
-                throw new ArgumentException(Environment.GetResourceString("Argument_TimeSpanHasSeconds"), "baseUtcOffset");
+                throw new ArgumentException(Environment.GetResourceString("Argument_TimeSpanHasSeconds"), nameof(baseUtcOffset));
             }
             Contract.EndContractBlock();
 
@@ -4649,21 +4686,21 @@ namespace System {
 
 
                 if (dateStart.Kind != DateTimeKind.Unspecified && dateStart.Kind != DateTimeKind.Utc) {
-                    throw new ArgumentException(Environment.GetResourceString("Argument_DateTimeKindMustBeUnspecifiedOrUtc"), "dateStart");
+                    throw new ArgumentException(Environment.GetResourceString("Argument_DateTimeKindMustBeUnspecifiedOrUtc"), nameof(dateStart));
                 }
 
                 if (dateEnd.Kind != DateTimeKind.Unspecified && dateEnd.Kind != DateTimeKind.Utc) {
-                    throw new ArgumentException(Environment.GetResourceString("Argument_DateTimeKindMustBeUnspecifiedOrUtc"), "dateEnd");
+                    throw new ArgumentException(Environment.GetResourceString("Argument_DateTimeKindMustBeUnspecifiedOrUtc"), nameof(dateEnd));
                 }
 
                 if (daylightTransitionStart.Equals(daylightTransitionEnd) && !noDaylightTransitions) {
                     throw new ArgumentException(Environment.GetResourceString("Argument_TransitionTimesAreIdentical"),
-                                                "daylightTransitionEnd");
+                                                nameof(daylightTransitionEnd));
                 }
 
 
                 if (dateStart > dateEnd) {
-                    throw new ArgumentException(Environment.GetResourceString("Argument_OutOfOrderDateTimes"), "dateStart");
+                    throw new ArgumentException(Environment.GetResourceString("Argument_OutOfOrderDateTimes"), nameof(dateStart));
                 }
 
                 // This cannot use UtcOffsetOutOfRange to account for the scenario where Samoa moved across the International Date Line,
@@ -4671,23 +4708,23 @@ namespace System {
                 // So when trying to describe DaylightDeltas for those times, the DaylightDelta needs 
                 // to be -23 (what it takes to go from UTC+13 to UTC-10)
                 if (daylightDelta.TotalHours < -23.0 || daylightDelta.TotalHours > 14.0) {
-                    throw new ArgumentOutOfRangeException("daylightDelta", daylightDelta,
+                    throw new ArgumentOutOfRangeException(nameof(daylightDelta), daylightDelta,
                         Environment.GetResourceString("ArgumentOutOfRange_UtcOffset"));
                 }
 
                 if (daylightDelta.Ticks % TimeSpan.TicksPerMinute != 0) {
                     throw new ArgumentException(Environment.GetResourceString("Argument_TimeSpanHasSeconds"),
-                        "daylightDelta");
+                        nameof(daylightDelta));
                 }
 
                 if (dateStart != DateTime.MinValue && dateStart.Kind == DateTimeKind.Unspecified && dateStart.TimeOfDay != TimeSpan.Zero) {
                     throw new ArgumentException(Environment.GetResourceString("Argument_DateTimeHasTimeOfDay"),
-                        "dateStart");
+                        nameof(dateStart));
                 }
 
                 if (dateEnd != DateTime.MaxValue && dateEnd.Kind == DateTimeKind.Unspecified && dateEnd.TimeOfDay != TimeSpan.Zero) {
                     throw new ArgumentException(Environment.GetResourceString("Argument_DateTimeHasTimeOfDay"),
-                        "dateEnd");
+                        nameof(dateEnd));
                 }
                 Contract.EndContractBlock();
             }
@@ -4712,7 +4749,7 @@ namespace System {
             [System.Security.SecurityCritical]  // auto-generated_required
             void ISerializable.GetObjectData(SerializationInfo info, StreamingContext context) {
                 if (info == null) {
-                    throw new ArgumentNullException("info");
+                    throw new ArgumentNullException(nameof(info));
                 }
                 Contract.EndContractBlock();
  
@@ -4727,7 +4764,7 @@ namespace System {
 
             AdjustmentRule(SerializationInfo info, StreamingContext context) {
                 if (info == null) {
-                    throw new ArgumentNullException("info");
+                    throw new ArgumentNullException(nameof(info));
                 }
 
                 m_dateStart           = (DateTime)info.GetValue("DateStart", typeof(DateTime));
@@ -4930,33 +4967,33 @@ namespace System {
                     DayOfWeek dayOfWeek) { 
 
                 if (timeOfDay.Kind != DateTimeKind.Unspecified) {
-                    throw new ArgumentException(Environment.GetResourceString("Argument_DateTimeKindMustBeUnspecified"), "timeOfDay");
+                    throw new ArgumentException(Environment.GetResourceString("Argument_DateTimeKindMustBeUnspecified"), nameof(timeOfDay));
                 }
 
                 // Month range 1-12
                 if (month < 1 || month > 12) {
-                    throw new ArgumentOutOfRangeException("month", Environment.GetResourceString("ArgumentOutOfRange_MonthParam"));
+                    throw new ArgumentOutOfRangeException(nameof(month), Environment.GetResourceString("ArgumentOutOfRange_MonthParam"));
                 }
 
                 // Day range 1-31
                 if (day < 1 || day > 31) {
-                    throw new ArgumentOutOfRangeException("day", Environment.GetResourceString("ArgumentOutOfRange_DayParam"));
+                    throw new ArgumentOutOfRangeException(nameof(day), Environment.GetResourceString("ArgumentOutOfRange_DayParam"));
                 }
 
                 // Week range 1-5
                 if (week < 1 || week > 5) {
-                    throw new ArgumentOutOfRangeException("week", Environment.GetResourceString("ArgumentOutOfRange_Week"));
+                    throw new ArgumentOutOfRangeException(nameof(week), Environment.GetResourceString("ArgumentOutOfRange_Week"));
                 }
 
                 // DayOfWeek range 0-6
                 if ((int)dayOfWeek < 0 || (int)dayOfWeek > 6) {
-                    throw new ArgumentOutOfRangeException("dayOfWeek", Environment.GetResourceString("ArgumentOutOfRange_DayOfWeek"));
+                    throw new ArgumentOutOfRangeException(nameof(dayOfWeek), Environment.GetResourceString("ArgumentOutOfRange_DayOfWeek"));
                 }
                 Contract.EndContractBlock();
 
                 if (timeOfDay.Year != 1 || timeOfDay.Month != 1 
                 || timeOfDay.Day != 1 || (timeOfDay.Ticks % TimeSpan.TicksPerMillisecond != 0)) {
-                    throw new ArgumentException(Environment.GetResourceString("Argument_DateTimeHasTicks"), "timeOfDay");
+                    throw new ArgumentException(Environment.GetResourceString("Argument_DateTimeHasTicks"), nameof(timeOfDay));
                 }
             }
 
@@ -4976,7 +5013,7 @@ namespace System {
             [System.Security.SecurityCritical]  // auto-generated_required
             void ISerializable.GetObjectData(SerializationInfo info, StreamingContext context) {
                 if (info == null) {
-                    throw new ArgumentNullException("info");
+                    throw new ArgumentNullException(nameof(info));
                 }
                 Contract.EndContractBlock();
  
@@ -4990,7 +5027,7 @@ namespace System {
 
             TransitionTime(SerializationInfo info, StreamingContext context) {
                 if (info == null) {
-                    throw new ArgumentNullException("info");
+                    throw new ArgumentNullException(nameof(info));
                 }
 
                 m_timeOfDay       = (DateTime)info.GetValue("TimeOfDay", typeof(DateTime));
@@ -5681,7 +5718,7 @@ namespace System {
             {
                 if (data == null || data.Length < index + c_len)
                 {
-                    throw new ArgumentException(Environment.GetResourceString("Argument_TimeZoneInfoInvalidTZif"), "data");
+                    throw new ArgumentException(Environment.GetResourceString("Argument_TimeZoneInfoInvalidTZif"), nameof(data));
                 }
                 Contract.EndContractBlock();
                 UtcOffset = new TimeSpan(0, 0, TZif_ToInt32(data, index + 00));
@@ -5705,7 +5742,7 @@ namespace System {
             {
                 if (data == null || data.Length < c_len)
                 {
-                    throw new ArgumentException("bad data", "data");
+                    throw new ArgumentException("bad data", nameof(data));
                 }
                 Contract.EndContractBlock();
 
@@ -5714,7 +5751,7 @@ namespace System {
                 if (Magic != 0x545A6966)
                 {
                     // 0x545A6966 = {0x54, 0x5A, 0x69, 0x66} = "TZif"
-                    throw new ArgumentException(Environment.GetResourceString("Argument_TimeZoneInfoBadTZif"), "data");
+                    throw new ArgumentException(Environment.GetResourceString("Argument_TimeZoneInfoBadTZif"), nameof(data));
                 }
 
                 byte version = data[index + 04];

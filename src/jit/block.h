@@ -30,16 +30,12 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 #include "simplerhash.h"
 
 /*****************************************************************************/
-
+typedef BitVec EXPSET_TP;
 #if LARGE_EXPSET
-typedef unsigned __int64 EXPSET_TP;
 #define EXPSET_SZ 64
 #else
-typedef unsigned int EXPSET_TP;
 #define EXPSET_SZ 32
 #endif
-
-#define EXPSET_ALL ((EXPSET_TP)0 - 1)
 
 typedef BitVec          ASSERT_TP;
 typedef BitVec_ValArg_T ASSERT_VALARG_TP;
@@ -356,6 +352,10 @@ struct BasicBlock : private LIR::Range
                                        // as BBJ_ALWAYS. Used for the paired BBJ_ALWAYS block following the
                                        // BBJ_CALLFINALLY block, as well as, on x86, the final step block out of a
                                        // finally.
+
+// Flags that relate blocks to loop structure.
+
+#define BBF_LOOP_FLAGS (BBF_LOOP_PREHEADER | BBF_LOOP_HEAD | BBF_LOOP_CALL0 | BBF_LOOP_CALL1)
 
     bool isRunRarely()
     {
@@ -860,9 +860,7 @@ struct BasicBlock : private LIR::Range
     unsigned bbHeapSsaNumIn;            // The SSA # of "Heap" on entry to the block.
     unsigned bbHeapSsaNumOut;           // The SSA # of "Heap" on exit from the block.
 
-#ifdef DEBUGGING_SUPPORT
     VARSET_TP bbScope; // variables in scope over the block
-#endif
 
     void InitVarSets(class Compiler* comp);
 
@@ -1094,9 +1092,11 @@ public:
         return AllSuccs(comp, this);
     }
 
-    // Clone block state and statements from 'from' block to 'to' block.
-    // Assumes that "to" is an empty block.
-    static void CloneBlockState(Compiler* compiler, BasicBlock* to, const BasicBlock* from);
+    // Try to clone block state and statements from `from` block to `to` block (which must be new/empty),
+    // optionally replacing uses of local `varNum` with IntCns `varVal`.  Return true if all statements
+    // in the block are cloned successfully, false (with partially-populated `to` block) if one fails.
+    static bool CloneBlockState(
+        Compiler* compiler, BasicBlock* to, const BasicBlock* from, unsigned varNum = (unsigned)-1, int varVal = 0);
 
     void MakeLIR(GenTree* firstNode, GenTree* lastNode);
     bool IsLIR();

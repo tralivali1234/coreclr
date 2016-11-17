@@ -157,9 +157,10 @@ namespace System.Runtime
         public MemoryFailPoint(int sizeInMegabytes)
         {
             if (sizeInMegabytes <= 0)
-                throw new ArgumentOutOfRangeException("sizeInMegabytes", Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegNum"));
+                throw new ArgumentOutOfRangeException(nameof(sizeInMegabytes), Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegNum"));
             Contract.EndContractBlock();
 
+#if !FEATURE_PAL // Remove this when CheckForAvailableMemory is able to provide legitimate estimates
             ulong size = ((ulong)sizeInMegabytes) << 20;
             _reservedMemory = size;
 
@@ -302,6 +303,7 @@ namespace System.Runtime
                 SharedStatics.AddMemoryFailPointReservation((long) size);
                 _mustSubtractReservation = true;
             }
+#endif
         }
 
         [System.Security.SecurityCritical]  // auto-generated

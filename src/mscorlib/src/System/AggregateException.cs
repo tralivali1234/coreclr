@@ -69,7 +69,7 @@ namespace System
         {
             if (innerException == null)
             {
-                throw new ArgumentNullException("innerException");
+                throw new ArgumentNullException(nameof(innerException));
             }
 
             m_innerExceptions = new ReadOnlyCollection<Exception>(new Exception[] { innerException });
@@ -149,7 +149,7 @@ namespace System
         {
             if (innerExceptions == null)
             {
-                throw new ArgumentNullException("innerExceptions");
+                throw new ArgumentNullException(nameof(innerExceptions));
             }
 
             // Copy exceptions to our internal array and validate them. We must copy them,
@@ -227,7 +227,7 @@ namespace System
         {
             if (innerExceptionInfos == null)
             {
-                throw new ArgumentNullException("innerExceptionInfos");
+                throw new ArgumentNullException(nameof(innerExceptionInfos));
             }
 
             // Copy exceptions to our internal array and validate them. We must copy them,
@@ -264,7 +264,7 @@ namespace System
         {
             if (info == null)
             {
-                throw new ArgumentNullException("info");
+                throw new ArgumentNullException(nameof(info));
             }
 
             Exception[] innerExceptions = info.GetValue("InnerExceptions", typeof(Exception[])) as Exception[];
@@ -290,7 +290,7 @@ namespace System
         {
             if (info == null)
             {
-                throw new ArgumentNullException("info");
+                throw new ArgumentNullException(nameof(info));
             }
 
             base.GetObjectData(info, context);
@@ -351,7 +351,7 @@ namespace System
         {
             if (predicate == null)
             {
-                throw new ArgumentNullException("predicate");
+                throw new ArgumentNullException(nameof(predicate));
             }
 
             List<Exception> unhandledExceptions = null;
@@ -379,7 +379,8 @@ namespace System
 
 
         /// <summary>
-        /// Flattens an <see cref="AggregateException"/> instances into a single, new instance.
+        /// Flattens the inner instances of <see cref="AggregateException"/> by expanding its contained <see cref="Exception"/> instances
+        /// into a new <see cref="AggregateException"/>
         /// </summary>
         /// <returns>A new, flattened <see cref="AggregateException"/>.</returns>
         /// <remarks>

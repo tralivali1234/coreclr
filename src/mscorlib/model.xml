@@ -143,15 +143,23 @@
       <Member Name="#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
     </Type>
     <Type Name="System.AppContext">
+      <Member MemberType="Event" Name="FirstChanceException" />
+      <Member MemberType="Event" Name="ProcessExit" />
+      <Member MemberType="Event" Name="UnhandledException" />
+      <Member Name="add_FirstChanceException(System.EventHandler&lt;System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs&gt;)" />
+      <Member Name="add_ProcessExit(System.EventHandler)" />
+      <Member Name="add_UnhandledException(System.UnhandledExceptionEventHandler)" />
       <Member Name="get_BaseDirectory" />
-      <Member MemberType="Property" Name="BaseDirectory" />
       <Member Name="get_TargetFrameworkName" />
-      <Member MemberType="Property" Name="TargetFrameworkName" />
-      <Member Name="DefineSwitchDefault(System.String,System.Boolean)" />
+      <Member Name="GetData(System.String)" />
+      <Member Name="remove_FirstChanceException(System.EventHandler&lt;System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs&gt;)" />
+      <Member Name="remove_ProcessExit(System.EventHandler)" />
+      <Member Name="remove_UnhandledException(System.UnhandledExceptionEventHandler)" />
+      <Member Name="SetData(System.String,System.Object)" />
       <Member Name="SetSwitch(System.String,System.Boolean)" />
       <Member Name="TryGetSwitch(System.String,System.Boolean@)" />
-      <Member Name="GetData(System.String)" />
-      <Member MemberType="Event" Name="UnhandledException" />
+      <Member MemberType="Property" Name="BaseDirectory" />
+      <Member MemberType="Property" Name="TargetFrameworkName" />
     </Type>
     <Type Name="System.ApplicationException">
       <Member Name="#ctor" />
@@ -439,6 +447,7 @@
     </Type>
     <Type Name="System.BitConverter">
       <Member Name="DoubleToInt64Bits(System.Double)" />
+      <Member Name="Int32BitsToSingle(System.Int32)" />
       <Member Name="Int64BitsToDouble(System.Int64)" />
       <Member MemberType="Field" Name="IsLittleEndian" />
       <Member Name="GetBytes(System.Boolean)" />
@@ -451,6 +460,7 @@
       <Member Name="GetBytes(System.UInt32)" />
       <Member Name="GetBytes(System.UInt64)" />
       <Member Name="GetBytes(System.UInt16)" />
+      <Member Name="SingleToInt32Bits(System.Single)" />
       <Member Name="ToBoolean(System.Byte[],System.Int32)" />
       <Member Name="ToChar(System.Byte[],System.Int32)" />
       <Member Name="ToDouble(System.Byte[],System.Int32)" />
@@ -475,6 +485,7 @@
       <Member Name="#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
       <Member Name="get_FileName" />
       <Member Name="get_FusionLog" />
+      <Member Name="GetObjectData(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
       <Member MemberType="Property" Name="FileName" />
       <Member MemberType="Property" Name="FusionLog" />
     </Type>
@@ -499,6 +510,15 @@
       <Member Name="SetByte(System.Array,System.Int32,System.Byte)" />
       <Member Name="MemoryCopy(System.Void*,System.Void*,System.Int64,System.Int64)" />
       <Member Name="MemoryCopy(System.Void*,System.Void*,System.UInt64,System.UInt64)" />
+    </Type>
+    <Type Name="System.Buffers.ArrayPool&lt;T&gt;">
+      <Member Name="#ctor" />
+      <Member Name="Create" />
+      <Member Name="Create(System.Int32,System.Int32)" />
+      <Member Name="get_Shared" />
+      <Member MemberType="Property" Name="Shared" />
+      <Member Name="Rent(System.Int32)" />
+      <Member Name="Return(T[],System.Boolean)" />
     </Type>
     <Type Name="System.Byte">
       <Member MemberType="Field" Name="MaxValue" />
@@ -598,38 +618,6 @@
       <Member Name="#ctor(System.Boolean)" />
       <Member Name="get_IsCompliant" />
       <Member MemberType="Property" Name="IsCompliant" />
-    </Type>
-    <Type Name="System.Collections.BitArray">
-      <Member Name="#ctor(System.Int32)" />
-      <Member Name="#ctor(System.Int32,System.Boolean)" />
-      <Member Name="#ctor(System.Byte[])" />
-      <Member Name="#ctor(System.Boolean[])" />
-      <Member Name="#ctor(System.Int32[])" />
-      <Member Name="#ctor(System.Collections.BitArray)" />
-      <Member Name="Get(System.Int32)" />
-      <Member Name="Set(System.Int32,System.Boolean)" />
-      <Member Name="SetAll(System.Boolean)" />
-      <Member Name="And(System.Collections.BitArray)" />
-      <Member Name="Or(System.Collections.BitArray)" />
-      <Member Name="Xor(System.Collections.BitArray)" />
-      <Member Name="Not" />
-      <Member Name="set_Item(System.Int32,System.Boolean)" />
-      <Member Name="get_Item(System.Int32)" />
-      <Member MemberType="Property" Name="Item(System.Int32)" />
-      <Member Name="get_Length" />
-      <Member Name="set_Length(System.Int32)" />
-      <Member MemberType="Property" Name="Length" />
-      <Member Name="CopyTo(System.Array,System.Int32)" />
-      <Member Name="get_Count" />
-      <Member MemberType="Property" Name="Count" />
-      <Member Name="get_IsReadOnly" />
-      <Member MemberType="Property" Name="IsReadOnly" />
-      <Member Name="get_IsSynchronized" />
-      <Member MemberType="Property" Name="IsSynchronized" />
-      <Member Name="get_SyncRoot" />
-      <Member MemberType="Property" Name="SyncRoot" />
-      <Member Name="Clone" />
-      <Member Name="GetEnumerator" />
     </Type>
     <Type Name="System.Collections.CollectionBase">
       <Member Name="#ctor" />
@@ -786,6 +774,9 @@
       <Member Name="#ctor(System.String)" />
       <Member Name="#ctor(System.String,System.Exception)" />
       <Member Name="#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
+    </Type>
+    <Type Name="System.Collections.Generic.KeyValuePair">
+      <Member Name="Create&lt;TKey,TValue&gt;(TKey,TValue)" />
     </Type>
     <Type Name="System.Collections.Generic.KeyValuePair&lt;TKey,TValue&gt;">
       <Member Name="#ctor(TKey,TValue)" />
@@ -1058,10 +1049,15 @@
       <Member Name="ResolveUnmanagedDll(System.String,System.IntPtr)" />
       <Member Name="LoadUnmanagedDll(System.String)" />
       <Member Name="LoadUnmanagedDllFromPath(System.String)" />
+      <Member Name="GetLoadedAssemblies" />
       <Member Name="get_Default" />
       <Member Name="SetProfileOptimizationRoot(System.String)" />
       <Member Name="StartProfileOptimization(System.String)" />
+      <Member MemberType="Event" Name="AssemblyLoad" />
+      <Member MemberType="Event" Name="AssemblyResolve" />
       <Member MemberType="Event" Name="Resolving" />
+      <Member MemberType="Event" Name="ResourceResolve" />
+      <Member MemberType="Event" Name="TypeResolve" />
       <Member MemberType="Event" Name="Unloading" />
     </Type>
     <Type Name="System.Runtime.MemoryFailPoint">
@@ -1071,18 +1067,6 @@
     </Type>
     <Type Name="System.Reflection.Metadata.AssemblyExtensions">
       <Member Name="TryGetRawMetadata(System.Reflection.Assembly,System.Byte*@,System.Int32@)"/>
-    </Type>
-    <Type Name="System.ContextBoundObject">
-      <Member Name="#ctor" />
-    </Type>
-    <Type Name="System.ContextMarshalException">
-      <Member Name="#ctor" />
-      <Member Name="#ctor(System.String)" />
-      <Member Name="#ctor(System.String,System.Exception)" />
-      <Member Name="#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
-    </Type>
-    <Type Name="System.ContextStaticAttribute">
-        <Member Name="#ctor" />
     </Type>
     <Type Name="System.Convert">
       <Member MemberType="Field" Name="DBNull" />
@@ -2063,6 +2047,8 @@
       <Member Name="set_HResult(System.Int32)" />
       <Member Name="set_Source(System.String)" />
       <Member Name="ToString" />
+      <Member Name="add_SerializeObjectState(System.EventHandler&lt;System.Runtime.Serialization.SafeSerializationEventArgs&gt;)" />
+      <Member Name="remove_SerializeObjectState(System.EventHandler&lt;System.Runtime.Serialization.SafeSerializationEventArgs&gt;)" />
       <Member MemberType="Property" Name="Data" />
       <Member MemberType="Property" Name="HelpLink" />
       <Member MemberType="Property" Name="HResult" />
@@ -2071,6 +2057,7 @@
       <Member MemberType="Property" Name="Source" />
       <Member MemberType="Property" Name="StackTrace" />
       <Member MemberType="Property" Name="TargetSite" />
+      <Member MemberType="Event" Name="SerializeObjectState" />
       <Member Status="ImplRoot" Name="InternalToString" />
       <Member Status="ImplRoot" Name="InternalPreserveStackTrace" />
       <Member Status="ImplRoot" Name="OnDeserialized(System.Runtime.Serialization.StreamingContext)" />
@@ -2179,6 +2166,7 @@
       <Member Name="Collect(System.Int32,System.GCCollectionMode,System.Boolean)" />
       <Member Name="Collect(System.Int32,System.GCCollectionMode,System.Boolean,System.Boolean)" />
       <Member Name="CollectionCount(System.Int32)" />
+      <Member Name="EndNoGCRegion" />
       <Member Name="GetAllocatedBytesForCurrentThread" />
       <Member Name="GetGeneration(System.Object)" />
       <Member Name="GetGeneration(System.WeakReference)" />
@@ -2189,6 +2177,10 @@
       <Member Name="RemoveMemoryPressure(System.Int64)" />
       <Member Name="ReRegisterForFinalize(System.Object)" />
       <Member Name="SuppressFinalize(System.Object)" />
+      <Member Name="TryStartNoGCRegion(System.Int64)" />
+      <Member Name="TryStartNoGCRegion(System.Int64,System.Boolean)" />
+      <Member Name="TryStartNoGCRegion(System.Int64,System.Int64)" />
+      <Member Name="TryStartNoGCRegion(System.Int64,System.Int64,System.Boolean)" />
       <Member Name="WaitForFullGCApproach" />
       <Member Name="WaitForFullGCApproach(System.Int32)" />
       <Member Name="WaitForFullGCComplete" />
@@ -2308,6 +2300,7 @@
       <Member Name="Equals(System.Object)" />
       <Member Name="get_LCID" />
       <Member Name="get_Name" />
+      <Member Name="get_Version" />
       <Member Name="GetCompareInfo(System.Int32)" />
       <Member Name="GetCompareInfo(System.Int32,System.Reflection.Assembly)" />
       <Member Name="GetCompareInfo(System.String)" />
@@ -2353,6 +2346,7 @@
       <Member Name="ToString" />
       <Member MemberType="Property" Name="LCID" />
       <Member MemberType="Property" Name="Name" />
+      <Member MemberType="Property" Name="Version" />
     </Type>
     <Type Name="System.Globalization.CompareOptions">
       <Member MemberType="Field" Name="IgnoreCase" />
@@ -2379,15 +2373,18 @@
       <Member Name="get_CompareInfo" />
       <Member Name="get_CurrentCulture" />
       <Member Name="get_CurrentUICulture" />
+      <Member Name="get_CultureTypes" />
       <Member Name="get_DefaultThreadCurrentCulture" />
       <Member Name="get_DefaultThreadCurrentUICulture" />
       <Member Name="get_DateTimeFormat" />
       <Member Name="get_DisplayName" />
       <Member Name="get_EnglishName" />
+      <Member Name="get_IetfLanguageTag" />
       <Member Name="get_InstalledUICulture" />
       <Member Name="get_InvariantCulture" />
       <Member Name="get_IsNeutralCulture" />
       <Member Name="get_IsReadOnly" />
+      <Member Name="get_KeyboardLayoutId" />
       <Member Name="get_LCID" />
       <Member Name="get_Name" />
       <Member Name="get_NativeName" />
@@ -2399,6 +2396,7 @@
       <Member Name="get_ThreeLetterWindowsLanguageName" />
       <Member Name="get_TwoLetterISOLanguageName" />
       <Member Name="get_UseUserOverride" />
+      <Member Name="GetConsoleFallbackUICulture" />
       <Member Name="GetCultureInfo(System.Int32)" />
       <Member Name="GetCultureInfo(System.String)" />
       <Member Name="GetCultureInfo(System.String,System.String)" />
@@ -2421,15 +2419,18 @@
       <Member MemberType="Property" Name="CompareInfo" />
       <Member MemberType="Property" Name="CurrentCulture" />
       <Member MemberType="Property" Name="CurrentUICulture" />
+      <Member MemberType="Property" Name="CultureTypes" />
       <Member MemberType="Property" Name="DateTimeFormat" />
       <Member MemberType="Property" Name="DefaultThreadCurrentCulture" />
       <Member MemberType="Property" Name="DefaultThreadCurrentUICulture"/>
       <Member MemberType="Property" Name="DisplayName" />
       <Member MemberType="Property" Name="EnglishName" />
+      <Member MemberType="Property" Name="IetfLanguageTag" />
       <Member MemberType="Property" Name="InstalledUICulture" />
       <Member MemberType="Property" Name="InvariantCulture" />
       <Member MemberType="Property" Name="IsNeutralCulture" />
       <Member MemberType="Property" Name="IsReadOnly" />
+      <Member MemberType="Property" Name="KeyboardLayoutId" />
       <Member MemberType="Property" Name="LCID" />
       <Member MemberType="Property" Name="Name" />
       <Member MemberType="Property" Name="NativeName" />
@@ -2604,7 +2605,7 @@
       <Member Name="#ctor" />
       <Member Name="AddMonths(System.DateTime,System.Int32)" />
       <Member Name="AddYears(System.DateTime,System.Int32)" />
-      <Member Name="get_AlgorithmType" Condition="not FEATURE_COREFX_GLOBALIZATION" />
+      <Member Name="get_AlgorithmType" />
       <Member Name="get_Eras" />
       <Member Name="get_MaxSupportedDateTime" />
       <Member Name="get_MinSupportedDateTime" />
@@ -2640,7 +2641,7 @@
     <Type Name="System.Globalization.EastAsianLunisolarCalendar">
       <Member Name="AddMonths(System.DateTime,System.Int32)" />
       <Member Name="AddYears(System.DateTime,System.Int32)" />
-      <Member Name="get_AlgorithmType" Condition="not FEATURE_COREFX_GLOBALIZATION" />
+      <Member Name="get_AlgorithmType" />
       <Member Name="get_TwoDigitYearMax" />
       <Member Name="GetCelestialStem(System.Int32)" />
       <Member Name="GetDayOfMonth(System.DateTime)" />
@@ -2753,7 +2754,7 @@
       <Member Name="#ctor" />
       <Member Name="AddMonths(System.DateTime,System.Int32)" />
       <Member Name="AddYears(System.DateTime,System.Int32)" />
-      <Member Name="get_AlgorithmType" Condition="not FEATURE_COREFX_GLOBALIZATION" />
+      <Member Name="get_AlgorithmType" />
       <Member Name="get_Eras" />
       <Member Name="get_MaxSupportedDateTime" />
       <Member Name="get_MinSupportedDateTime" />
@@ -3493,11 +3494,6 @@
       <Member Name="#ctor(System.String,System.Exception)" />
       <Member Name="#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
     </Type>
-    <Type Status="ApiFxInternal" Name="System.IO.BufferedStream">
-      <Member Name="#ctor(System.IO.Stream,System.Int32)" />
-      <Member Name="get_UnderlyingStream" />
-      <Member Name="get_BufferSize" />
-    </Type>
     <Type Name="System.IO.FileLoadException">
       <Member Name="#ctor" />
       <Member Name="#ctor(System.String)" />
@@ -3507,6 +3503,8 @@
       <Member Name="#ctor(System.String,System.String,System.Int32)" /> <!-- Used by EE, do not remove -->
       <Member Name="#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
       <Member Name="get_FileName" />
+      <Member Name="get_FusionLog" />
+      <Member MemberType="Property" Name="FusionLog" />
     </Type>
     <Type Name="System.IObservable&lt;T&gt;">
       <Member Name="Subscribe(System.IObserver&lt;T&gt;)"/>
@@ -3556,6 +3554,9 @@
     </Type>
     <Type Name="System.MarshalByRefObject">
       <Member Name="#ctor" />
+      <Member Name="GetLifetimeService" />
+      <Member Name="InitializeLifetimeService" />
+      <Member Name="MemberwiseClone(System.Boolean)" />
     </Type>
     <Type Status="ImplRoot" Name="System.System_LazyDebugView&lt;T&gt;">
       <Member Status="ImplRoot" Name="#ctor(System.Lazy&lt;T&gt;)"/>
@@ -3652,6 +3653,38 @@
       <Member Name="Tanh(System.Double)" />
       <Member Name="Truncate(System.Decimal)"  />
       <Member Name="Truncate(System.Double)"  />
+    </Type>
+    <Type Name="System.MathF">
+      <Member MemberType="Field" Name="E" />
+      <Member MemberType="Field" Name="PI" />
+      <Member Name="Abs(System.Single)" />
+      <Member Name="Acos(System.Single)" />
+      <Member Name="Asin(System.Single)" />
+      <Member Name="Atan(System.Single)" />
+      <Member Name="Atan2(System.Single,System.Single)" />
+      <Member Name="Ceiling(System.Single)"/>
+      <Member Name="Cos(System.Single)" />
+      <Member Name="Cosh(System.Single)" />
+      <Member Name="Exp(System.Single)" />
+      <Member Name="Floor(System.Single)" />
+      <Member Name="IEEERemainder(System.Single,System.Single)" />
+      <Member Name="Log(System.Single)" />
+      <Member Name="Log(System.Single,System.Single)" />
+      <Member Name="Log10(System.Single)" />
+      <Member Name="Max(System.Single,System.Single)" />
+      <Member Name="Min(System.Single,System.Single)" />
+      <Member Name="Pow(System.Single,System.Single)" />
+      <Member Name="Round(System.Single)" />
+      <Member Name="Round(System.Single,System.Int32)" />
+      <Member Name="Round(System.Single,System.Int32,System.MidpointRounding)"  />
+      <Member Name="Round(System.Single,System.MidpointRounding)"  />
+      <Member Name="Sign(System.Single)" />
+      <Member Name="Sin(System.Single)" />
+      <Member Name="Sinh(System.Single)" />
+      <Member Name="Sqrt(System.Single)" />
+      <Member Name="Tan(System.Single)" />
+      <Member Name="Tanh(System.Single)" />
+      <Member Name="Truncate(System.Single)"  />
     </Type>
     <Type Name="System.MemberAccessException">
       <Member Name="#ctor" />
@@ -3919,14 +3952,19 @@
       <Member Name="GetReferencedAssemblies" />
       <Member Name="get_EntryPoint" />
       <Member Name="get_FullName" />
+      <Member Name="get_GlobalAssemblyCache" />
+      <Member Name="get_HostContext" />
       <Member Name="get_ImageRuntimeVersion" />
+      <Member Name="get_IsFullyTrusted" />
       <Member Name="get_IsDynamic" />
       <Member Name="get_CodeBase" />
+      <Member Name="get_EscapedCodeBase" />
       <Member Name="get_Location" />
       <Member Name="get_ManifestModule" />
       <Member Name="get_CustomAttributes" />
       <Member Name="get_Modules" />
       <Member Name="get_ReflectionOnly" />
+      <Member Name="get_SecurityRuleSet" />
       <Member Name="GetAssembly(System.Type)" />
       <Member Name="op_Equality(System.Reflection.Assembly,System.Reflection.Assembly)" />
       <Member Name="op_Inequality(System.Reflection.Assembly,System.Reflection.Assembly)" />
@@ -3937,6 +3975,9 @@
       <Member Name="GetExecutingAssembly" />
       <Member Name="GetEntryAssembly" />
       <Member Name="GetExportedTypes" />
+      <Member Name="GetFile(System.String)" />
+      <Member Name="GetFiles" />
+      <Member Name="GetFiles(System.Boolean)" />
       <Member Name="GetLoadedModules" />
       <Member Name="GetLoadedModules(System.Boolean)" />
       <Member Name="GetManifestResourceNames" />
@@ -3962,21 +4003,35 @@
       <Member Name="Load(System.String)" />
       <Member Name="Load(System.Byte[])" />
       <Member Name="Load(System.Byte[],System.Byte[])" />
+      <Member Name="LoadFile(System.String)" />
+      <Member Name="LoadFrom(System.String)" />
+      <Member Name="LoadFrom(System.String,System.Byte[],System.Configuration.Assemblies.AssemblyHashAlgorithm)" />
+      <Member Name="LoadModule(System.String,System.Byte[])" />
+      <Member Name="LoadModule(System.String,System.Byte[],System.Byte[])" />
+      <Member Name="LoadWithPartialName(System.String)" />
       <Member Name="ReflectionOnlyLoad(System.String)" />
       <Member Name="ReflectionOnlyLoad(System.Byte[])" />
       <Member Name="ReflectionOnlyLoadFrom(System.String)" />
       <Member Name="ToString" />
+      <Member Name="UnsafeLoadFrom(System.String)" />
       <Member MemberType="Property" Name="DefinedTypes" />
       <Member MemberType="Property" Name="CustomAttributes" />
       <Member MemberType="Property" Name="Modules" />
       <Member MemberType="Property" Name="ExportedTypes" />
       <Member MemberType="Property" Name="EntryPoint" />
       <Member MemberType="Property" Name="FullName" />
+      <Member MemberType="Property" Name="GlobalAssemblyCache" />
+      <Member MemberType="Property" Name="HostContext" />
       <Member MemberType="Property" Name="CodeBase" />
+      <Member MemberType="Property" Name="EscapedCodeBase" />
       <Member MemberType="Property" Name="ImageRuntimeVersion" />
+      <Member MemberType="Property" Name="IsFullyTrusted" />
       <Member MemberType="Property" Name="Location" />
       <Member MemberType="Property" Name="ManifestModule" />
-      <Member Status="ImplRoot" MemberType="Event" Name="ModuleResolve" />
+      <Member MemberType="Property" Name="SecurityRuleSet" />
+      <Member MemberType="Event" Name="ModuleResolve" />
+      <Member Name="add_ModuleResolve(System.Reflection.ModuleResolveEventHandler)" />
+      <Member Name="remove_ModuleResolve(System.Reflection.ModuleResolveEventHandler)" />
     </Type>
     <Type Name="System.Reflection.IntrospectionExtensions">
       <Member Name="GetTypeInfo(System.Type)" />
@@ -4108,6 +4163,7 @@
       <Member Name="get_CultureInfo" />
       <Member Name="get_CultureName" />
       <Member Name="get_CodeBase" />
+      <Member Name="get_EscapedCodeBase" />
       <Member Name="get_ContentType" />
       <Member Name="get_Flags" />
       <Member Name="get_FullName" />
@@ -4116,6 +4172,7 @@
       <Member Name="get_Name" />
       <Member Name="get_ProcessorArchitecture" />
       <Member Name="get_Version" />
+      <Member Name="get_KeyPair" />
       <Member Name="GetAssemblyName(System.String)" />
       <Member Name="GetPublicKey" />
       <Member Name="GetPublicKeyToken" />
@@ -4127,6 +4184,7 @@
       <Member Name="set_Name(System.String)" />
       <Member Name="set_ProcessorArchitecture(System.Reflection.ProcessorArchitecture)" />
       <Member Name="set_Version(System.Version)" />
+      <Member Name="set_KeyPair(System.Reflection.StrongNameKeyPair)" />
       <Member Name="Clone" />
       <Member Name="SetPublicKey(System.Byte[])" />
       <Member Name="SetPublicKeyToken(System.Byte[])" />
@@ -4139,6 +4197,7 @@
       <Member MemberType="Property" Name="CultureInfo" />
       <Member MemberType="Property" Name="CultureName" />
       <Member MemberType="Property" Name="ContentType" />
+      <Member MemberType="Property" Name="EscapedCodeBase" />
       <Member MemberType="Property" Name="Flags" />
       <Member MemberType="Property" Name="FullName" />
       <Member MemberType="Property" Name="HashAlgorithm" />
@@ -4146,6 +4205,7 @@
       <Member MemberType="Property" Name="ProcessorArchitecture" />
       <Member MemberType="Property" Name="Version" />
       <Member MemberType="Property" Name="VersionCompatibility" />
+      <Member MemberType="Property" Name="KeyPair" />
     </Type>
     <Type Name="System.Reflection.AssemblyNameFlags">
       <Member MemberType="Field" Name="EnableJITcompileOptimizer" />
@@ -4614,6 +4674,7 @@
       <Member MemberType="Field" Name="Cond_Branch" />
       <Member MemberType="Field" Name="Meta" />
       <Member MemberType="Field" Name="Next" />
+      <Member MemberType="Field" Name="Phi" />
       <Member MemberType="Field" Name="Return" />
       <Member MemberType="Field" Name="Throw" />
       <Member MemberType="Field" Name="value__" />
@@ -5132,6 +5193,7 @@
       <Member Name="TakesSingleByteArgument(System.Reflection.Emit.OpCode)" />
     </Type>
     <Type Name="System.Reflection.Emit.OpCodeType">
+      <Member MemberType="Field" Name="Annotation" />
       <Member MemberType="Field" Name="Macro" />
       <Member MemberType="Field" Name="Nternal" />
       <Member MemberType="Field" Name="Objmodel" />
@@ -5146,6 +5208,7 @@
       <Member MemberType="Field" Name="InlineI8" />
       <Member MemberType="Field" Name="InlineMethod" />
       <Member MemberType="Field" Name="InlineNone" />
+      <Member MemberType="Field" Name="InlinePhi" />
       <Member MemberType="Field" Name="InlineR" />
       <Member MemberType="Field" Name="InlineSig" />
       <Member MemberType="Field" Name="InlineString" />
@@ -5703,6 +5766,7 @@
       <Member Name="get_IsStatic" />
       <Member Name="get_IsVirtual" />
       <Member Name="get_IsSecurityCritical" />
+      <Member Name="get_IsSecuritySafeCritical" />
       <Member Name="get_IsSecurityTransparent" />
       <Member Name="get_MethodHandle" />
       <Member Name="get_MethodImplementationFlags" />
@@ -5738,6 +5802,7 @@
       <Member MemberType="Property" Name="IsStatic" />
       <Member MemberType="Property" Name="IsVirtual" />
       <Member MemberType="Property" Name="IsSecurityCritical" />
+      <Member MemberType="Property" Name="IsSecuritySafeCritical" />
       <Member MemberType="Property" Name="IsSecurityTransparent" />
       <Member MemberType="Property" Name="MethodHandle" />
       <Member MemberType="Property" Name="MethodImplementationFlags" />
@@ -6356,6 +6421,7 @@
       <Member MemberType="Field" Name="value__" />
     </Type>
     <Type Name="System.Runtime.CompilerServices.RuntimeHelpers">
+      <Member Name="Equals(System.Object,System.Object)" />
       <Member Name="GetUninitializedObject(System.Type)" />
       <Member Name="EnsureSufficientExecutionStack" />
       <Member Name="TryEnsureSufficientExecutionStack" />
@@ -6427,10 +6493,16 @@
       <Member MemberType="Property" Name="SourceException" />
     </Type>
     <!-- #endif FEATURE_EXCEPTIONDISPATCHINFO -->
+    <Type Name="System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs">
+      <Member Name="#ctor(System.Exception)" />
+      <Member Name="get_Exception" />
+      <Member MemberType="Property" Name="Exception" />
+    </Type>
     <Type Name="System.Runtime.GCLatencyMode">
       <Member MemberType="Field" Name="Batch" />
       <Member MemberType="Field" Name="Interactive" />
       <Member MemberType="Field" Name="LowLatency" />
+      <Member MemberType="Field" Name="NoGCRegion" />
       <Member MemberType="Field" Name="SustainedLowLatency" />
     </Type>
     <Type Name="System.Runtime.GCSettings">
@@ -6481,7 +6553,6 @@
       <Member MemberType="Property" Name="ErrorCode" />
       <Member Name="get_ErrorCode" />
     </Type>
-    <Type Status="ImplRoot" Name="System.Runtime.InteropServices.LCIDConversionAttribute" Condition="FEATURE_COMINTEROP" />
     <Type Name="System.Runtime.InteropServices.CallingConvention">
       <Member MemberType="Field" Name="value__" />
       <Member MemberType="Field" Name="Winapi" />
@@ -6593,6 +6664,36 @@
     <Type Name="System.Runtime.InteropServices.AllowReversePInvokeCallsAttribute">
       <Member Name="#ctor" />
     </Type>
+    <Type Name="System.Runtime.InteropServices.AutomationProxyAttribute">
+      <Member Name="#ctor(System.Boolean)" />
+      <Member Name="get_Value" />
+      <Member MemberType="Property" Name="Value" />      
+    </Type>
+   <Type Name="System.Runtime.InteropServices.ComAliasNameAttribute">
+      <Member Name="#ctor(System.String)" />
+      <Member Name="get_Value" />
+      <Member MemberType="Property" Name="Value" />      
+    </Type>
+    <Type Name="System.Runtime.InteropServices.ComCompatibleVersionAttribute">
+      <Member Name="#ctor(System.Int32,System.Int32,System.Int32,System.Int32)" />
+      <Member Name="get_MajorVersion" />
+      <Member MemberType="Property" Name="MajorVersion" />      
+      <Member Name="get_MinorVersion" />
+      <Member MemberType="Property" Name="MinorVersion" />      
+      <Member Name="get_BuildNumber" />
+      <Member MemberType="Property" Name="BuildNumber" />      
+      <Member Name="get_RevisionNumber" />
+      <Member MemberType="Property" Name="RevisionNumber" />      
+    </Type>    
+    <Type Name="System.Runtime.InteropServices.ComConversionLossAttribute">
+      <Member Name="#ctor" />
+    </Type>
+    <Type Name="System.Runtime.InteropServices.ComRegisterFunctionAttribute">
+      <Member Name="#ctor" />
+    </Type>
+    <Type Name="System.Runtime.InteropServices.ComUnregisterFunctionAttribute">
+      <Member Name="#ctor" />
+    </Type>
     <Type Name="System.Runtime.InteropServices.ExternalException">
       <Member Name="#ctor" />
       <Member Name="#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
@@ -6601,6 +6702,7 @@
       <Member Name="#ctor(System.String,System.Int32)" />
       <Member Name="get_ErrorCode" />
       <Member MemberType="Property" Name="ErrorCode" />
+      <Member Name="ToString" />
     </Type>
     <Type Name="System.Runtime.InteropServices.FieldOffsetAttribute">
       <Member Name="#ctor(System.Int32)" />
@@ -6638,9 +6740,26 @@
       <Member MemberType="Property" Name="Value" />
       <Member Name="get_Value" />
     </Type>
+    <Type Name="System.Runtime.InteropServices.HandleRef">
+      <Member Name="#ctor(System.Object,System.IntPtr)"/>
+      <Member MemberType="Property" Name="Handle"/>
+      <Member Name="get_Handle"/>
+      <Member MemberType="Property" Name="Wrapper"/>
+      <Member Name="get_Wrapper"/>
+      <Member Name="op_Explicit(System.Runtime.InteropServices.HandleRef)" ReturnType="System.IntPtr" />
+      <Member Name="ToIntPtr(System.Runtime.InteropServices.HandleRef)"/>
+    </Type>
     <Type Name="System.Runtime.InteropServices.ICustomQueryInterface">
       <Member Name="GetInterface(System.Guid@,System.IntPtr@)" />
     </Type>
+    <Type Name="System.Runtime.InteropServices.ICustomFactory">
+      <Member Name="CreateInstance(System.Type)" />
+    </Type>
+    <Type Name="System.Runtime.InteropServices.ImportedFromTypeLibAttribute">
+      <Member Name="#ctor(System.String)" />
+      <Member Name="get_Value" />
+      <Member MemberType="Property" Name="Value" />      
+    </Type>    
     <Type Name="System.Runtime.InteropServices.InAttribute">
       <Member Name="#ctor" />
     </Type>
@@ -6674,16 +6793,19 @@
       <Member MemberType="Field" Name="Sequential" />
       <Member MemberType="Field" Name="value__" />
     </Type>
-    <Type Name="System.Runtime.InteropServices.NativeCallableAttribute">
-      <Member Name="#ctor" />
-      <Member MemberType="Field" Name="CallingConvention" /> <!-- EE -->
-      <Member MemberType="Field" Name="EntryPoint" /> <!-- EE -->
+    <Type Name="System.Runtime.InteropServices.LCIDConversionAttribute">
+      <Member Name="#ctor(System.Int32)" />
+      <Member Name="get_Value" />
+      <Member MemberType="Property" Name="Value" />      
     </Type>
     <Type Name="System.Runtime.InteropServices.Marshal">
       <Member MemberType="Field" Name="SystemDefaultCharSize" />
       <Member Name="AddRef(System.IntPtr)" />
       <Member Name="AllocHGlobal(System.Int32)" />
       <Member Name="AllocCoTaskMem(System.Int32)" />
+      <Member Name="BindToMoniker(System.String)" />
+      <Member Name="ChangeWrapperHandleStrength(System.Object,System.Boolean)" />
+      <Member Name="CleanupUnusedObjectsInCurrentContext" />
       <Member Name="Copy(System.Byte[],System.Int32,System.IntPtr,System.Int32)" />
       <Member Name="Copy(System.Char[],System.Int32,System.IntPtr,System.Int32)" />
       <Member Name="Copy(System.Double[],System.Int32,System.IntPtr,System.Int32)" />
@@ -6701,13 +6823,18 @@
       <Member Name="FinalReleaseComObject(System.Object)" />
       <Member Name="FreeHGlobal(System.IntPtr)" />
       <Member Name="FreeCoTaskMem(System.IntPtr)" />
+      <Member Name="GenerateGuidForType(System.Type)" />
+      <Member Name="GenerateProgIdForType(System.Type)" />      
       <Member Name="GetComInterfaceForObject(System.Object,System.Type)" />
       <Member Name="GetComInterfaceForObject(System.Object,System.Type,System.Runtime.InteropServices.CustomQueryInterfaceMode)" />
+      <Member Name="GetComObjectData(System.Object,System.Object)" />
       <Member Name="GetDelegateForFunctionPointer(System.IntPtr,System.Type)" />
       <Member Name="GetExceptionForHR(System.Int32)" />
       <Member Name="GetExceptionForHR(System.Int32,System.IntPtr)" />
       <Member Name="GetFunctionPointerForDelegate(System.Delegate)" />
       <Member Name="GetHRForException(System.Exception)" />
+      <Member Name="GetHINSTANCE(System.Reflection.Module)" />
+      <Member Name="GetIDispatchForObject(System.Object)" />
       <Member Name="GetIUnknownForObject(System.Object)" />
       <Member Name="GetLastWin32Error" />
       <Member Name="GetHRForLastWin32Error" />
@@ -6722,6 +6849,8 @@
       <Member Name="PrelinkAll(System.Type)" />
       <Member Name="PtrToStringAnsi(System.IntPtr)" />
       <Member Name="PtrToStringAnsi(System.IntPtr,System.Int32)" />
+      <Member Name="PtrToStringAuto(System.IntPtr)" />
+      <Member Name="PtrToStringAuto(System.IntPtr,System.Int32)" />
       <Member Name="PtrToStringUTF8(System.IntPtr)" />
       <Member Name="PtrToStringUTF8(System.IntPtr,System.Int32)" />
       <Member Name="PtrToStringUni(System.IntPtr)" />
@@ -6741,12 +6870,14 @@
       <Member Name="ReadIntPtr(System.IntPtr,System.Int32)" />
       <Member Name="Release(System.IntPtr)" />
       <Member Name="ReleaseComObject(System.Object)" />
+      <Member Name="SetComObjectData(System.Object,System.Object,System.Object)" />
       <Member Name="SetLastWin32Error(System.Int32)" />
       <Member Name="SizeOf(System.Object)" />
       <Member Name="SizeOf(System.Type)" />
       <Member Name="StructureToPtr(System.Object,System.IntPtr,System.Boolean)" />
       <Member Name="ThrowExceptionForHR(System.Int32)" />
       <Member Name="ThrowExceptionForHR(System.Int32,System.IntPtr)" />
+      <Member Name="GetTypedObjectForIUnknown(System.IntPtr,System.Type)" />
       <Member Name="UnsafeAddrOfPinnedArrayElement(System.Array,System.Int32)" />
       <Member Name="WriteByte(System.IntPtr,System.Byte)" />
       <Member Name="WriteByte(System.IntPtr,System.Int32,System.Byte)" />
@@ -6800,8 +6931,10 @@
       <Member Name="SizeOf&lt;T&gt;(T)" />
       <Member Name="StringToBSTR(System.String)" />
       <Member Name="StringToCoTaskMemAnsi(System.String)" />
+      <Member Name="StringToCoTaskMemAuto(System.String)" />
       <Member Name="StringToCoTaskMemUni(System.String)" />
       <Member Name="StringToHGlobalAnsi(System.String)" />
+      <Member Name="StringToHGlobalAuto(System.String)" />
       <Member Name="StringToHGlobalUni(System.String)" />
       <Member Name="StringToCoTaskMemUTF8(System.String)" />
       <Member Name="StructureToPtr&lt;T&gt;(T,System.IntPtr,System.Boolean)" />
@@ -6817,6 +6950,11 @@
       <Member Name="ZeroFreeGlobalAllocAnsi(System.IntPtr)" />
       <Member Name="ZeroFreeGlobalAllocUnicode(System.IntPtr)" />
       <Member Name="ZeroFreeCoTaskMemUTF8(System.IntPtr)" />
+      <Member Name="SecureStringToCoTaskMemAnsi(System.Security.SecureString)" />
+      <Member Name="SecureStringToCoTaskMemUnicode(System.Security.SecureString)" />
+      <Member Name="SecureStringToGlobalAllocAnsi(System.Security.SecureString)" />
+      <Member Name="SecureStringToGlobalAllocUnicode(System.Security.SecureString)" />
+      <Member Name="SecureStringToBSTR(System.Security.SecureString)" />
     </Type>
     <Type Name="System.Runtime.InteropServices.MarshalAsAttribute">
       <Member MemberType="Field" Name="ArraySubType" />
@@ -6833,11 +6971,23 @@
       <Member MemberType="Field" Name="SafeArraySubType" />
       <Member MemberType="Field" Name="SafeArrayUserDefinedSubType" />
     </Type>
+    <Type Name="System.Runtime.InteropServices.ManagedToNativeComInteropStubAttribute">
+      <Member Name="#ctor(System.Type,System.String)" />
+      <Member Name="get_ClassType" />
+      <Member MemberType="Property" Name="ClassType" />      
+      <Member Name="get_MethodName" />
+      <Member MemberType="Property" Name="MethodName" />      
+    </Type>       
     <Type Name="System.Runtime.InteropServices.MarshalDirectiveException" >
       <Member Name="#ctor" />
       <Member Name="#ctor(System.String)" />
       <Member Name="#ctor(System.String,System.Exception)" />
       <Member Name="#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
+    </Type>
+    <Type Name="System.Runtime.InteropServices.NativeCallableAttribute">
+      <Member Name="#ctor" />
+      <Member MemberType="Field" Name="CallingConvention" /> <!-- EE -->
+      <Member MemberType="Field" Name="EntryPoint" /> <!-- EE -->
     </Type>
     <Type Name="System.Runtime.InteropServices.OptionalAttribute">
       <Member Name="#ctor" />
@@ -6848,8 +6998,17 @@
     <Type Name="System.Runtime.InteropServices.PreserveSigAttribute">
       <Member Name="#ctor" />
     </Type>
-    <Type Name="System.Runtime.InteropServices.RuntimeEnvironment">
-       <Member Name="GetRuntimeDirectory" /> <!-- For use in the Framework, but not public in Win8P reference assemblies. -->
+    <Type Name="System.Runtime.InteropServices.PrimaryInteropAssemblyAttribute">
+      <Member Name="#ctor(System.Int32,System.Int32)" />
+      <Member Name="get_MajorVersion" />
+      <Member MemberType="Property" Name="MajorVersion" />
+      <Member Name="get_MinorVersion" />
+      <Member MemberType="Property" Name="MinorVersion" />
+    </Type>    
+    <Type Name="System.Runtime.InteropServices.ProgIdAttribute">
+      <Member Name="#ctor(System.String)" />
+      <Member Name="get_Value" />
+      <Member MemberType="Property" Name="Value" />      
     </Type>
     <Type Name="System.Runtime.InteropServices.SafeHandle">
       <Member MemberType="Field" Name="handle" />
@@ -6870,6 +7029,18 @@
       <Member MemberType="Property" Name="IsClosed" />
       <Member MemberType="Property" Name="IsInvalid" />
     </Type>
+   <Type Name="System.Runtime.InteropServices.TypeLibImportClassAttribute">
+      <Member Name="#ctor(System.Type)" />
+      <Member Name="get_Value" />
+      <Member MemberType="Property" Name="Value" />
+    </Type>
+    <Type Name="System.Runtime.InteropServices.TypeLibVersionAttribute">
+      <Member Name="#ctor(System.Int32,System.Int32)" />
+      <Member Name="get_MajorVersion" />
+      <Member MemberType="Property" Name="MajorVersion" />
+      <Member Name="get_MinorVersion" />
+      <Member MemberType="Property" Name="MinorVersion" />
+    </Type>       
     <Type Name="System.Runtime.InteropServices.CriticalHandle">
       <Member MemberType="Field" Name="handle" />
       <Member MemberType="Field" Name="_stackTrace" Flavor="chk,dbg" />
@@ -6902,6 +7073,9 @@
     <Type Name="Microsoft.Win32.SafeHandles.SafeHandleZeroOrMinusOneIsInvalid">
       <Member Name="#ctor(System.Boolean)" />
       <Member Name="get_IsInvalid" />
+    </Type>
+    <Type Name="Microsoft.Win32.SafeHandles.SafeFileHandle">
+      <Member Name="#ctor(System.IntPtr,System.Boolean)" />
     </Type>
     <Type Name="Microsoft.Win32.SafeHandles.SafeWaitHandle">
       <Member Name="#ctor(System.IntPtr,System.Boolean)" />
@@ -6973,16 +7147,6 @@
       <Member MemberType="Field" Name="IInspectable" />
       <Member MemberType="Field" Name="IUnknown" />
     </Type>
-    <Type Status="ApiRoot" Name="System.Runtime.Versioning.ComponentGuaranteesAttribute">
-      <Member Name="#ctor(System.Runtime.Versioning.ComponentGuaranteesOptions)" />
-      <Member MemberType="Property" Name="Guarantees" />
-    </Type>
-    <Type Name="System.Runtime.Versioning.ComponentGuaranteesOptions">
-      <Member MemberType="Field" Name="None" />
-      <Member MemberType="Field" Name="Exchange" />
-      <Member MemberType="Field" Name="Stable" />
-      <Member MemberType="Field" Name="value__" />
-    </Type>
     <Type Name="System.RuntimeFieldHandle">
       <Member Status="ImplRoot" Name="#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
       <Member Name="Equals(System.RuntimeFieldHandle)" />
@@ -7032,7 +7196,22 @@
       <Member MemberType="Field" Name="value__" />
       <Member MemberType="Field" Name="VisibleToAllHosts" />
     </Type>
-    <Type Name="System.Security.SecurityCriticalAttribute">
+    <Type Name="System.Security.SecureString">
+      <Member Name="#ctor" />
+      <Member Name="#ctor(System.Char*,System.Int32)" />
+      <Member Name="get_Length" />
+      <Member MemberType="Property" Name="Length" />
+      <Member Name="AppendChar(System.Char)" />
+      <Member Name="Clear" />
+      <Member Name="Copy" />
+      <Member Name="Dispose" />
+      <Member Name="InsertAt(System.Int32,System.Char)" />
+      <Member Name="IsReadOnly" />
+      <Member Name="MakeReadOnly" />
+      <Member Name="RemoveAt(System.Int32)" />
+      <Member Name="SetAt(System.Int32,System.Char)" />
+    </Type>
+   <Type Name="System.Security.SecurityCriticalAttribute">
       <Member Name="#ctor" />
       <Member Name="#ctor(System.Security.SecurityCriticalScope)" />
       <Member Name="get_Scope" />
@@ -7288,7 +7467,7 @@
       <Member Name="get_StructuralEqualityComparer" />
       <Member MemberType="Property" Name="StructuralComparer" />
       <Member MemberType="Property" Name="StructuralEqualityComparer" />
-    </Type>
+    </Type>   
     <Type Name="System.StringComparer">
       <Member Name="#ctor" />
       <Member Name="Compare(System.Object,System.Object)" />
@@ -7812,6 +7991,21 @@
       <Member MemberType="Property" Name="Mutex" />
       <Member MemberType="Property" Name="MutexIndex" />
     </Type>
+    <Type Name="System.Threading.ApartmentState">
+      <Member MemberType="Field" Name="MTA" />
+      <Member MemberType="Field" Name="STA" />
+      <Member MemberType="Field" Name="Unknown" />
+      <Member MemberType="Field" Name="value__" />
+    </Type>
+    <Type Name="System.Threading.AsyncFlowControl">
+      <Member Name="Dispose" />
+      <Member Name="Equals(System.Object)" />
+      <Member Name="Equals(System.Threading.AsyncFlowControl)" />
+      <Member Name="GetHashCode" />
+      <Member Name="op_Equality(System.Threading.AsyncFlowControl,System.Threading.AsyncFlowControl)" />
+      <Member Name="op_Inequality(System.Threading.AsyncFlowControl,System.Threading.AsyncFlowControl)" />
+      <Member Name="Undo" />
+    </Type>
     <Type Name="System.Threading.AutoResetEvent">
       <Member Name="#ctor(System.Boolean)" />
     </Type>
@@ -7926,14 +8120,18 @@
     </Type>
     <Type Name="System.Threading.SynchronizationContext">
       <Member Name="#ctor"/>
-      <Member Name="Send(System.Threading.SendOrPostCallback,System.Object)"/>
-      <Member Name="Post(System.Threading.SendOrPostCallback,System.Object)"/>
-      <Member Name="OperationStarted"/>
-      <Member Name="OperationCompleted"/>
-      <Member Name="SetSynchronizationContext(System.Threading.SynchronizationContext)"/>
-      <Member Name="get_Current"/>
       <Member Name="CreateCopy"/>
       <Member MemberType="Property" Name="Current"/>
+      <Member Status="ImplRoot" Name="InvokeWaitMethodHelper(System.Threading.SynchronizationContext,System.IntPtr[],System.Boolean,System.Int32)"/>
+      <Member Name="IsWaitNotificationRequired"/>
+      <Member Name="OperationCompleted"/>
+      <Member Name="OperationStarted"/>
+      <Member Name="Post(System.Threading.SendOrPostCallback,System.Object)"/>
+      <Member Name="Send(System.Threading.SendOrPostCallback,System.Object)"/>
+      <Member Name="SetSynchronizationContext(System.Threading.SynchronizationContext)"/>
+      <Member Name="SetWaitNotificationRequired"/>
+      <Member Name="Wait(System.IntPtr[],System.Boolean,System.Int32)"/>
+      <Member Name="WaitHelper(System.IntPtr[],System.Boolean,System.Int32)"/>
     </Type>
     <Type Name="System.Threading.SynchronizationLockException">
       <Member Name="#ctor" />
@@ -7950,14 +8148,8 @@
       <Member Name="get_CurrentThread" />
       <Member Name="get_CurrentUICulture" />
       <Member Name="GetDomain" />
-      <Member Name="get_IsBackground" />
       <Member Name="get_ManagedThreadId" />
       <Member Name="get_Name" />
-      <Member Name="get_IsAlive" />
-      <Member Name="get_ThreadState" />
-      <Member Name="Join" />
-      <Member Name="Join(System.Int32)" />
-      <Member Name="set_IsBackground(System.Boolean)" />
       <Member Name="set_Name(System.String)" />
       <Member Name="Sleep(System.Int32)" />
       <Member Name="Sleep(System.TimeSpan)" />
@@ -7967,39 +8159,77 @@
       <Member MemberType="Property" Name="CurrentCulture" />
       <Member MemberType="Property" Name="CurrentThread" />
       <Member MemberType="Property" Name="CurrentUICulture" />
-      <Member MemberType="Property" Name="IsBackground" />
       <Member MemberType="Property" Name="ManagedThreadId" />
       <Member MemberType="Property" Name="Name" />
-      <Member MemberType="Property" Name="IsAlive" />
-      <Member MemberType="Property" Name="ThreadState" />
       <Member Status="ImplRoot" Name="InternalGetCurrentThread" />
       <Member Status="ImplRoot" MemberType="Field" Name="DONT_USE_InternalThread" />
       <Member Status="ImplRoot" MemberType="Field" Name="m_Priority" />
       <Member Status="ImplRoot" MemberType="Field" Name="m_ThreadStartArg" />
     </Type>
+    <Type Name="Internal.Runtime.Augments.RuntimeThread">
+      <Member MemberType="Property" Name="CurrentThread" />
+      <Member MemberType="Property" Name="IsAlive" />
+      <Member MemberType="Property" Name="IsBackground" />
+      <Member MemberType="Property" Name="IsThreadPoolThread" />
+      <Member MemberType="Property" Name="ManagedThreadId" />
+      <Member MemberType="Property" Name="Name" />
+      <Member MemberType="Property" Name="Priority" />
+      <Member MemberType="Property" Name="ThreadState" />
+      <Member Name="Create(System.Threading.ThreadStart)" />
+      <Member Name="Create(System.Threading.ThreadStart,System.Int32)" />
+      <Member Name="Create(System.Threading.ParameterizedThreadStart)" />
+      <Member Name="Create(System.Threading.ParameterizedThreadStart,System.Int32)" />
+      <Member Name="DisableComObjectEagerCleanup" />
+      <Member Name="GetApartmentState" />
+      <Member Name="Interrupt" />
+      <Member Name="Join" />
+      <Member Name="Join(System.Int32)" />
+      <Member Name="Sleep(System.Int32)" />
+      <Member Name="SpinWait(System.Int32)" />
+      <Member Name="Start" />
+      <Member Name="Start(System.Object)" />
+      <Member Name="TrySetApartmentState(System.Threading.ApartmentState)" />
+      <Member Name="Yield" />
+    </Type>
     <Type Name="System.Threading.ThreadAbortException">
       <Member Status="ImplRoot" Name="#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
     </Type>
     <Type Name="System.Threading.ThreadPool">
+      <Member Name="BindHandle(System.IntPtr)" />
+      <Member Name="BindHandle(System.Runtime.InteropServices.SafeHandle)" />
+      <Member Status="ImplRoot" Name="GetGloballyQueuedWorkItemsForDebugger"/>
+      <Member Status="ImplRoot" Name="GetLocallyQueuedWorkItemsForDebugger"/>
+      <Member Name="GetAvailableThreads(System.Int32@,System.Int32@)" />
       <Member Name="GetMaxThreads(System.Int32@,System.Int32@)" />
+      <Member Name="GetMinThreads(System.Int32@,System.Int32@)" />
+      <Member Status="ImplRoot" Name="GetQueuedWorkItemsForDebugger"/>
+      <Member Status="ImplRoot" Name="NotifyWorkItemProgress"/>
       <Member Name="QueueUserWorkItem(System.Threading.WaitCallback)" />
       <Member Name="QueueUserWorkItem(System.Threading.WaitCallback,System.Object)" />
-      <Member Name="SetMaxThreads(System.Int32,System.Int32)" />
-      <Member Name="BindHandle(System.Runtime.InteropServices.SafeHandle)" />
-      <Member Name="RegisterWaitForSingleObject(System.Threading.WaitHandle,System.Threading.WaitOrTimerCallback,System.Object,System.UInt32,System.Boolean)" />
       <Member Name="RegisterWaitForSingleObject(System.Threading.WaitHandle,System.Threading.WaitOrTimerCallback,System.Object,System.Int32,System.Boolean)" />
       <Member Name="RegisterWaitForSingleObject(System.Threading.WaitHandle,System.Threading.WaitOrTimerCallback,System.Object,System.Int64,System.Boolean)" />
       <Member Name="RegisterWaitForSingleObject(System.Threading.WaitHandle,System.Threading.WaitOrTimerCallback,System.Object,System.TimeSpan,System.Boolean)" />
-      <Member Name="SetMinThreads(System.Int32,System.Int32)" />
-      <Member Name="GetMinThreads(System.Int32@,System.Int32@)" />
+      <Member Name="RegisterWaitForSingleObject(System.Threading.WaitHandle,System.Threading.WaitOrTimerCallback,System.Object,System.UInt32,System.Boolean)" />
       <Member Status="ImplRoot" Name="RegisterWaitForSingleObject(System.Threading.WaitHandle,System.Threading.WaitOrTimerCallback,System.Object,System.UInt32,System.Boolean,System.Threading.StackCrawlMark@,System.Boolean)" />
       <Member Status="ImplRoot" Name="RegisterWaitForSingleObjectNative(System.Threading.WaitHandle,System.Object,System.UInt32,System.Boolean,System.Threading.RegisteredWaitHandle,System.Threading.StackCrawlMark@,System.Boolean)" />
-      <Member Status="ImplRoot" Name="UnsafeQueueCustomWorkItem(System.Threading.IThreadPoolWorkItem,System.Boolean)"/>
+      <Member Name="SetMaxThreads(System.Int32,System.Int32)" />
+      <Member Name="SetMinThreads(System.Int32,System.Int32)" />
       <Member Status="ImplRoot" Name="TryPopCustomWorkItem(System.Threading.IThreadPoolWorkItem)"/>
-      <Member Status="ImplRoot" Name="GetQueuedWorkItemsForDebugger"/>
-      <Member Status="ImplRoot" Name="GetGloballyQueuedWorkItemsForDebugger"/>
-      <Member Status="ImplRoot" Name="GetLocallyQueuedWorkItemsForDebugger"/>
-      <Member Status="ImplRoot" Name="NotifyWorkItemProgress"/>
+      <Member Status="ImplRoot" Name="UnsafeQueueCustomWorkItem(System.Threading.IThreadPoolWorkItem,System.Boolean)"/>
+      <Member Name="UnsafeQueueNativeOverlapped(System.Threading.NativeOverlapped*)" />
+      <Member Name="UnsafeQueueUserWorkItem(System.Threading.WaitCallback,System.Object)" />
+      <Member Name="UnsafeRegisterWaitForSingleObject(System.Threading.WaitHandle,System.Threading.WaitOrTimerCallback,System.Object,System.Int32,System.Boolean)" />
+      <Member Name="UnsafeRegisterWaitForSingleObject(System.Threading.WaitHandle,System.Threading.WaitOrTimerCallback,System.Object,System.Int64,System.Boolean)" />
+      <Member Name="UnsafeRegisterWaitForSingleObject(System.Threading.WaitHandle,System.Threading.WaitOrTimerCallback,System.Object,System.TimeSpan,System.Boolean)" />
+      <Member Name="UnsafeRegisterWaitForSingleObject(System.Threading.WaitHandle,System.Threading.WaitOrTimerCallback,System.Object,System.UInt32,System.Boolean)" />
+    </Type>
+    <Type Name="System.Threading.ThreadPriority">
+      <Member MemberType="Field" Name="AboveNormal" />
+      <Member MemberType="Field" Name="BelowNormal" />
+      <Member MemberType="Field" Name="Highest" />
+      <Member MemberType="Field" Name="Lowest" />
+      <Member MemberType="Field" Name="Normal" />
+      <Member MemberType="Field" Name="value__" />
     </Type>
     <Type Status="ImplRoot"  Name="System.Threading.StackCrawlMark">
       <Member MemberType="Field" Name="LookForMe" />
@@ -8016,12 +8246,18 @@
     </Type>
     <Type Name="System.Threading.Overlapped">
       <Member Name="#ctor" />
+      <Member Name="#ctor(System.Int32,System.Int32,System.Int32,System.IAsyncResult)" />
+      <Member Name="#ctor(System.Int32,System.Int32,System.IntPtr,System.IAsyncResult)" />
       <Member MemberType="Property" Name="AsyncResult" />
+      <Member MemberType="Property" Name="EventHandle" />
+      <Member MemberType="Property" Name="EventHandleIntPtr" />
       <Member MemberType="Property" Name="OffsetLow" />
       <Member MemberType="Property" Name="OffsetHigh" />
       <Member Name="Free(System.Threading.NativeOverlapped*)" />
+      <Member Name="Pack(System.Threading.IOCompletionCallback)" />
       <Member Name="Pack(System.Threading.IOCompletionCallback,System.Object)" />
       <Member Name="Unpack(System.Threading.NativeOverlapped*)" />
+      <Member Name="UnsafePack(System.Threading.IOCompletionCallback)" />
       <Member Name="UnsafePack(System.Threading.IOCompletionCallback,System.Object)" Condition="FEATURE_COMINTEROP" />
     </Type>
     <Type Name="System.Threading.IOCompletionCallback">
@@ -8122,10 +8358,6 @@
       <Member Name="WaitOne(System.TimeSpan,System.Boolean)" />
       <Member MemberType="Property" Name="SafeWaitHandle" />
     </Type>
-   <Type Name="System.Threading.WaitHandleExtensions">
-      <Member Name="GetSafeWaitHandle(System.Threading.WaitHandle)" />
-      <Member Name="SetSafeWaitHandle(System.Threading.WaitHandle,Microsoft.Win32.SafeHandles.SafeWaitHandle)" />
-    </Type>
     <Type Name="System.Threading.WaitHandleCannotBeOpenedException">
       <Member Name="#ctor" />
       <Member Name="#ctor(System.String)" />
@@ -8217,20 +8449,18 @@
     </Type>
     <Type Name="System.TimeZone">
       <Member Name="#ctor" />
+      <Member Name="get_CurrentTimeZone" />
       <Member Name="get_DaylightName" />
       <Member Name="get_StandardName" />
       <Member Name="GetDaylightChanges(System.Int32)" />
       <Member Name="GetUtcOffset(System.DateTime)" />
       <Member Name="IsDaylightSavingTime(System.DateTime)" />
       <Member Name="IsDaylightSavingTime(System.DateTime,System.Globalization.DaylightTime)" />
+      <Member Name="ToLocalTime(System.DateTime)" />
       <Member Name="ToUniversalTime(System.DateTime)" />
+      <Member MemberType="Property" Name="CurrentTimeZone" />
       <Member MemberType="Property" Name="DaylightName" />
       <Member MemberType="Property" Name="StandardName" />
-<!-- This members need CurrentSystemTimeZone which needs Linux implementations
-      <Member Name="ToLocalTime(System.DateTime)" />
-      <Member MemberType="Property" Name="CurrentTimeZone" />
-      <Member Name="get_CurrentTimeZone" />
--->
     </Type>
     <Type Name="System.TimeZoneInfo">
       <Member Status="ImplRoot" Name="#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
@@ -8238,11 +8468,9 @@
       <Member Name="ConvertTime(System.DateTime,System.TimeZoneInfo)" />
       <Member Name="ConvertTime(System.DateTime,System.TimeZoneInfo,System.TimeZoneInfo)" />
       <Member Name="ConvertTime(System.DateTimeOffset,System.TimeZoneInfo)" />
-<!-- Need Linux Implementation
       <Member Name="ConvertTimeBySystemTimeZoneId(System.DateTime,System.String)" />
       <Member Name="ConvertTimeBySystemTimeZoneId(System.DateTime,System.String,System.String)" />
       <Member Name="ConvertTimeBySystemTimeZoneId(System.DateTimeOffset,System.String)" />
--->
       <Member Name="ConvertTimeFromUtc(System.DateTime,System.TimeZoneInfo)" />
       <Member Name="ConvertTimeToUtc(System.DateTime)" />
       <Member Name="ConvertTimeToUtc(System.DateTime,System.TimeZoneInfo)" />
@@ -8583,6 +8811,9 @@
       <Member Name="GetType(System.String)" />
       <Member Name="GetType(System.String,System.Boolean)" />
       <Member Name="GetType(System.String,System.Boolean,System.Boolean)" />
+      <Member Name="GetType(System.String,System.Func&lt;System.Reflection.AssemblyName,System.Reflection.Assembly&gt;,System.Func&lt;System.Reflection.Assembly,System.String,System.Boolean,System.Type&gt;)" />
+      <Member Name="GetType(System.String,System.Func&lt;System.Reflection.AssemblyName,System.Reflection.Assembly&gt;,System.Func&lt;System.Reflection.Assembly,System.String,System.Boolean,System.Type&gt;,System.Boolean)" />
+      <Member Name="GetType(System.String,System.Func&lt;System.Reflection.AssemblyName,System.Reflection.Assembly&gt;,System.Func&lt;System.Reflection.Assembly,System.String,System.Boolean,System.Type&gt;,System.Boolean,System.Boolean)" />
       <Member Name="GetTypeArray(System.Object[])" />
       <Member Name="GetTypeCode(System.Type)" />
       <Member Name="GetTypeCodeImpl" />
@@ -8605,6 +8836,9 @@
       <Member Name="IsAssignableFrom(System.Type)" />
       <Member Name="IsByRefImpl" />
       <Member Name="IsCOMObjectImpl" />
+      <Member Name="get_IsContextful" />
+      <Member MemberType="Property" Name="IsContextful" />
+      <Member Name="IsContextfulImpl" />
       <Member Name="IsInstanceOfType(System.Object)" />
       <Member Name="IsMarshalByRefImpl" />
       <Member Name="IsPointerImpl" />
@@ -9081,8 +9315,63 @@
       <Member Name="#ctor(System.String,System.String,System.Exception)" />
       <Member Name="#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
       <Member Name="get_FileName" />
+      <Member Name="get_FusionLog" />
       <Member MemberType="Property" Name="FileName" />
+      <Member MemberType="Property" Name="FusionLog" />
       <Member Status="ImplRoot" Name="#ctor(System.String,System.String,System.Int32)" />
+    </Type>
+    <Type Name="System.IO.FileStream">
+      <Member Name="#ctor(System.IntPtr,System.IO.FileAccess)" />
+      <Member Name="#ctor(System.IntPtr,System.IO.FileAccess,System.Boolean)" />
+      <Member Name="#ctor(System.IntPtr,System.IO.FileAccess,System.Boolean,System.Int32)" />
+      <Member Name="#ctor(System.IntPtr,System.IO.FileAccess,System.Boolean,System.Int32,System.Boolean)" />
+      <Member Name="#ctor(Microsoft.Win32.SafeHandles.SafeFileHandle,System.IO.FileAccess)" />
+      <Member Name="#ctor(Microsoft.Win32.SafeHandles.SafeFileHandle,System.IO.FileAccess,System.Int32)" />
+      <Member Name="#ctor(Microsoft.Win32.SafeHandles.SafeFileHandle,System.IO.FileAccess,System.Int32,System.Boolean)" />
+      <Member Name="#ctor(System.String,System.IO.FileMode)" />
+      <Member Name="#ctor(System.String,System.IO.FileMode,System.IO.FileAccess)" />
+      <Member Name="#ctor(System.String,System.IO.FileMode,System.IO.FileAccess,System.IO.FileShare)" />
+      <Member Name="#ctor(System.String,System.IO.FileMode,System.IO.FileAccess,System.IO.FileShare,System.Int32)" />
+      <Member Name="#ctor(System.String,System.IO.FileMode,System.IO.FileAccess,System.IO.FileShare,System.Int32,System.Boolean)" />
+      <Member Name="#ctor(System.String,System.IO.FileMode,System.IO.FileAccess,System.IO.FileShare,System.Int32,System.IO.FileOptions)" />
+      <Member Name="BeginRead(System.Byte[],System.Int32,System.Int32,System.AsyncCallback,System.Object)" />
+      <Member Name="BeginWrite(System.Byte[],System.Int32,System.Int32,System.AsyncCallback,System.Object)" />
+      <Member Name="Dispose(System.Boolean)" />
+      <Member Name="EndRead(System.IAsyncResult)" />
+      <Member Name="EndWrite(System.IAsyncResult)" />
+      <Member Name="Finalize" />
+      <Member Name="Flush" />
+      <Member Name="Flush(System.Boolean)" />
+      <Member Name="FlushAsync(System.Threading.CancellationToken)" />
+      <Member Name="get_CanRead" />
+      <Member Name="get_CanSeek" />
+      <Member Name="get_CanWrite" />
+      <Member Name="get_Handle" />
+      <Member Name="get_IsAsync" />
+      <Member Name="get_Length" />
+      <Member Name="get_Name" />
+      <Member Name="get_Position" />
+      <Member Name="get_SafeFileHandle" />
+      <Member Name="Lock(System.Int64,System.Int64)" />
+      <Member Name="Read(System.Byte[],System.Int32,System.Int32)" />
+      <Member Name="ReadAsync(System.Byte[],System.Int32,System.Int32,System.Threading.CancellationToken)" />
+      <Member Name="ReadByte" />
+      <Member Name="Seek(System.Int64,System.IO.SeekOrigin)" />
+      <Member Name="set_Position(System.Int64)" />
+      <Member Name="SetLength(System.Int64)" />
+      <Member Name="Unlock(System.Int64,System.Int64)" />
+      <Member Name="Write(System.Byte[],System.Int32,System.Int32)" />
+      <Member Name="WriteAsync(System.Byte[],System.Int32,System.Int32,System.Threading.CancellationToken)" />
+      <Member Name="WriteByte(System.Byte)" />
+      <Member MemberType="Property" Name="CanRead" />
+      <Member MemberType="Property" Name="CanSeek" />
+      <Member MemberType="Property" Name="CanWrite" />
+      <Member MemberType="Property" Name="Handle" />
+      <Member MemberType="Property" Name="IsAsync" />
+      <Member MemberType="Property" Name="Length" />
+      <Member MemberType="Property" Name="Name" />
+      <Member MemberType="Property" Name="Position" />
+      <Member MemberType="Property" Name="SafeFileHandle" />
     </Type>
     <Type Name="System.IO.IOException">
       <Member Name="#ctor" />
@@ -9182,6 +9471,7 @@
       <Member Name="CopyToAsync(System.IO.Stream,System.Int32)"  />
       <Member Name="CopyToAsync(System.IO.Stream,System.Int32,System.Threading.CancellationToken)"  />
       <Member Name="Close" />
+      <Member Name="CreateWaitHandle" />
       <Member Name="Dispose" />
       <Member Name="Dispose(System.Boolean)" />
       <Member Name="EndRead(System.IAsyncResult)" />
@@ -9197,6 +9487,7 @@
       <Member Name="get_Position" />
       <Member Name="get_ReadTimeout" />
       <Member Name="get_WriteTimeout" />
+      <Member Name="ObjectInvariant" />
       <Member Name="Read(System.Byte[],System.Int32,System.Int32)" />
       <Member Name="ReadByte" />
       <Member Name="ReadAsync(System.Byte[],System.Int32,System.Int32)"  />
@@ -9206,6 +9497,7 @@
       <Member Name="set_ReadTimeout(System.Int32)" />
       <Member Name="set_WriteTimeout(System.Int32)" />
       <Member Name="SetLength(System.Int64)" />
+      <Member Name="Synchronized(System.IO.Stream)" />
       <Member Name="Write(System.Byte[],System.Int32,System.Int32)" />
       <Member Name="WriteAsync(System.Byte[],System.Int32,System.Int32)"  />
       <Member Name="WriteAsync(System.Byte[],System.Int32,System.Int32,System.Threading.CancellationToken)"  />
@@ -9219,185 +9511,6 @@
       <Member MemberType="Property" Name="ReadTimeout" />
       <Member MemberType="Property" Name="WriteTimeout" />
     </Type>
-    <Type Name="System.IO.StreamReader">
-      <Member MemberType="Field" Name="Null" />
-      <Member Name="#ctor(System.IO.Stream)" />
-      <Member Name="#ctor(System.IO.Stream,System.Boolean)" />
-      <Member Name="#ctor(System.IO.Stream,System.Text.Encoding)" />
-      <Member Name="#ctor(System.IO.Stream,System.Text.Encoding,System.Boolean)" />
-      <Member Name="#ctor(System.IO.Stream,System.Text.Encoding,System.Boolean,System.Int32)" />
-      <Member Name="#ctor(System.IO.Stream,System.Text.Encoding,System.Boolean,System.Int32,System.Boolean)"   />
-      <Member Name="#ctor(System.String)" />
-      <Member Name="#ctor(System.String,System.Boolean)" />
-      <Member Name="#ctor(System.String,System.Text.Encoding)" />
-      <Member Name="#ctor(System.String,System.Text.Encoding,System.Boolean)" />
-      <Member Name="#ctor(System.String,System.Text.Encoding,System.Boolean,System.Int32)" />
-      <Member Name="Close" />
-      <Member Name="DiscardBufferedData" />
-      <Member Name="Dispose(System.Boolean)" />
-      <Member Name="get_BaseStream" />
-      <Member Name="get_CurrentEncoding" />
-      <Member Name="get_EndOfStream" />
-      <Member Name="Peek" />
-      <Member Name="Read" />
-      <Member Name="Read(System.Char[],System.Int32,System.Int32)" />
-      <Member Name="ReadAsync(System.Char[],System.Int32,System.Int32)"  />
-      <Member Name="ReadBlock(System.Char[],System.Int32,System.Int32)"  />
-      <Member Name="ReadBlockAsync(System.Char[],System.Int32,System.Int32)"  />
-      <Member Name="ReadLine" />
-      <Member Name="ReadLineAsync"  />
-      <Member Name="ReadToEnd" />
-      <Member Name="ReadToEndAsync"  />
-      <Member MemberType="Property" Name="BaseStream" />
-      <Member MemberType="Property" Name="CurrentEncoding" />
-      <Member MemberType="Property" Name="EndOfStream" />
-    </Type>
-    <Type Name="System.IO.StreamWriter">
-      <Member MemberType="Field" Name="Null" />
-      <Member Name="#ctor(System.IO.Stream)" />
-      <Member Name="#ctor(System.IO.Stream,System.Text.Encoding)" />
-      <Member Name="#ctor(System.IO.Stream,System.Text.Encoding,System.Int32)" />
-      <Member Name="#ctor(System.IO.Stream,System.Text.Encoding,System.Int32,System.Boolean)" />
-      <Member Name="#ctor(System.String)" />
-      <Member Name="#ctor(System.String,System.Boolean)" />
-      <Member Name="#ctor(System.String,System.Boolean,System.Text.Encoding)" />
-      <Member Name="#ctor(System.String,System.Boolean,System.Text.Encoding,System.Int32)" />
-      <Member Name="Close" />
-      <Member Name="Dispose(System.Boolean)" />
-      <Member Name="Flush" />
-      <Member Name="FlushAsync"  />
-      <Member Name="get_AutoFlush" />
-      <Member Name="get_BaseStream" />
-      <Member Name="get_Encoding" />
-      <Member Name="set_AutoFlush(System.Boolean)" />
-      <Member Name="Write(System.Char)" />
-      <Member Name="Write(System.Char[])" />
-      <Member Name="Write(System.Char[],System.Int32,System.Int32)" />
-      <Member Name="Write(System.String)" />
-      <Member Name="WriteAsync(System.Char)"  />
-      <Member Name="WriteAsync(System.Char[],System.Int32,System.Int32)"  />
-      <Member Name="WriteAsync(System.String)"  />
-      <Member Name="WriteLineAsync"  />
-      <Member Name="WriteLineAsync(System.Char)"  />
-      <Member Name="WriteLineAsync(System.Char[],System.Int32,System.Int32)"  />
-      <Member Name="WriteLineAsync(System.String)"  />
-      <Member MemberType="Property" Name="AutoFlush" />
-      <Member MemberType="Property" Name="BaseStream" />
-      <Member MemberType="Property" Name="Encoding" />
-    </Type>
-    <Type Name="System.IO.StringReader">
-      <Member Name="#ctor(System.String)" />
-      <Member Name="Close" />
-      <Member Name="Dispose(System.Boolean)" />
-      <Member Name="Peek" />
-      <Member Name="Read" />
-      <Member Name="Read(System.Char[],System.Int32,System.Int32)" />
-      <Member Name="ReadAsync(System.Char[],System.Int32,System.Int32)"  />
-      <Member Name="ReadBlockAsync(System.Char[],System.Int32,System.Int32)"  />
-      <Member Name="ReadLine" />
-      <Member Name="ReadLineAsync"  />
-      <Member Name="ReadToEnd" />
-      <Member Name="ReadToEndAsync"  />
-    </Type>
-    <Type Name="System.IO.StringWriter">
-      <Member Name="#ctor" />
-      <Member Name="#ctor(System.IFormatProvider)" />
-      <Member Name="#ctor(System.Text.StringBuilder)" />
-      <Member Name="#ctor(System.Text.StringBuilder,System.IFormatProvider)" />
-      <Member Name="Close" />
-      <Member Name="Dispose(System.Boolean)" />
-      <Member Name="FlushAsync"  />
-      <Member Name="get_Encoding" />
-      <Member Name="GetStringBuilder" />
-      <Member Name="ToString" />
-      <Member Name="Write(System.Char)" />
-      <Member Name="Write(System.Char[],System.Int32,System.Int32)" />
-      <Member Name="Write(System.String)" />
-      <Member Name="WriteAsync(System.Char)"  />
-      <Member Name="WriteAsync(System.Char[],System.Int32,System.Int32)"  />
-      <Member Name="WriteAsync(System.String)"  />
-      <Member Name="WriteLineAsync(System.Char)"  />
-      <Member Name="WriteLineAsync(System.Char[],System.Int32,System.Int32)"  />
-      <Member Name="WriteLineAsync(System.String)"  />
-      <Member MemberType="Property" Name="Encoding" />
-    </Type>
-    <Type Name="System.IO.TextReader">
-      <Member MemberType="Field" Name="Null" />
-      <Member Name="#ctor" />
-      <Member Name="Close" />
-      <Member Name="Dispose(System.Boolean)" />
-      <Member Name="Peek" />
-      <Member Name="Read" />
-      <Member Name="Read(System.Char[],System.Int32,System.Int32)" />
-      <Member Name="ReadAsync(System.Char[],System.Int32,System.Int32)"  />
-      <Member Name="ReadBlock(System.Char[],System.Int32,System.Int32)" />
-      <Member Name="ReadBlockAsync(System.Char[],System.Int32,System.Int32)" />
-      <Member Name="ReadLine" />
-      <Member Name="ReadLineAsync"  />
-      <Member Name="ReadToEnd" />
-      <Member Name="ReadToEndAsync"  />
-    </Type>
-    <Type Name="System.IO.TextWriter">
-      <Member MemberType="Field" Name="CoreNewLine" />
-      <Member MemberType="Field" Name="Null" />
-      <Member Name="#ctor" />
-      <Member Name="#ctor(System.IFormatProvider)" />
-      <Member Name="Close" />
-      <Member Name="Dispose(System.Boolean)" />
-      <Member Name="Flush" />
-      <Member Name="FlushAsync" />
-      <Member Name="get_Encoding" />
-      <Member Name="get_FormatProvider" />
-      <Member Name="get_NewLine" />
-      <Member Name="set_NewLine(System.String)" />
-      <Member Name="Write(System.Boolean)" />
-      <Member Name="Write(System.Char)" />
-      <Member Name="Write(System.Char[])" />
-      <Member Name="Write(System.Char[],System.Int32,System.Int32)" />
-      <Member Name="Write(System.Decimal)" />
-      <Member Name="Write(System.Double)" />
-      <Member Name="Write(System.Int32)" />
-      <Member Name="Write(System.Int64)" />
-      <Member Name="Write(System.Object)" />
-      <Member Name="Write(System.Single)" />
-      <Member Name="Write(System.String)" />
-      <Member Name="Write(System.String,System.Object)" />
-      <Member Name="Write(System.String,System.Object,System.Object)" />
-      <Member Name="Write(System.String,System.Object,System.Object,System.Object)" />
-      <Member Name="Write(System.String,System.Object[])" />
-      <Member Name="Write(System.UInt32)" />
-      <Member Name="Write(System.UInt64)" />
-      <Member Name="WriteAsync(System.Char)" />
-      <Member Name="WriteAsync(System.Char[])" />
-      <Member Name="WriteAsync(System.Char[],System.Int32,System.Int32)" />
-      <Member Name="WriteAsync(System.String)" />
-      <Member Name="WriteLine" />
-      <Member Name="WriteLine(System.Boolean)" />
-      <Member Name="WriteLine(System.Char)" />
-      <Member Name="WriteLine(System.Char[])" />
-      <Member Name="WriteLine(System.Char[],System.Int32,System.Int32)" />
-      <Member Name="WriteLine(System.Decimal)" />
-      <Member Name="WriteLine(System.Double)" />
-      <Member Name="WriteLine(System.Int32)" />
-      <Member Name="WriteLine(System.Int64)" />
-      <Member Name="WriteLine(System.Object)" />
-      <Member Name="WriteLine(System.Single)" />
-      <Member Name="WriteLine(System.String)" />
-      <Member Name="WriteLine(System.String,System.Object)" />
-      <Member Name="WriteLine(System.String,System.Object,System.Object)" />
-      <Member Name="WriteLine(System.String,System.Object,System.Object,System.Object)" />
-      <Member Name="WriteLine(System.String,System.Object[])" />
-      <Member Name="WriteLine(System.UInt32)" />
-      <Member Name="WriteLine(System.UInt64)" />
-      <Member Name="WriteLineAsync" />
-      <Member Name="WriteLineAsync(System.Char)" />
-      <Member Name="WriteLineAsync(System.Char[])" />
-      <Member Name="WriteLineAsync(System.Char[],System.Int32,System.Int32)" />
-      <Member Name="WriteLineAsync(System.String)" />
-      <Member MemberType="Property" Name="Encoding" />
-      <Member MemberType="Property" Name="FormatProvider" />
-      <Member MemberType="Property" Name="NewLine" />
-    </Type>
     <Type Name="System.IO.UnmanagedMemoryAccessor">
       <Member Name="#ctor" />
       <Member Name="#ctor(System.Runtime.InteropServices.SafeBuffer,System.Int64,System.Int64)" />
@@ -9409,6 +9522,8 @@
       <Member Name="get_Capacity" />
       <Member Name="get_IsOpen" />
       <Member Name="Initialize(System.Runtime.InteropServices.SafeBuffer,System.Int64,System.Int64,System.IO.FileAccess)" />
+      <Member Name="Read&lt;T&gt;(System.Int64,T@)" />
+      <Member Name="ReadArray&lt;T&gt;(System.Int64,T[],System.Int32,System.Int32)" />
       <Member Name="ReadBoolean(System.Int64)" />
       <Member Name="ReadByte(System.Int64)" />
       <Member Name="ReadChar(System.Int64)" />
@@ -9435,6 +9550,8 @@
       <Member Name="Write(System.Int64,System.UInt16)" />
       <Member Name="Write(System.Int64,System.UInt32)" />
       <Member Name="Write(System.Int64,System.UInt64)" />
+      <Member Name="Write&lt;T&gt;(System.Int64,T@)" />
+      <Member Name="WriteArray&lt;T&gt;(System.Int64,T[],System.Int32,System.Int32)" />
       <Member MemberType="Property" Name="CanRead" />
       <Member MemberType="Property" Name="CanWrite" />
       <Member MemberType="Property" Name="Capacity" />
@@ -9862,7 +9979,6 @@
    </Type>
    <Type Name="System.Diagnostics.Tracing.FrameworkEventSource+Keywords">
       <Member MemberType="Field" Name="Loader" />
-      <Member MemberType="Field" Name="ThreadPool" />
       <Member MemberType="Field" Name="NetClient" />
       <Member MemberType="Field" Name="DynamicTypeUsage" />
       <Member MemberType="Field" Name="ThreadTransfer" />
@@ -9967,11 +10083,21 @@
       <Member Status="ImplRoot" MemberType="Field" Name="_empty2" />
       <Member Status="ImplRoot" MemberType="Field" Name="_empty3" />
     </Type>
-	<Type Name="System.Reflection.TypeFilter">
+    <Type Name="System.Reflection.TypeFilter">
       <Member Name="#ctor(System.Object,System.IntPtr)" />
       <Member Status="ApiRoot" Name="BeginInvoke(System.Type,System.Object,System.AsyncCallback,System.Object)" />
       <Member Status="ApiRoot" Name="EndInvoke(System.IAsyncResult)" />
       <Member Status="ApiRoot" Name="Invoke(System.Type,System.Object)" />
+    </Type>
+    <Type Name="System.Reflection.StrongNameKeyPair">
+      <Member Name="#ctor(System.Byte[])" />
+      <Member Name="#ctor(System.IO.FileStream)" />
+      <Member Name="#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
+      <Member Name="#ctor(System.String)" />
+      <Member Name="get_PublicKey" />
+      <Member MemberType="Property" Name="PublicKey" />
+      <Member Status="ImplRoot" Name="System.Runtime.Serialization.IDeserializationCallback.OnDeserialization(System.Object)" />
+      <Member Status="ImplRoot" Name="System.Runtime.Serialization.ISerializable.GetObjectData(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
     </Type>
     <Type Status="ImplRoot" Name="System.ReflectionOnlyType" />
     <Type Status="ImplRoot" Name="System.ResId" />
@@ -10023,7 +10149,7 @@
       <Member Name="AddField(System.String)" /> <!-- EE -->
       <Member Name="RemoveMember(System.Reflection.MemberInfo)" /> <!-- EE -->
     </Type>
-    <Type Status="ImplRoot" Name="System.Runtime.InteropServices.ICustomMarshaler">
+    <Type Name="System.Runtime.InteropServices.ICustomMarshaler">
       <Member Name="MarshalNativeToManaged(System.IntPtr)" /> <!-- EE -->
       <Member Name="MarshalManagedToNative(System.Object)" /> <!-- EE -->
       <Member Name="CleanUpNativeData(System.IntPtr)" /> <!-- EE -->
@@ -10426,24 +10552,10 @@
       <Member Name="RemoveEventHandler&lt;T&gt;(System.Action&lt;System.Runtime.InteropServices.WindowsRuntime.EventRegistrationToken&gt;,T)" />
       <Member Name="StringToHString(System.String)" />
     </Type>
-    <Type Status="ImplRoot" Name="System.Runtime.Versioning.ResourceConsumptionAttribute">
-      <Member Name="#ctor(System.Runtime.Versioning.ResourceScope)" />
-      <Member Name="#ctor(System.Runtime.Versioning.ResourceScope,System.Runtime.Versioning.ResourceScope)" />
-      <Member MemberType="Property" Name="ConsumptionScope" />
-      <Member MemberType="Property" Name="ResourceScope" />
-    </Type>
-    <Type Status="ApiRoot" Name="System.Runtime.Versioning.ResourceExposureAttribute">
-      <Member Name="#ctor(System.Runtime.Versioning.ResourceScope)" />
-      <Member MemberType="Property" Name="ResourceExposureLevel" />
-    </Type>
     <Type Status="ApiRoot" Name="System.Runtime.Versioning.TargetFrameworkAttribute">
       <Member Name="#ctor(System.String)" />
       <Member MemberType="Property" Name="FrameworkName" />
       <Member MemberType="Property" Name="FrameworkDisplayName" />
-    </Type>
-    <Type Status="ApiRoot" Name="System.Runtime.Versioning.VersioningHelper">
-      <Member Name="MakeVersionSafeName(System.String,System.Runtime.Versioning.ResourceScope,System.Runtime.Versioning.ResourceScope)" />
-      <Member Name="MakeVersionSafeName(System.String,System.Runtime.Versioning.ResourceScope,System.Runtime.Versioning.ResourceScope,System.Type)" />
     </Type>
     <Type Name="System.Runtime.Serialization.FormatterServices">
         <Member Name="GetUninitializedObject(System.Type)" />
@@ -10545,6 +10657,14 @@
     <Type Name="System.Runtime.Serialization.IDeserializationCallback">
       <Member Name="OnDeserialization(System.Object)" />
     </Type>
+    <Type Name="System.Runtime.Serialization.ISafeSerializationData">
+      <Member Name="CompleteDeserialization(System.Object)" />
+    </Type>
+    <Type Name="System.Runtime.Serialization.SafeSerializationEventArgs">
+      <Member Name="AddSerializedState(System.Runtime.Serialization.ISafeSerializationData)" />
+      <Member Name="get_StreamingContext" />
+      <Member MemberType="Property" Name="StreamingContext" />
+    </Type>
     <Type Status="ApiRoot" Name="System.Runtime.Serialization.OnSerializingAttribute">
       <Member Name="#ctor" />
     </Type>
@@ -10598,6 +10718,15 @@
       <Member Name="CheckSetDemandNoThrow(System.Security.PermissionSet)" /> <!-- EE -->
       <Member Name="Update(System.Security.PermissionSet)" /> <!-- EE -->
     </Type>
+    <Type Name="System.Security.Cryptography.CryptographicException">
+      <Member Name="#ctor"/>
+      <Member Name="#ctor(System.Int32)"/>
+      <Member Name="#ctor(System.String)"/>
+      <Member Name="#ctor(System.String,System.Exception)"/>
+      <Member Name="#ctor(System.String,System.String)"/>
+      <Member Name="#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
+    </Type>
+ 
     <Type Status="ImplRoot" Name="System.Security.Permissions.PermissionState" />
     <Type Name="System.Security.Permissions.SecurityAction" />
     <Type Status="ImplRoot" Name="System.Security.Permissions.SecurityPermission" />
@@ -12064,8 +12193,15 @@
       <Member Name="get_ThreadContextChanged"/>
     </Type>
     <Type Name="System.Threading.ExecutionContext">
+      <Member Status="ImplRoot" Name="#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
       <Member Name="Capture" />
+      <Member Name="CreateCopy" />
+      <Member Name="Dispose" />
+      <Member Name="GetObjectData(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
+      <Member Name="IsFlowSuppressed" />
+      <Member Name="RestoreFlow" />
       <Member Name="Run(System.Threading.ExecutionContext,System.Threading.ContextCallback,System.Object)"/>
+      <Member Name="SuppressFlow" />
     </Type>
     <Type Name="System.Threading.CancellationToken">
       <Member Name="#ctor(System.Boolean)"/>
@@ -12247,6 +12383,52 @@
       <Member Name="Write(System.String)" />
       <Member Name="WriteLine(System.String)" />
       <Member Name="WriteLine" />
+    </Type>
+    <Type Name="System.Span&lt;T&gt;" Condition="FEATURE_SPAN_OF_T">
+      <Member Name="#ctor(T[])" />
+      <Member Name="#ctor(T[],System.Int32,System.Int32)" />
+      <Member Name="#ctor(System.Void*,System.Int32)" />
+      <Member Name="op_Implicit(T[])" ReturnType="System.Span&lt;T&gt;" />
+      <Member Name="op_Implicit(System.ArraySegment&lt;T&gt;)" ReturnType="System.Span&lt;T&gt;" />
+      <Member Name="get_Length" />
+      <Member Name="get_Empty" />
+      <Member Name="get_IsEmpty" />
+      <Member Name="get_Item(System.Int32)" />
+      <Member Name="set_Item(System.Int32,T)" />
+      <Member Name="ToArray" />
+      <Member Name="Slice(System.Int32)" />
+      <Member Name="Slice(System.Int32,System.Int32)" />
+      <Member Name="Equals(System.Span&lt;T&gt;)" />
+      <Member Name="TryCopyTo(System.Span&lt;T&gt;)" />
+      <Member Name="Set(System.ReadOnlySpan&lt;T&gt;)" />
+    </Type>
+    <Type Name="System.ReadOnlySpan&lt;T&gt;" Condition="FEATURE_SPAN_OF_T">
+      <Member Name="#ctor(T[])" />
+      <Member Name="#ctor(T[],System.Int32,System.Int32)" />
+      <Member Name="#ctor(System.Void*,System.Int32)" />
+      <Member Name="op_Implicit(System.Span&lt;T&gt;)" ReturnType="System.ReadOnlySpan&lt;T&gt;" />
+      <Member Name="op_Implicit(T[])" ReturnType="System.ReadOnlySpan&lt;T&gt;" />
+      <Member Name="op_Implicit(System.ArraySegment&lt;T&gt;)" ReturnType="System.ReadOnlySpan&lt;T&gt;" />
+      <Member Name="get_Length" />
+      <Member Name="get_Empty" />
+      <Member Name="get_IsEmpty" />
+      <Member Name="get_Item(System.Int32)" />
+      <Member Name="ToArray" />
+      <Member Name="Slice(System.Int32)" />
+      <Member Name="Slice(System.Int32,System.Int32)" />
+      <Member Name="Equals(System.ReadOnlySpan&lt;T&gt;)" />
+      <Member Name="TryCopyTo(System.Span&lt;T&gt;)" />
+    </Type>
+    <Type Name="System.SpanExtensions" Condition="FEATURE_SPAN_OF_T">
+      <Member Name="AsBytes&lt;T&gt;(System.Span&lt;T&gt;)" />
+      <Member Name="AsBytes&lt;T&gt;(System.ReadOnlySpan&lt;T&gt;)" />
+      <Member Name="NonPortableCast&lt;TFrom,TTo&gt;(System.Span&lt;TFrom&gt;)" />
+      <Member Name="NonPortableCast&lt;TFrom,TTo&gt;(System.ReadOnlySpan&lt;TFrom&gt;)" />
+    </Type>
+    <Type Name="System.ReadOnlySpanExtensions" Condition="FEATURE_SPAN_OF_T">
+      <Member Name="Slice(System.String)" />
+      <Member Name="Slice(System.String,System.Int32)" />
+      <Member Name="Slice(System.String,System.Int32,System.Int32)" />
     </Type>
   </Assembly>
 </ThinModel>

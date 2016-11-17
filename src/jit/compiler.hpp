@@ -768,7 +768,8 @@ inline double getR8LittleEndian(const BYTE* ptr)
 
 /*****************************************************************************
  *
- *  Return the bitmask to use in the EXPSET_TP for the CSE with the given CSE index.
+ *  Return the normalized index to use in the EXPSET_TP for the CSE with
+ *  the given CSE index.
  *  Each GenTree has the following field:
  *    signed char       gtCSEnum;        // 0 or the CSE index (negated if def)
  *  So zero is reserved to mean this node is not a CSE
@@ -777,15 +778,15 @@ inline double getR8LittleEndian(const BYTE* ptr)
  *  This precondition is checked by the assert on the first line of this method.
  */
 
-inline EXPSET_TP genCSEnum2bit(unsigned index)
+inline unsigned int genCSEnum2bit(unsigned index)
 {
     assert((index > 0) && (index <= EXPSET_SZ));
 
-    return ((EXPSET_TP)1 << (index - 1));
+    return (index - 1);
 }
 
 #ifdef DEBUG
-const char* genES2str(EXPSET_TP set);
+const char* genES2str(BitVecTraits* traits, EXPSET_TP set);
 const char* refCntWtd2str(unsigned refCntWtd);
 #endif
 
@@ -3927,7 +3928,7 @@ inline bool Compiler::IsSharedStaticHelper(GenTreePtr tree)
         helper == CORINFO_HELP_GETSHARED_GCTHREADSTATIC_BASE_DYNAMICCLASS ||
         helper == CORINFO_HELP_GETSHARED_NONGCTHREADSTATIC_BASE_DYNAMICCLASS ||
 #ifdef FEATURE_READYTORUN_COMPILER
-        helper == CORINFO_HELP_READYTORUN_STATIC_BASE ||
+        helper == CORINFO_HELP_READYTORUN_STATIC_BASE || helper == CORINFO_HELP_READYTORUN_GENERIC_STATIC_BASE ||
 #endif
         helper == CORINFO_HELP_CLASSINIT_SHARED_DYNAMICCLASS;
 #if 0
@@ -4105,16 +4106,12 @@ inline bool Compiler::compIsProfilerHookNeeded()
 {
 #ifdef PROFILING_SUPPORTED
     return compProfilerHookNeeded
-
-#if defined(_TARGET_ARM_) || defined(_TARGET_AMD64_)
            // IL stubs are excluded by VM and we need to do the same even running
            // under a complus env hook to generate profiler hooks
-           || (opts.compJitELTHookEnabled && !(opts.eeFlags & CORJIT_FLG_IL_STUB))
-#endif
-        ;
-#else // PROFILING_SUPPORTED
+           || (opts.compJitELTHookEnabled && !opts.jitFlags->IsSet(JitFlags::JIT_FLAG_IL_STUB));
+#else  // !PROFILING_SUPPORTED
     return false;
-#endif
+#endif // !PROFILING_SUPPORTED
 }
 
 /*****************************************************************************
@@ -4203,7 +4200,7 @@ inline bool Compiler::impIsDUP_LDVIRTFTN_TOKEN(const BYTE* delegateCreateStart, 
 
 inline bool Compiler::compIsForImportOnly()
 {
-    return ((opts.eeFlags & CORJIT_FLG_IMPORT_ONLY) != 0);
+    return opts.jitFlags->IsSet(JitFlags::JIT_FLAG_IMPORT_ONLY);
 }
 
 /*****************************************************************************
@@ -4370,10 +4367,12 @@ inline bool Compiler::lvaIsGCTracked(const LclVarDsc* varDsc)
 {
     if (varDsc->lvTracked && (varDsc->lvType == TYP_REF || varDsc->lvType == TYP_BYREF))
     {
+        // Stack parameters are always untracked w.r.t. GC reportings
+        const bool isStackParam = varDsc->lvIsParam && !varDsc->lvIsRegArg;
 #ifdef _TARGET_AMD64_
-        return !lvaIsFieldOfDependentlyPromotedStruct(varDsc);
+        return !isStackParam && !lvaIsFieldOfDependentlyPromotedStruct(varDsc);
 #else  // !_TARGET_AMD64_
-        return true;
+        return !isStackParam;
 #endif // !_TARGET_AMD64_
     }
     else

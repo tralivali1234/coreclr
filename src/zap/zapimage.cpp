@@ -291,6 +291,12 @@ void ZapImage::InitializeSectionsForReadyToRun()
     // Always allocate slot for module - it is used to determine that the image is used
     //
     m_pImportTable->GetPlacedHelperImport(READYTORUN_HELPER_Module);
+
+    //
+    // Make sure the import sections table is in the image, so we can find the slot for module
+    //
+    _ASSERTE(m_pImportSectionsTable->GetSize() != 0);
+    GetReadyToRunHeader()->RegisterSection(READYTORUN_SECTION_IMPORT_SECTIONS, m_pImportSectionsTable);
 }
 #endif // FEATURE_READYTORUN_COMPILER
 
@@ -395,7 +401,7 @@ void ZapImage::AllocateVirtualSections()
         //
         // If we're instrumenting allocate a section for writing profile data
         //
-        if (m_zapper->m_pOpt->m_compilerFlags & CORJIT_FLG_BBINSTR)
+        if (m_zapper->m_pOpt->m_compilerFlags.IsSet(CORJIT_FLAGS::CORJIT_FLAG_BBINSTR))
         {
             m_pInstrumentSection = NewVirtualSection(pDataSection, IBCUnProfiledSection | ColdRange | InstrumentSection, sizeof(TADDR));
         }
@@ -1943,23 +1949,24 @@ struct CompileMethodStubContext
 //-----------------------------------------------------------------------------
 
 // static void __stdcall 
-void ZapImage::TryCompileMethodStub(LPVOID pContext, CORINFO_METHOD_HANDLE hStub, DWORD dwJitFlags)
+void ZapImage::TryCompileMethodStub(LPVOID pContext, CORINFO_METHOD_HANDLE hStub, CORJIT_FLAGS jitFlags)
 {
     STANDARD_VM_CONTRACT;
 
     // The caller must always set the IL_STUB flag
-    _ASSERTE((dwJitFlags & CORJIT_FLG_IL_STUB) != 0);
+    _ASSERTE(jitFlags.IsSet(CORJIT_FLAGS::CORJIT_FLAG_IL_STUB));
 
     CompileMethodStubContext *pCompileContext = reinterpret_cast<CompileMethodStubContext *>(pContext);
     ZapImage *pImage = pCompileContext->pImage;
 
-    unsigned oldFlags = pImage->m_zapper->m_pOpt->m_compilerFlags;
+    CORJIT_FLAGS oldFlags = pImage->m_zapper->m_pOpt->m_compilerFlags;
 
-    pImage->m_zapper->m_pOpt->m_compilerFlags |= dwJitFlags;
-    pImage->m_zapper->m_pOpt->m_compilerFlags &= ~(CORJIT_FLG_PROF_ENTERLEAVE | 
-                                                   CORJIT_FLG_DEBUG_CODE | 
-                                                   CORJIT_FLG_DEBUG_EnC | 
-                                                   CORJIT_FLG_DEBUG_INFO);
+    CORJIT_FLAGS* pCompilerFlags = &pImage->m_zapper->m_pOpt->m_compilerFlags;
+    pCompilerFlags->Add(jitFlags);
+    pCompilerFlags->Clear(CORJIT_FLAGS::CORJIT_FLAG_PROF_ENTERLEAVE);
+    pCompilerFlags->Clear(CORJIT_FLAGS::CORJIT_FLAG_DEBUG_CODE);
+    pCompilerFlags->Clear(CORJIT_FLAGS::CORJIT_FLAG_DEBUG_EnC);
+    pCompilerFlags->Clear(CORJIT_FLAGS::CORJIT_FLAG_DEBUG_INFO);
 
     mdMethodDef md = mdMethodDefNil;
 
@@ -2199,7 +2206,7 @@ ZapImage::CompileStatus ZapImage::TryCompileMethodWorker(CORINFO_METHOD_HANDLE h
     if (GetCompiledMethod(handle) != NULL)
         return ALREADY_COMPILED;
 
-    _ASSERTE((m_zapper->m_pOpt->m_compilerFlags & CORJIT_FLG_IL_STUB) || IsNilToken(md) || handle == m_pPreloader->LookupMethodDef(md));
+    _ASSERTE(m_zapper->m_pOpt->m_compilerFlags.IsSet(CORJIT_FLAGS::CORJIT_FLAG_IL_STUB) || IsNilToken(md) || handle == m_pPreloader->LookupMethodDef(md));
 
     CompileStatus result = NOT_COMPILED;
     
@@ -2213,7 +2220,7 @@ ZapImage::CompileStatus ZapImage::TryCompileMethodWorker(CORINFO_METHOD_HANDLE h
     CORINFO_MODULE_HANDLE module;
 
     // We only compile IL_STUBs from the current assembly
-    if (m_zapper->m_pOpt->m_compilerFlags & CORJIT_FLG_IL_STUB)
+    if (m_zapper->m_pOpt->m_compilerFlags.IsSet(CORJIT_FLAGS::CORJIT_FLAG_IL_STUB))
         module = m_hModule;
     else
         module = m_zapper->m_pEEJitInfo->getMethodModule(handle);
@@ -2271,7 +2278,7 @@ ZapImage::CompileStatus ZapImage::TryCompileMethodWorker(CORINFO_METHOD_HANDLE h
 
             if (m_stats != NULL)
             {
-                if ((m_zapper->m_pOpt->m_compilerFlags & CORJIT_FLG_IL_STUB) == 0)
+                if (!m_zapper->m_pOpt->m_compilerFlags.IsSet(CORJIT_FLAGS::CORJIT_FLAG_IL_STUB))
                     m_stats->m_failedMethods++;
                 else
                     m_stats->m_failedILStubs++;
@@ -2504,7 +2511,7 @@ HRESULT ZapImage::LocateProfileData()
     // the final image.
     //
 #if 0
-    if ((m_zapper->m_pOpt->m_compilerFlags & CORJIT_FLG_BBINSTR) != 0)
+    if (m_zapper->m_pOpt->m_compilerFlags.IsSet(CORJIT_FLAGS::CORJIT_FLAG_BBINSTR))
         return S_FALSE;
 #endif
 
@@ -3481,7 +3488,7 @@ bool ZapImage::canIntraModuleDirectCall(
 
     // No direct calls at all under some circumstances
 
-    if ((m_zapper->m_pOpt->m_compilerFlags & CORJIT_FLG_PROF_ENTERLEAVE)
+    if (m_zapper->m_pOpt->m_compilerFlags.IsSet(CORJIT_FLAGS::CORJIT_FLAG_PROF_ENTERLEAVE)
         && !m_pPreloader->IsDynamicMethod(callerFtn))
     {
         *pReason = CORINFO_INDIRECT_CALL_PROFILING;

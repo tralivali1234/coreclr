@@ -112,9 +112,19 @@ namespace System
         
         public override int GetHashCode()
         {
-            return null == _array
-                        ? 0
-                        : _array.GetHashCode() ^ _offset ^ _count;
+            if (_array == null)
+            {
+                return 0;
+            }
+            
+            int hash = 5381;
+            hash = System.Numerics.Hashing.HashHelpers.Combine(hash, _offset);
+            hash = System.Numerics.Hashing.HashHelpers.Combine(hash, _count);
+            
+            // The array hash is expected to be an evenly-distributed mixture of bits,
+            // so rather than adding the cost of another rotation we just xor it.
+            hash ^= _array.GetHashCode();
+            return hash;
         }
 
         public override bool Equals(Object obj)
@@ -315,8 +325,8 @@ namespace System
             {
                 get
                 {
-                    if (_current < _start) ThrowHelper.ThrowInvalidOperationException(ExceptionResource.InvalidOperation_EnumNotStarted);
-                    if (_current >= _end) ThrowHelper.ThrowInvalidOperationException(ExceptionResource.InvalidOperation_EnumEnded);
+                    if (_current < _start) ThrowHelper.ThrowInvalidOperationException_InvalidOperation_EnumNotStarted();
+                    if (_current >= _end) ThrowHelper.ThrowInvalidOperationException_InvalidOperation_EnumEnded();
                     return _array[_current];
                 }
             }

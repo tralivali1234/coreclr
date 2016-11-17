@@ -1111,12 +1111,14 @@ LinearScan::LinearScan(Compiler* theCompiler)
 #endif
 
     dumpTerse = (JitConfig.JitDumpTerseLsra() != 0);
-
 #endif // DEBUG
+
     availableIntRegs = (RBM_ALLINT & ~compiler->codeGen->regSet.rsMaskResvd);
+
 #if ETW_EBP_FRAMED
     availableIntRegs &= ~RBM_FPBASE;
 #endif // ETW_EBP_FRAMED
+
     availableFloatRegs  = RBM_ALLFLOAT;
     availableDoubleRegs = RBM_ALLDOUBLE;
 
@@ -1327,6 +1329,13 @@ void LinearScan::setBlockSequence()
         blockInfo[block->bbNum].hasCriticalInEdge  = false;
         blockInfo[block->bbNum].hasCriticalOutEdge = false;
         blockInfo[block->bbNum].weight             = block->bbWeight;
+
+#if TRACK_LSRA_STATS
+        blockInfo[block->bbNum].spillCount         = 0;
+        blockInfo[block->bbNum].copyRegCount       = 0;
+        blockInfo[block->bbNum].resolutionMovCount = 0;
+        blockInfo[block->bbNum].splitEdgeCount     = 0;
+#endif // TRACK_LSRA_STATS
 
         if (block->GetUniquePred(compiler) == nullptr)
         {
@@ -1706,11 +1715,6 @@ void LinearScan::doLinearScan()
 
     compiler->codeGen->regSet.rsClearRegsModified();
 
-    // Figure out if we're going to use an RSP frame or an RBP frame. We need to do this
-    // before building the intervals and ref positions, because those objects will embed
-    // RBP in various register masks (like preferences) if RBP is allowed to be allocated.
-    setFrameType();
-
     initMaxSpill();
     buildIntervals();
     DBEXEC(VERBOSE, TupleStyleDump(LSRA_DUMP_REFPOS));
@@ -1724,6 +1728,17 @@ void LinearScan::doLinearScan()
     compiler->EndPhase(PHASE_LINEAR_SCAN_ALLOC);
     resolveRegisters();
     compiler->EndPhase(PHASE_LINEAR_SCAN_RESOLVE);
+
+#if TRACK_LSRA_STATS
+    if ((JitConfig.DisplayLsraStats() != 0)
+#ifdef DEBUG
+        || VERBOSE
+#endif
+        )
+    {
+        dumpLsraStats(jitstdout);
+    }
+#endif // TRACK_LSRA_STATS
 
     DBEXEC(VERBOSE, TupleStyleDump(LSRA_DUMP_POST));
 
@@ -1942,6 +1957,37 @@ void LinearScan::identifyCandidates()
     unsigned int largeVectorVarCount           = 0;
     unsigned int thresholdLargeVectorRefCntWtd = 4 * BB_UNITY_WEIGHT;
 #endif // FEATURE_PARTIAL_SIMD_CALLEE_SAVE
+#if DOUBLE_ALIGN
+    unsigned refCntStk       = 0;
+    unsigned refCntReg       = 0;
+    unsigned refCntWtdReg    = 0;
+    unsigned refCntStkParam  = 0; // sum of     ref counts for all stack based parameters
+    unsigned refCntWtdStkDbl = 0; // sum of wtd ref counts for stack based doubles
+    doDoubleAlign            = false;
+    bool checkDoubleAlign    = true;
+    if (compiler->codeGen->isFramePointerRequired() || compiler->opts.MinOpts())
+    {
+        checkDoubleAlign = false;
+    }
+    else
+    {
+        switch (compiler->getCanDoubleAlign())
+        {
+            case MUST_DOUBLE_ALIGN:
+                doDoubleAlign    = true;
+                checkDoubleAlign = false;
+                break;
+            case CAN_DOUBLE_ALIGN:
+                break;
+            case CANT_DOUBLE_ALIGN:
+                doDoubleAlign    = false;
+                checkDoubleAlign = false;
+                break;
+            default:
+                unreached();
+        }
+    }
+#endif // DOUBLE_ALIGN
 
     for (lclNum = 0, varDsc = compiler->lvaTable; lclNum < compiler->lvaCount; lclNum++, varDsc++)
     {
@@ -1951,6 +1997,32 @@ void LinearScan::identifyCandidates()
         Interval* newInt       = newInterval(intervalType);
 
         newInt->setLocalNumber(lclNum, this);
+
+#if DOUBLE_ALIGN
+        if (checkDoubleAlign)
+        {
+            if (varDsc->lvIsParam && !varDsc->lvIsRegArg)
+            {
+                refCntStkParam += varDsc->lvRefCnt;
+            }
+            else if (!isRegCandidate(varDsc) || varDsc->lvDoNotEnregister)
+            {
+                refCntStk += varDsc->lvRefCnt;
+                if ((varDsc->lvType == TYP_DOUBLE) ||
+                    ((varTypeIsStruct(varDsc) && varDsc->lvStructDoubleAlign &&
+                      (compiler->lvaGetPromotionType(varDsc) != Compiler::PROMOTION_TYPE_INDEPENDENT))))
+                {
+                    refCntWtdStkDbl += varDsc->lvRefCntWtd;
+                }
+            }
+            else
+            {
+                refCntReg += varDsc->lvRefCnt;
+                refCntWtdReg += varDsc->lvRefCntWtd;
+            }
+        }
+#endif // DOUBLE_ALIGN
+
         if (varDsc->lvIsStructField)
         {
             newInt->isStructField = true;
@@ -2134,6 +2206,24 @@ void LinearScan::identifyCandidates()
             }
         }
     }
+
+#if DOUBLE_ALIGN
+    if (checkDoubleAlign)
+    {
+        // TODO-CQ: Fine-tune this:
+        // In the legacy reg predictor, this runs after allocation, and then demotes any lclVars
+        // allocated to the frame pointer, which is probably the wrong order.
+        // However, because it runs after allocation, it can determine the impact of demoting
+        // the lclVars allocated to the frame pointer.
+        // => Here, estimate of the EBP refCnt and weighted refCnt is a wild guess.
+        //
+        unsigned refCntEBP    = refCntReg / 8;
+        unsigned refCntWtdEBP = refCntWtdReg / 8;
+
+        doDoubleAlign =
+            compiler->shouldDoubleAlign(refCntStk, refCntEBP, refCntWtdEBP, refCntStkParam, refCntWtdStkDbl);
+    }
+#endif // DOUBLE_ALIGN
 
     // The factors we consider to determine which set of fp vars to use as candidates for callee save
     // registers current include the number of fp vars, whether there are loops, and whether there are
@@ -2687,7 +2777,7 @@ regMaskTP LinearScan::getKillSetForNode(GenTree* tree)
             }
             break;
 
-#if defined(PROFILING_SUPPORTED) && defined(_TARGET_AMD64_)
+#if defined(PROFILING_SUPPORTED)
         // If this method requires profiler ELT hook then mark these nodes as killing
         // callee trash registers (excluding RAX and XMM0). The reason for this is that
         // profiler callback would trash these registers. See vm\amd64\asmhelpers.asm for
@@ -2703,10 +2793,9 @@ regMaskTP LinearScan::getKillSetForNode(GenTree* tree)
             if (compiler->compIsProfilerHookNeeded())
             {
                 killMask = compiler->compHelperCallKillSet(CORINFO_HELP_PROF_FCN_TAILCALL);
-                ;
             }
             break;
-#endif // PROFILING_SUPPORTED && _TARGET_AMD64_
+#endif // PROFILING_SUPPORTED
 
         default:
             // for all other 'tree->OperGet()' kinds, leave 'killMask' = RBM_NONE
@@ -3290,7 +3379,7 @@ static int ComputeOperandDstCount(GenTree* operand)
         // If an operand has no destination registers but does have source registers, it must be a store
         // or a compare.
         assert(operand->OperIsStore() || operand->OperIsBlkOp() || operand->OperIsPutArgStk() ||
-               operand->OperIsCompare());
+               operand->OperIsCompare() || operand->IsSIMDEqualityOrInequality());
         return 0;
     }
     else if (!operand->OperIsFieldListHead() && (operand->OperIsStore() || operand->TypeGet() == TYP_VOID))
@@ -4266,7 +4355,19 @@ void LinearScan::buildIntervals()
     }
 #endif // DEBUG
 
+#if DOUBLE_ALIGN
+    // We will determine whether we should double align the frame during
+    // identifyCandidates(), but we initially assume that we will not.
+    doDoubleAlign = false;
+#endif
+
     identifyCandidates();
+
+    // Figure out if we're going to use a frame pointer. We need to do this before building
+    // the ref positions, because those objects will embed the frame register in various register masks
+    // if the frame pointer is not reserved. If we decide to have a frame pointer, setFrameType() will
+    // remove the frame pointer from the masks.
+    setFrameType();
 
     DBEXEC(VERBOSE, TupleStyleDump(LSRA_DUMP_PRE));
 
@@ -4669,7 +4770,16 @@ void LinearScan::validateIntervals()
 void LinearScan::setFrameType()
 {
     FrameType frameType = FT_NOT_SET;
-    if (compiler->codeGen->isFramePointerRequired())
+#if DOUBLE_ALIGN
+    compiler->codeGen->setDoubleAlign(false);
+    if (doDoubleAlign)
+    {
+        frameType = FT_DOUBLE_ALIGN_FRAME;
+        compiler->codeGen->setDoubleAlign(true);
+    }
+    else
+#endif // DOUBLE_ALIGN
+        if (compiler->codeGen->isFramePointerRequired())
     {
         frameType = FT_EBP_FRAME;
     }
@@ -4698,22 +4808,6 @@ void LinearScan::setFrameType()
         }
     }
 
-#if DOUBLE_ALIGN
-    // The DOUBLE_ALIGN feature indicates whether the JIT will attempt to double-align the
-    // frame if needed.  Note that this feature isn't on for amd64, because the stack is
-    // always double-aligned by default.
-    compiler->codeGen->setDoubleAlign(false);
-
-    // TODO-CQ: Tune this (see regalloc.cpp, in which raCntWtdStkDblStackFP is used to
-    // determine whether to double-align). Note, though that there is at least one test
-    // (jit\opt\Perf\DoubleAlign\Locals.exe) that depends on double-alignment being set
-    // in certain situations.
-    if (!compiler->opts.MinOpts() && !compiler->codeGen->isFramePointerRequired() && compiler->compFloatingPointUsed)
-    {
-        frameType = FT_DOUBLE_ALIGN_FRAME;
-    }
-#endif // DOUBLE_ALIGN
-
     switch (frameType)
     {
         case FT_ESP_FRAME:
@@ -4728,7 +4822,6 @@ void LinearScan::setFrameType()
         case FT_DOUBLE_ALIGN_FRAME:
             noway_assert(!compiler->codeGen->isFramePointerRequired());
             compiler->codeGen->setFramePointerUsed(false);
-            compiler->codeGen->setDoubleAlign(true);
             break;
 #endif // DOUBLE_ALIGN
         default:
@@ -5883,6 +5976,8 @@ void LinearScan::spillInterval(Interval* interval, RefPosition* fromRefPosition,
     }
 #endif // DEBUG
 
+    INTRACK_STATS(updateLsraStat(LSRA_STAT_SPILL, fromRefPosition->bbNum));
+
     interval->isActive  = false;
     interval->isSpilled = true;
 
@@ -6089,7 +6184,8 @@ void LinearScan::unassignPhysReg(RegRecord* regRec, RefPosition* spillRefPositio
     {
         assignedInterval->assignedReg = regRec;
     }
-    else if (regRec->previousInterval != nullptr && regRec->previousInterval->assignedReg == regRec &&
+    else if (regRec->previousInterval != nullptr && regRec->previousInterval != assignedInterval &&
+             regRec->previousInterval->assignedReg == regRec &&
              regRec->previousInterval->getNextRefPosition() != nullptr)
     {
         regRec->assignedInterval = regRec->previousInterval;
@@ -7630,6 +7726,7 @@ void LinearScan::writeRegisters(RefPosition* currentRefPosition, GenTree* tree)
 //   than the one it was spilled from (GT_RELOAD).
 //
 // Arguments:
+//    block             - basic block in which GT_COPY/GT_RELOAD is inserted.
 //    tree              - This is the node to copy or reload.
 //                        Insert copy or reload node between this node and its parent.
 //    multiRegIdx       - register position of tree node for which copy or reload is needed.
@@ -7698,6 +7795,10 @@ void LinearScan::insertCopyOrReload(BasicBlock* block, GenTreePtr tree, unsigned
     else
     {
         oper = GT_COPY;
+
+#if TRACK_LSRA_STATS
+        updateLsraStat(LSRA_STAT_COPY_REG, block->bbNum);
+#endif
     }
 
     // If the parent is a reload/copy node, then tree must be a multi-reg call node
@@ -8423,23 +8524,10 @@ void LinearScan::resolveRegisters()
                     varDsc->lvArgInitReg = initialReg;
                     JITDUMP("  Set V%02u argument initial register to %s\n", lclNum, getRegName(initialReg));
                 }
-                if (!varDsc->lvIsRegArg)
-                {
-                    // stack arg
-                    if (compiler->lvaIsFieldOfDependentlyPromotedStruct(varDsc))
-                    {
-                        if (sourceReg != initialReg)
-                        {
-                            // The code generator won't initialize struct
-                            // fields, so we have to do that if it's not already
-                            // where it belongs.
-                            assert(interval->isStructField);
-                            JITDUMP("  Move struct field param V%02u from %s to %s\n", lclNum, getRegName(sourceReg),
-                                    getRegName(initialReg));
-                            insertMove(insertionBlock, insertionPoint, lclNum, sourceReg, initialReg);
-                        }
-                    }
-                }
+
+                // Stack args that are part of dependently-promoted structs should never be register candidates (see
+                // LinearScan::isRegCandidate).
+                assert(varDsc->lvIsRegArg || !compiler->lvaIsFieldOfDependentlyPromotedStruct(varDsc));
             }
 
             // If lvRegNum is REG_STK, that means that either no register
@@ -8488,8 +8576,8 @@ void LinearScan::resolveRegisters()
                     }
                     if (firstRefPosition->registerAssignment == RBM_NONE || firstRefPosition->spillAfter)
                     {
-                        // Either this RefPosition is spilled, or it is not a "real" def or use
-                        assert(firstRefPosition->spillAfter ||
+                        // Either this RefPosition is spilled, or regOptional or it is not a "real" def or use
+                        assert(firstRefPosition->spillAfter || firstRefPosition->AllocateIfProfitable() ||
                                (firstRefPosition->refType != RefTypeDef && firstRefPosition->refType != RefTypeUse));
                         varDsc->lvRegNum = REG_STK;
                     }
@@ -8573,6 +8661,8 @@ void LinearScan::insertMove(
     BasicBlock* block, GenTreePtr insertionPoint, unsigned lclNum, regNumber fromReg, regNumber toReg)
 {
     LclVarDsc* varDsc = compiler->lvaTable + lclNum;
+    // the lclVar must be a register candidate
+    assert(isRegCandidate(varDsc));
     // One or both MUST be a register
     assert(fromReg != REG_STK || toReg != REG_STK);
     // They must not be the same register.
@@ -8581,20 +8671,22 @@ void LinearScan::insertMove(
     // This var can't be marked lvRegister now
     varDsc->lvRegNum = REG_STK;
 
-    var_types lclTyp = varDsc->TypeGet();
-    if (varDsc->lvNormalizeOnStore())
-    {
-        lclTyp = genActualType(lclTyp);
-    }
-    GenTreePtr src              = compiler->gtNewLclvNode(lclNum, lclTyp);
+    GenTreePtr src              = compiler->gtNewLclvNode(lclNum, varDsc->TypeGet());
     src->gtLsraInfo.isLsraAdded = true;
-    GenTreePtr top;
 
-    // If we are moving from STK to reg, mark the lclVar nodes with GTF_SPILLED
-    // Otherwise, if we are moving from reg to stack, mark it as GTF_SPILL
-    // Finally, for a reg-to-reg move, generate a GT_COPY
+    // There are three cases we need to handle:
+    // - We are loading a lclVar from the stack.
+    // - We are storing a lclVar to the stack.
+    // - We are copying a lclVar between registers.
+    //
+    // In the first and second cases, the lclVar node will be marked with GTF_SPILLED and GTF_SPILL, respectively.
+    // It is up to the code generator to ensure that any necessary normalization is done when loading or storing the
+    // lclVar's value.
+    //
+    // In the third case, we generate GT_COPY(GT_LCL_VAR) and type each node with the normalized type of the lclVar.
+    // This is safe because a lclVar is always normalized once it is in a register.
 
-    top = src;
+    GenTree* dst = src;
     if (fromReg == REG_STK)
     {
         src->gtFlags |= GTF_SPILLED;
@@ -8608,21 +8700,22 @@ void LinearScan::insertMove(
     }
     else
     {
-        top = new (compiler, GT_COPY) GenTreeCopyOrReload(GT_COPY, varDsc->TypeGet(), src);
+        var_types movType = genActualType(varDsc->TypeGet());
+        src->gtType       = movType;
+
+        dst = new (compiler, GT_COPY) GenTreeCopyOrReload(GT_COPY, movType, src);
         // This is the new home of the lclVar - indicate that by clearing the GTF_VAR_DEATH flag.
         // Note that if src is itself a lastUse, this will have no effect.
-        top->gtFlags &= ~(GTF_VAR_DEATH);
+        dst->gtFlags &= ~(GTF_VAR_DEATH);
         src->gtRegNum = fromReg;
         src->SetInReg();
-        top->gtRegNum                 = toReg;
-        src->gtNext                   = top;
-        top->gtPrev                   = src;
+        dst->gtRegNum                 = toReg;
         src->gtLsraInfo.isLocalDefUse = false;
-        top->gtLsraInfo.isLsraAdded   = true;
+        dst->gtLsraInfo.isLsraAdded   = true;
     }
-    top->gtLsraInfo.isLocalDefUse = true;
+    dst->gtLsraInfo.isLocalDefUse = true;
 
-    LIR::Range  treeRange  = LIR::SeqTree(compiler, top);
+    LIR::Range  treeRange  = LIR::SeqTree(compiler, dst);
     LIR::Range& blockRange = LIR::AsRange(block);
 
     if (insertionPoint != nullptr)
@@ -8829,6 +8922,8 @@ void LinearScan::addResolution(
     {
         interval->isSplit = true;
     }
+
+    INTRACK_STATS(updateLsraStat(LSRA_STAT_RESOLUTION_MOV, block->bbNum));
 }
 
 //------------------------------------------------------------------------
@@ -9302,6 +9397,9 @@ void LinearScan::resolveEdge(BasicBlock*      fromBlock,
             // in resolveEdges(), after all the edge resolution has been done (by calling this
             // method for each edge).
             block = compiler->fgSplitEdge(fromBlock, toBlock);
+
+            // Split edges are counted against fromBlock.
+            INTRACK_STATS(updateLsraStat(LSRA_STAT_SPLIT_EDGE, fromBlock->bbNum));
             break;
         default:
             unreached();
@@ -9539,6 +9637,8 @@ void LinearScan::resolveEdge(BasicBlock*      fromBlock,
                                    sourceIntervals[sourceReg]->varNum, fromReg);
                         location[sourceReg]              = REG_NA;
                         location[source[otherTargetReg]] = (regNumberSmall)fromReg;
+
+                        INTRACK_STATS(updateLsraStat(LSRA_STAT_RESOLUTION_MOV, block->bbNum));
                     }
                     else
                     {
@@ -9669,6 +9769,126 @@ void TreeNodeInfo::addInternalCandidates(LinearScan* lsra, regMaskTP mask)
     assert(FitsIn<unsigned char>(i));
     internalCandsIndex = (unsigned char)i;
 }
+
+#if TRACK_LSRA_STATS
+// ----------------------------------------------------------
+// updateLsraStat: Increment LSRA stat counter.
+//
+// Arguments:
+//    stat      -   LSRA stat enum
+//    bbNum     -   Basic block to which LSRA stat needs to be
+//                  associated with.
+//
+void LinearScan::updateLsraStat(LsraStat stat, unsigned bbNum)
+{
+    if (bbNum > bbNumMaxBeforeResolution)
+    {
+        // This is a newly created basic block as part of resolution.
+        // These blocks contain resolution moves that are already accounted.
+        return;
+    }
+
+    switch (stat)
+    {
+        case LSRA_STAT_SPILL:
+            ++(blockInfo[bbNum].spillCount);
+            break;
+
+        case LSRA_STAT_COPY_REG:
+            ++(blockInfo[bbNum].copyRegCount);
+            break;
+
+        case LSRA_STAT_RESOLUTION_MOV:
+            ++(blockInfo[bbNum].resolutionMovCount);
+            break;
+
+        case LSRA_STAT_SPLIT_EDGE:
+            ++(blockInfo[bbNum].splitEdgeCount);
+            break;
+
+        default:
+            break;
+    }
+}
+
+// -----------------------------------------------------------
+// dumpLsraStats - dumps Lsra stats to given file.
+//
+// Arguments:
+//    file    -  file to which stats are to be written.
+//
+void LinearScan::dumpLsraStats(FILE* file)
+{
+    unsigned sumSpillCount         = 0;
+    unsigned sumCopyRegCount       = 0;
+    unsigned sumResolutionMovCount = 0;
+    unsigned sumSplitEdgeCount     = 0;
+    UINT64   wtdSpillCount         = 0;
+    UINT64   wtdCopyRegCount       = 0;
+    UINT64   wtdResolutionMovCount = 0;
+
+    fprintf(file, "----------\n");
+    fprintf(file, "LSRA Stats");
+#ifdef DEBUG
+    if (!VERBOSE)
+    {
+        fprintf(file, " : %s\n", compiler->info.compFullName);
+    }
+    else
+    {
+        // In verbose mode no need to print full name
+        // while printing lsra stats.
+        fprintf(file, "\n");
+    }
+#else
+    fprintf(file, " : %s\n", compiler->eeGetMethodFullName(compiler->info.compCompHnd));
+#endif
+
+    fprintf(file, "----------\n");
+
+    for (BasicBlock* block = compiler->fgFirstBB; block != nullptr; block = block->bbNext)
+    {
+        if (block->bbNum > bbNumMaxBeforeResolution)
+        {
+            continue;
+        }
+
+        unsigned spillCount         = blockInfo[block->bbNum].spillCount;
+        unsigned copyRegCount       = blockInfo[block->bbNum].copyRegCount;
+        unsigned resolutionMovCount = blockInfo[block->bbNum].resolutionMovCount;
+        unsigned splitEdgeCount     = blockInfo[block->bbNum].splitEdgeCount;
+
+        if (spillCount != 0 || copyRegCount != 0 || resolutionMovCount != 0 || splitEdgeCount != 0)
+        {
+            fprintf(file, "BB%02u [%8d]: ", block->bbNum, block->bbWeight);
+            fprintf(file, "SpillCount = %d, ResolutionMovs = %d, SplitEdges = %d, CopyReg = %d\n", spillCount,
+                    resolutionMovCount, splitEdgeCount, copyRegCount);
+        }
+
+        sumSpillCount += spillCount;
+        sumCopyRegCount += copyRegCount;
+        sumResolutionMovCount += resolutionMovCount;
+        sumSplitEdgeCount += splitEdgeCount;
+
+        wtdSpillCount += (UINT64)spillCount * block->bbWeight;
+        wtdCopyRegCount += (UINT64)copyRegCount * block->bbWeight;
+        wtdResolutionMovCount += (UINT64)resolutionMovCount * block->bbWeight;
+    }
+
+    fprintf(file, "Total Spill Count: %d    Weighted: %I64u\n", sumSpillCount, wtdSpillCount);
+    fprintf(file, "Total CopyReg Count: %d   Weighted: %I64u\n", sumCopyRegCount, wtdCopyRegCount);
+    fprintf(file, "Total ResolutionMov Count: %d    Weighted: %I64u\n", sumResolutionMovCount, wtdResolutionMovCount);
+    fprintf(file, "Total number of split edges: %d\n", sumSplitEdgeCount);
+
+    // compute total number of spill temps created
+    unsigned numSpillTemps = 0;
+    for (int i = 0; i < TYP_COUNT; i++)
+    {
+        numSpillTemps += maxSpill[i];
+    }
+    fprintf(file, "Total Number of spill temps created: %d\n\n", numSpillTemps);
+}
+#endif // TRACK_LSRA_STATS
 
 #ifdef DEBUG
 void dumpRegMask(regMaskTP regs)

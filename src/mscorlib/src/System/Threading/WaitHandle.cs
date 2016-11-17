@@ -28,11 +28,7 @@ namespace System.Threading
     using Win32Native = Microsoft.Win32.Win32Native;
 
 [System.Runtime.InteropServices.ComVisible(true)]
-#if FEATURE_REMOTING
     public abstract class WaitHandle : MarshalByRefObject, IDisposable {
-#else // FEATURE_REMOTING
-    public abstract class WaitHandle : IDisposable {
-#endif // FEATURE_REMOTING
         public const int WaitTimeout = 0x102;                    
 
         private const int MAX_WAITHANDLES = 64;
@@ -179,7 +175,7 @@ namespace System.Threading
         {
             if (millisecondsTimeout < -1)
             {
-                throw new ArgumentOutOfRangeException("millisecondsTimeout", Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
+                throw new ArgumentOutOfRangeException(nameof(millisecondsTimeout), Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
             }
             Contract.EndContractBlock();
             return  WaitOne((long)millisecondsTimeout,exitContext);
@@ -190,7 +186,7 @@ namespace System.Threading
             long tm = (long)timeout.TotalMilliseconds;
             if (-1 > tm || (long) Int32.MaxValue < tm)
             {
-                throw new ArgumentOutOfRangeException("timeout", Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
+                throw new ArgumentOutOfRangeException(nameof(timeout), Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
             }
             return WaitOne(tm,exitContext);
         }
@@ -281,7 +277,7 @@ namespace System.Threading
         {
             if (waitHandles == null)
             {
-                throw new ArgumentNullException("waitHandles", Environment.GetResourceString("ArgumentNull_Waithandles"));
+                throw new ArgumentNullException(nameof(waitHandles), Environment.GetResourceString("ArgumentNull_Waithandles"));
             }
             if(waitHandles.Length == 0)
             {
@@ -297,7 +293,7 @@ namespace System.Threading
 #if FEATURE_CORECLR
                 throw new ArgumentException(Environment.GetResourceString("Argument_EmptyWaithandleArray"));
 #else
-                throw new ArgumentNullException("waitHandles", Environment.GetResourceString("Argument_EmptyWaithandleArray"));
+                throw new ArgumentNullException(nameof(waitHandles), Environment.GetResourceString("Argument_EmptyWaithandleArray"));
 #endif
             }
             if (waitHandles.Length > MAX_WAITHANDLES)
@@ -306,7 +302,7 @@ namespace System.Threading
             }
             if (-1 > millisecondsTimeout)
             {
-                throw new ArgumentOutOfRangeException("millisecondsTimeout", Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
+                throw new ArgumentOutOfRangeException(nameof(millisecondsTimeout), Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
             }
             Contract.EndContractBlock();
             WaitHandle[] internalWaitHandles = new WaitHandle[waitHandles.Length];
@@ -354,7 +350,7 @@ namespace System.Threading
             long tm = (long)timeout.TotalMilliseconds;
             if (-1 > tm || (long) Int32.MaxValue < tm)
             {
-                throw new ArgumentOutOfRangeException("timeout", Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
+                throw new ArgumentOutOfRangeException(nameof(timeout), Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
             }
             return WaitAll(waitHandles,(int)tm, exitContext);
         }
@@ -394,7 +390,7 @@ namespace System.Threading
         {
             if (waitHandles==null)
             {
-                throw new ArgumentNullException("waitHandles", Environment.GetResourceString("ArgumentNull_Waithandles"));
+                throw new ArgumentNullException(nameof(waitHandles), Environment.GetResourceString("ArgumentNull_Waithandles"));
             }
             if(waitHandles.Length == 0)
             {
@@ -406,7 +402,7 @@ namespace System.Threading
             }
             if (-1 > millisecondsTimeout)
             {
-                throw new ArgumentOutOfRangeException("millisecondsTimeout", Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
+                throw new ArgumentOutOfRangeException(nameof(millisecondsTimeout), Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
             }
             Contract.EndContractBlock();
             WaitHandle[] internalWaitHandles = new WaitHandle[waitHandles.Length];
@@ -459,7 +455,7 @@ namespace System.Threading
             long tm = (long)timeout.TotalMilliseconds;
             if (-1 > tm || (long) Int32.MaxValue < tm)
             {
-                throw new ArgumentOutOfRangeException("timeout", Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
+                throw new ArgumentOutOfRangeException(nameof(timeout), Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
             }
             return WaitAny(waitHandles,(int)tm, exitContext);
         }
@@ -519,7 +515,7 @@ namespace System.Threading
             long tm = (long)timeout.TotalMilliseconds;
             if (-1 > tm || (long) Int32.MaxValue < tm)
             {
-                throw new ArgumentOutOfRangeException("timeout", Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
+                throw new ArgumentOutOfRangeException(nameof(timeout), Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
             }
             return SignalAndWait(toSignal,toWaitOn,(int)tm,exitContext);
 #endif
@@ -538,15 +534,15 @@ namespace System.Threading
 #else
             if(null == toSignal)
             {
-                throw new ArgumentNullException("toSignal");
+                throw new ArgumentNullException(nameof(toSignal));
             }
             if(null == toWaitOn)
             {
-                throw new ArgumentNullException("toWaitOn");
+                throw new ArgumentNullException(nameof(toWaitOn));
             }
             if (-1 > millisecondsTimeout)
             {
-                throw new ArgumentOutOfRangeException("millisecondsTimeout", Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
+                throw new ArgumentOutOfRangeException(nameof(millisecondsTimeout), Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
             }
             Contract.EndContractBlock();
 

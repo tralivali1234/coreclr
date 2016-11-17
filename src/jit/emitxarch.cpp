@@ -76,9 +76,7 @@ bool emitter::IsThreeOperandBinaryAVXInstruction(instruction ins)
             ins == INS_paddw || ins == INS_paddd || ins == INS_paddq || ins == INS_psubb || ins == INS_psubw ||
             ins == INS_psubd || ins == INS_psubq || ins == INS_pmuludq || ins == INS_pxor || ins == INS_pmaxub ||
             ins == INS_pminub || ins == INS_pmaxsw || ins == INS_pminsw || ins == INS_insertps ||
-            ins == INS_vinsertf128 || ins == INS_punpckldq
-
-            );
+            ins == INS_vinsertf128 || ins == INS_punpckldq || ins == INS_phaddd);
 }
 
 // Returns true if the AVX instruction is a move operator that requires 3 operands.
@@ -105,7 +103,7 @@ bool Is4ByteAVXInstruction(instruction ins)
     return (ins == INS_dpps || ins == INS_dppd || ins == INS_insertps || ins == INS_pcmpeqq || ins == INS_pcmpgtq ||
             ins == INS_vbroadcastss || ins == INS_vbroadcastsd || ins == INS_vpbroadcastb || ins == INS_vpbroadcastw ||
             ins == INS_vpbroadcastd || ins == INS_vpbroadcastq || ins == INS_vextractf128 || ins == INS_vinsertf128 ||
-            ins == INS_pmulld || ins == INS_ptest);
+            ins == INS_pmulld || ins == INS_ptest || ins == INS_phaddd);
 #else
     return false;
 #endif
@@ -384,6 +382,8 @@ size_t emitter::AddRexPrefix(instruction ins, size_t code)
     return code | 0x4000000000ULL;
 }
 
+#endif //_TARGET_AMD64_
+
 bool isPrefix(BYTE b)
 {
     assert(b != 0);    // Caller should check this
@@ -400,8 +400,6 @@ bool isPrefix(BYTE b)
     //      Scalar Double  Scalar Single  Packed Double
     return ((b == 0xF2) || (b == 0xF3) || (b == 0x66));
 }
-
-#endif //_TARGET_AMD64_
 
 // Outputs VEX prefix (in case of AVX instructions) and REX.R/X/W/B otherwise.
 unsigned emitter::emitOutputRexOrVexPrefixIfNeeded(instruction ins, BYTE* dst, size_t& code)
@@ -3485,7 +3483,7 @@ void emitter::emitIns_R_I(instruction ins, emitAttr attr, regNumber reg, ssize_t
         sz += emitGetRexPrefixSize(ins);
     }
 
-#ifdef _TARGET_X86_
+#if defined(_TARGET_X86_) && defined(LEGACY_BACKEND)
     assert(reg < 8);
 #endif
 
@@ -5394,13 +5392,11 @@ void emitter::emitIns_Call(EmitCallType          callType,
     assert(argSize % sizeof(void*) == 0);
     argCnt = (int)(argSize / (ssize_t)sizeof(void*)); // we need a signed-divide
 
-#ifdef DEBUGGING_SUPPORT
     /* Managed RetVal: emit sequence point for the call */
     if (emitComp->opts.compDbgInfo && ilOffset != BAD_IL_OFFSET)
     {
         codeGen->genIPmappingAdd(ilOffset, false);
     }
-#endif
 
     /*
         We need to allocate the appropriate instruction descriptor based
@@ -10793,6 +10789,10 @@ size_t emitter::emitOutputInstr(insGroup* ig, instrDesc* id, BYTE** dp)
             dst += emitOutputWord(dst, code);
             dst += emitOutputByte(dst, emitGetInsSC(id));
             sz = emitSizeOfInsDsc(id);
+
+            // Update GC info.
+            assert(!id->idGCref());
+            emitGCregDeadUpd(id->idReg1(), dst);
             break;
 
         case IF_RRD_RRD:

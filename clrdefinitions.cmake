@@ -61,6 +61,12 @@ if (CLR_CMAKE_PLATFORM_UNIX)
 
 endif(CLR_CMAKE_PLATFORM_UNIX)
 
+if(CLR_CMAKE_PLATFORM_ALPINE_LINUX)
+  # Alpine Linux doesn't have fixed stack limit, this define disables some stack pointer
+  # sanity checks in debug / checked build that rely on a fixed stack limit
+  add_definitions(-DNO_FIXED_STACK_LIMIT)
+endif(CLR_CMAKE_PLATFORM_ALPINE_LINUX)
+
 add_definitions(-D_BLD_CLR)
 add_definitions(-DDEBUGGING_SUPPORTED)
 add_definitions(-DPROFILING_SUPPORTED)
@@ -118,6 +124,7 @@ if(CLR_CMAKE_PLATFORM_UNIX)
     add_definitions(-DFEATURE_EVENTSOURCE_XPLAT=1)
 endif(CLR_CMAKE_PLATFORM_UNIX)
 add_definitions(-DFEATURE_EXCEPTIONDISPATCHINFO)
+add_definitions(-DFEATURE_EXCEPTION_NOTIFICATIONS)
 # NetBSD doesn't implement this feature
 if(NOT CMAKE_SYSTEM_NAME STREQUAL NetBSD)
     add_definitions(-DFEATURE_HIJACK)
@@ -157,6 +164,10 @@ add_definitions(-DFEATURE_RANDOMIZED_STRING_HASHING)
 add_definitions(-DFEATURE_READYTORUN)
 set(FEATURE_READYTORUN 1)
 
+if (FEATURE_STANDALONE_GC)
+  add_definitions(-DFEATURE_STANDALONE_GC)
+endif(FEATURE_STANDALONE_GC)
+
 if (CLR_CMAKE_TARGET_ARCH_AMD64 OR CLR_CMAKE_TARGET_ARCH_I386)
   add_definitions(-DFEATURE_REJIT)
 endif(CLR_CMAKE_TARGET_ARCH_AMD64 OR CLR_CMAKE_TARGET_ARCH_I386)
@@ -169,6 +180,7 @@ if (CLR_CMAKE_PLATFORM_UNIX OR CLR_CMAKE_TARGET_ARCH_ARM64)
 endif ()
 add_definitions(-DFEATURE_SVR_GC)
 add_definitions(-DFEATURE_SYMDIFF)
+add_definitions(-DFEATURE_SYNCHRONIZATIONCONTEXT_WAIT)
 add_definitions(-DFEATURE_SYNTHETIC_CULTURES)
 if(CLR_CMAKE_PLATFORM_UNIX_AMD64)
   add_definitions(-DFEATURE_MULTIREG_RETURN)
@@ -192,3 +204,5 @@ add_definitions(-DFEATURE_WINMD_RESILIENT)
 add_definitions(-D_SECURE_SCL=0)
 add_definitions(-DUNICODE)
 add_definitions(-D_UNICODE)
+
+add_definitions(-DFEATURE_SPAN_OF_T)

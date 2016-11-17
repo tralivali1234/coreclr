@@ -30,16 +30,6 @@ namespace System.Reflection
     using Microsoft.Runtime.Hosting;
 #endif
 
-#if FEATURE_CORECLR
-    // Dummy type to avoid ifdefs in signature definitions
-    public class StrongNameKeyPair
-    {       
-        private StrongNameKeyPair()
-        {
-            throw new NotSupportedException();
-        }
-    }
-#else
     [Serializable]
     [System.Runtime.InteropServices.ComVisible(true)]
     public class StrongNameKeyPair : IDeserializationCallback, ISerializable 
@@ -57,7 +47,7 @@ namespace System.Reflection
         public StrongNameKeyPair(FileStream keyPairFile)
         {
             if (keyPairFile == null)
-                throw new ArgumentNullException("keyPairFile");
+                throw new ArgumentNullException(nameof(keyPairFile));
             Contract.EndContractBlock();
 
             int length = (int)keyPairFile.Length;
@@ -75,7 +65,7 @@ namespace System.Reflection
         public StrongNameKeyPair(byte[] keyPairArray)
         {
             if (keyPairArray == null)
-                throw new ArgumentNullException("keyPairArray");
+                throw new ArgumentNullException(nameof(keyPairArray));
             Contract.EndContractBlock();
 
             _keyPairArray = new byte[keyPairArray.Length];
@@ -83,23 +73,7 @@ namespace System.Reflection
 
             _keyPairExported = true;
         }
-
-        // Reference key pair in named key container.
-        [System.Security.SecuritySafeCritical]  // auto-generated
-#pragma warning disable 618
-        [SecurityPermissionAttribute(SecurityAction.Demand, Flags=SecurityPermissionFlag.UnmanagedCode)]
-#pragma warning restore 618
-        public StrongNameKeyPair(String keyPairContainer)
-        {
-            if (keyPairContainer == null)
-                throw new ArgumentNullException("keyPairContainer");
-            Contract.EndContractBlock();
-
-            _keyPairContainer = keyPairContainer;
-
-            _keyPairExported = false;
-        }
-
+        
         [System.Security.SecuritySafeCritical]  // auto-generated
 #pragma warning disable 618
         [SecurityPermissionAttribute(SecurityAction.Demand, Flags=SecurityPermissionFlag.UnmanagedCode)]
@@ -109,6 +83,23 @@ namespace System.Reflection
             _keyPairArray = (byte[]) info.GetValue("_keyPairArray", typeof(byte[]));
             _keyPairContainer = (string) info.GetValue("_keyPairContainer", typeof(string));
             _publicKey = (byte[]) info.GetValue("_publicKey", typeof(byte[]));
+        }
+
+#if! FEATURE_CORECLR
+        // Reference key pair in named key container.
+        [System.Security.SecuritySafeCritical]  // auto-generated
+#pragma warning disable 618
+        [SecurityPermissionAttribute(SecurityAction.Demand, Flags=SecurityPermissionFlag.UnmanagedCode)]
+#pragma warning restore 618
+        public StrongNameKeyPair(String keyPairContainer)
+        {
+            if (keyPairContainer == null)
+                throw new ArgumentNullException(nameof(keyPairContainer));
+            Contract.EndContractBlock();
+
+            _keyPairContainer = keyPairContainer;
+
+            _keyPairExported = false;
         }
 
         // Get the public portion of the key pair.
@@ -170,6 +161,27 @@ namespace System.Reflection
             }
             return publicKey;
         }
+        // Internal routine used to retrieve key pair info from unmanaged code.
+        private bool GetKeyPair(out Object arrayOrContainer)
+        {
+            arrayOrContainer = _keyPairExported ? (Object)_keyPairArray : (Object)_keyPairContainer;
+            return _keyPairExported;
+        }
+#else
+        public StrongNameKeyPair(String keyPairContainer)
+        {
+            throw new PlatformNotSupportedException();
+        }
+        
+        public byte[] PublicKey
+        {
+            get
+            {
+                throw new PlatformNotSupportedException();
+            }
+        }
+
+#endif// FEATURE_CORECLR
 
         /// <internalonly/>
         [System.Security.SecurityCritical]
@@ -183,12 +195,5 @@ namespace System.Reflection
         /// <internalonly/>
         void IDeserializationCallback.OnDeserialization (Object sender) {}
 
-        // Internal routine used to retrieve key pair info from unmanaged code.
-        private bool GetKeyPair(out Object arrayOrContainer)
-        {
-            arrayOrContainer = _keyPairExported ? (Object)_keyPairArray : (Object)_keyPairContainer;
-            return _keyPairExported;
-        }
     }
-#endif // FEATURE_CORECLR
 }

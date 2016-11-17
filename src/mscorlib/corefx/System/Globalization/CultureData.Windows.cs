@@ -557,5 +557,76 @@ namespace System.Globalization
 
             return null;
         }
+        
+        private static int LocaleNameToLCID(string cultureName)
+        {
+            throw new NotImplementedException();
+        }
+        
+        private static string LCIDToLocaleName(int culture)
+        {
+            throw new NotImplementedException();
+        }
+        
+        private static int GetAnsiCodePage(string cultureName)
+        {
+            throw new NotImplementedException();
+        }
+
+        private static int GetOemCodePage(string cultureName)
+        {
+            throw new NotImplementedException();
+        }
+
+        private static int GetMacCodePage(string cultureName)
+        {
+            throw new NotImplementedException();
+        }
+
+        private static int GetEbcdicCodePage(string cultureName)
+        {
+            throw new NotImplementedException();
+        }
+
+        private static int GetGeoId(string cultureName)
+        {
+            throw new NotImplementedException();
+        }
+        
+        private static int GetDigitSubstitution(string cultureName)
+        {
+            throw new NotImplementedException();
+        }
+        
+        private static string GetThreeLetterWindowsLanguageName(string cultureName)
+        {
+            throw new NotImplementedException();
+        }
+
+        private static CultureInfo[] EnumCultures(CultureTypes types)
+        {
+            throw new NotImplementedException();
+        }
+
+        private static string GetConsoleFallbackName(string cultureName)
+        {
+            throw new NotImplementedException();
+        }
+
+        private bool IsSupplementalCustomCulture
+        {
+            get { throw new NotImplementedException(); }
+        }
+        
+        private bool IsWin32Installed
+        {
+            get { throw new NotImplementedException(); }
+        }
+        
+        private bool IsReplacementCulture
+        {
+            get { throw new NotImplementedException(); }
+        }
+        
     }
 }

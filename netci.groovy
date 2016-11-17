@@ -283,17 +283,6 @@ def static getJobName(def configuration, def architecture, def os, def scenario,
     return baseName + suffix
 }
 
-static void addEmailPublisher(def job, def recipient) {
-    job.with {
-        publishers {
-            extendedEmail(recipient, '$DEFAULT_SUBJECT', '$DEFAULT_CONTENT') {
-                trigger('Aborted', '$PROJECT_DEFAULT_SUBJECT', '$PROJECT_DEFAULT_CONTENT', null, true, true, true, true)
-                trigger('Failure', '$PROJECT_DEFAULT_SUBJECT', '$PROJECT_DEFAULT_CONTENT', null, true, true, true, true)
-            }
-        }
-    }
-}
-
 // **************************
 // Define the basic inner loop builds for PR and commit.  This is basically just the set
 // of coreclr builds over linux/osx/freebsd/windows and debug/release/checked.  In addition, the windows
@@ -329,7 +318,8 @@ def static addTriggers(def job, def branch, def isPR, def architecture, def os, 
                     case 'arm64':
                         if (os == 'Windows_NT') {
                             Utilities.addGithubPushTrigger(job)
-                            addEmailPublisher(job, 'dotnetonarm64@microsoft.com')
+                            // TODO: Add once external email sending is available again
+                            // addEmailPublisher(job, 'dotnetonarm64@microsoft.com')
                         }
                         break
                     default:
@@ -386,7 +376,8 @@ def static addTriggers(def job, def branch, def isPR, def architecture, def os, 
                     else if (architecture == 'arm64') {
                         if (os == 'Windows_NT') {
                             Utilities.addPeriodicTrigger(job, 'H H/12 * * *')
-                            addEmailPublisher(job, 'dotnetonarm64@microsoft.com')
+                            // TODO: Add once external email sending is available again
+                            // addEmailPublisher(job, 'dotnetonarm64@microsoft.com')
                         }
                     }
                 }
@@ -433,14 +424,16 @@ def static addTriggers(def job, def branch, def isPR, def architecture, def os, 
                 assert configuration == 'Release'
                 assert architecture == 'x64'
                 Utilities.addPeriodicTrigger(job, '@daily')
-                addEmailPublisher(job, 'dotnetgctests@microsoft.com')
+                // TODO: Add once external email sending is available again
+                // addEmailPublisher(job, 'dotnetgctests@microsoft.com')
                 break
             case 'gcsimulator':
                 assert (os == 'Ubuntu' || os == 'Windows_NT' || os == 'OSX')
                 assert configuration == 'Release'
                 assert architecture == 'x64'
                 Utilities.addPeriodicTrigger(job, 'H H * * 3,6') // some time every Wednesday and Saturday
-                addEmailPublisher(job, 'dotnetgctests@microsoft.com')
+                // TODO: Add once external email sending is available again
+                // addEmailPublisher(job, 'dotnetgctests@microsoft.com')
                 break
             case 'ilrt':
                 assert !(os in bidailyCrossList)
@@ -506,7 +499,8 @@ def static addTriggers(def job, def branch, def isPR, def architecture, def os, 
                     if (architecture == 'arm64') {
                         assert (os == 'Windows_NT')
                         Utilities.addPeriodicTrigger(job, '@daily')
-                        addEmailPublisher(job, 'dotnetonarm64@microsoft.com')
+                        // TODO: Add once external email sending is available again
+                        // addEmailPublisher(job, 'dotnetonarm64@microsoft.com')
                     }
                     else {
                         Utilities.addPeriodicTrigger(job, '@weekly')
@@ -527,6 +521,7 @@ def static addTriggers(def job, def branch, def isPR, def architecture, def os, 
                         assert (os == 'Windows_NT')
                         // TODO: Enable a periodic trigger after tests are updated.
                         // Utilities.addPeriodicTrigger(job, '@daily')
+                        // TODO: Add once external email sending is available again
                         // addEmailPublisher(job, 'dotnetonarm64@microsoft.com')
                     }
                     else {
@@ -1089,6 +1084,12 @@ def static addTriggers(def job, def branch, def isPR, def architecture, def os, 
                         Utilities.addGithubPRTriggerForBranch(job, branch, "Linux ARM Emulator Cross ${configuration} Build")
                     }
                     break
+                case 'Windows_NT':
+                    if (configuration == 'Debug' || configuration == 'Release')
+                    { 
+                        Utilities.addGithubPRTriggerForBranch(job, branch, "${os} ${architecture} Cross ${configuration} Build")
+                    }
+                    break
                 default:
                     println("NYI os: ${os}");
                     assert false
@@ -1477,6 +1478,14 @@ combinedScenarios.each { scenario ->
                         os = 'Windows_NT'
                     }
 
+                    // WinArm32 is only built for Debug and Release
+                    if (os == 'Windows_NT' && architecture == 'arm')
+                    {
+                        if (configuration == 'Checked')
+                        {
+                            return
+                        }
+                    }
                     // If the OS is LinuxARMEmulator and arch is arm, set the isLinuxEmulatorBuild
                     // flag to true and reset the os to Ubuntu
                     // The isLinuxEmulatorBuild flag will be used at a later time to execute the right
@@ -1504,8 +1513,7 @@ combinedScenarios.each { scenario ->
                             }
                             break
                         case 'arm':
-                            // Only Ubuntu cross implemented
-                            if (os != 'Ubuntu') {
+                            if ((os != 'Ubuntu') && (os != 'Windows_NT')) {
                                 return
                             }
                             break
@@ -1711,7 +1719,12 @@ combinedScenarios.each { scenario ->
                                 case 'x86ryujit':
                                 case 'x86lb':
                                     def arch = architecture
-                                    if (architecture == 'x86ryujit' || architecture == 'x86lb') {
+                                    def buildOpts = ''
+                                    if (architecture == 'x86ryujit') {
+                                        arch = 'x86'
+                                        buildOpts = 'altjitcrossgen'
+                                    }
+                                    else if (architecture == 'x86lb') {
                                         arch = 'x86'
                                     }
                                     
@@ -1719,7 +1732,7 @@ combinedScenarios.each { scenario ->
                                             scenario == 'default' ||
                                             scenario == 'r2r' ||
                                             Constants.r2rJitStressScenarios.indexOf(scenario) != -1) {
-                                        buildOpts = enableCorefxTesting ? 'skiptests' : ''
+                                        buildOpts += enableCorefxTesting ? ' skiptests' : ''
                                         buildCommands += "set __TestIntermediateDir=int&&build.cmd ${lowerConfiguration} ${arch} ${buildOpts}"
                                     }
 
@@ -1730,19 +1743,20 @@ combinedScenarios.each { scenario ->
                                     // 35 characters long.
 
                                     else if (scenario == 'pri1' || scenario == 'pri1r2r' || scenario == 'gcstress15_pri1r2r'|| scenario == 'coverage') {
-                                        buildCommands += "set __TestIntermediateDir=int&&build.cmd ${lowerConfiguration} ${arch} -priority=1"
+                                        buildCommands += "set __TestIntermediateDir=int&&build.cmd ${lowerConfiguration} ${arch} ${buildOpts} -priority=1"
                                     }
                                     else if (scenario == 'ilrt') {
                                         // First do the build with skiptests and then build the tests with ilasm roundtrip
-                                        buildCommands += "build.cmd ${lowerConfiguration} ${arch} skiptests"
+                                        buildCommands += "build.cmd ${lowerConfiguration} ${arch} ${buildOpts} skiptests"
                                         buildCommands += "set __TestIntermediateDir=int&&build-test.cmd ${lowerConfiguration} ${arch} -ilasmroundtrip"
                                     }
                                     else if (isLongGc(scenario)) {
-                                        buildCommands += "build.cmd ${lowerConfiguration} ${arch} skiptests"
+                                        buildCommands += "build.cmd ${lowerConfiguration} ${arch} ${buildOpts} skiptests"
                                         buildCommands += "set __TestIntermediateDir=int&&build-test.cmd ${lowerConfiguration} ${arch}"
                                     }
                                     else if (scenario == 'formatting') {
                                         buildCommands += "python -u tests\\scripts\\format.py -c %WORKSPACE% -o Windows_NT -a ${arch}"
+                                        Utilities.addArchival(newJob, "format.patch", "", true, false)
                                         break
                                     }
                                     else {
@@ -1823,7 +1837,7 @@ combinedScenarios.each { scenario ->
                                                 // thinks that %workspace% is the project base directory.
                                                 buildCommands += "powershell new-item clr -type directory -force"
                                                 buildCommands += 'powershell foreach ($x in get-childitem -force) { if (\$x.name -ne \'clr\') { move-item $x clr }}'
-                                                buildCommands += "git clone https://github.com/dotnet/corefx fx"
+                                                buildCommands += "git clone -b $branch --single-branch https://github.com/dotnet/corefx fx"
                                                 
                                                 buildCommands += getStressModeEnvSetCmd(os, scenario);
                                                 
@@ -1896,6 +1910,22 @@ combinedScenarios.each { scenario ->
                                     }
                                     
                                     break
+                                case 'arm':
+                                    assert (scenario == 'default')
+                                    
+                                    // Set time out
+                                    setTestJobTimeOut(newJob, scenario)
+
+                                    if ( lowerConfiguration == "debug" ) {
+                                        // For Debug builds, we will do a P1 test build
+                                        buildCommands += "set __TestIntermediateDir=int&&build.cmd ${lowerConfiguration} ${architecture} -priority=1"
+                                    }
+                                    else {
+                                        buildCommands += "set __TestIntermediateDir=int&&build.cmd ${lowerConfiguration} ${architecture}"
+                                    }
+                                    // Add archival.
+                                    Utilities.addArchival(newJob, "bin/Product/**")
+                                    break
                                 case 'arm64':
                                     assert (scenario == 'default') || (scenario == 'pri1r2r') || (scenario == 'gcstress0x3') || (scenario == 'gcstress0xc')
                                     // Set time out
@@ -1908,8 +1938,8 @@ combinedScenarios.each { scenario ->
                                     else {
                                        buildCommands += "set __TestIntermediateDir=int&&build.cmd skiptests ${lowerConfiguration} ${architecture} toolset_dir C:\\ats2"
                                        // Test build and run are launched together.
-                                       buildCommands += "Z:\\arm64\\common\\scripts\\arm64PostLauncher.cmd %WORKSPACE% ${architecture} ${lowerConfiguration} ${scenario}"
-                                       Utilities.addXUnitDotNETResults(newJob, 'bin/tests/testResults.xml')
+                                       buildCommands += "python tests\\scripts\\arm64_post_build.py -repo_root %WORKSPACE% -arch ${architecture} -build_type ${lowerConfiguration} -scenario ${scenario} -key_location C:\\tools\\key.txt"
+                                       //Utilities.addXUnitDotNETResults(newJob, 'bin/tests/testResults.xml')
                                     }
 
                                     // Add archival.
@@ -1943,6 +1973,7 @@ combinedScenarios.each { scenario ->
 
                                     if (scenario == 'formatting') {
                                         buildCommands += "python tests/scripts/format.py -c \${WORKSPACE} -o Linux -a ${arch}"
+                                        Utilities.addArchival(newJob, "format.patch", "", true, false)
                                         break
                                     }
                                 
@@ -1979,7 +2010,7 @@ combinedScenarios.each { scenario ->
                                         buildCommands += "rm -rf .clr; mkdir .clr; mv * .clr; mv .git .clr; mv .clr clr"
                                         
                                         // Get corefx
-                                        buildCommands += "git clone https://github.com/dotnet/corefx fx"
+                                        buildCommands += "git clone -b $branch --single-branch https://github.com/dotnet/corefx fx"
                                         
                                         // Set environment variable
                                         def setEnvVar = getStressModeEnvSetCmd(os, scenario)
@@ -2086,7 +2117,7 @@ combinedScenarios.each { scenario ->
                                             latestSuccessful(true)
                                         }
                                     }
-                                    copyArtifacts("${corefxFolder}/linuxarmemulator_cross_${lowerConfiguration}") {
+                                    copyArtifacts("${corefxFolder}/linuxarmemulator_softfp_cross_${lowerConfiguration}") {
                                         includePatterns('bin/build.tar.gz')
                                         buildSelector {
                                             latestSuccessful(true)
@@ -2502,7 +2533,8 @@ combinedScenarios.each { scenario ->
                     if (scenario == 'coverage') {
                         // Publish coverage reports
                         Utilities.addHtmlPublisher(newJob, '${WORKSPACE}/coverage/Coverage/reports', 'Code Coverage Report', 'coreclr.html')
-                        addEmailPublisher(newJob, 'clrcoverage@microsoft.com')
+                        // TODO: Add once external email sending is available again
+                        // addEmailPublisher(newJob, 'clrcoverage@microsoft.com')
                     }
 
                     // Experimental: If on Ubuntu 14.04, then attempt to pull in crash dump links

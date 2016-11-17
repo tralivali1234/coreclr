@@ -216,9 +216,18 @@ function_name() to call the system's implementation
 #define sqrt DUMMY_sqrt
 #define tan DUMMY_tan
 #define tanh DUMMY_tanh
+#define ceilf DUMMY_ceilf
+#define cosf DUMMY_cosf
+#define coshf DUMMY_coshf
 #define fabsf DUMMY_fabsf
+#define floorf DUMMY_floorf
 #define fmodf DUMMY_fmodf
 #define modff DUMMY_modff
+#define sinf DUMMY_sinf
+#define sinhf DUMMY_sinhf
+#define sqrtf DUMMY_sqrtf
+#define tanf DUMMY_tanf
+#define tanhf DUMMY_tanhf
 
 /* RAND_MAX needed to be renamed to avoid duplicate definition when including 
    stdlib.h header files. PAL_RAND_MAX should have the same value as RAND_MAX 
@@ -348,9 +357,7 @@ function_name() to call the system's implementation
 #undef atexit
 #undef div
 #undef div_t
-#if !defined(_DEBUG)
 #undef memcpy
-#endif //!defined(_DEBUG)
 #undef memcmp
 #undef memset
 #undef memmove
@@ -459,9 +466,26 @@ function_name() to call the system's implementation
 #undef sqrt
 #undef tan
 #undef tanh
+#undef acosf
+#undef asinf
+#undef atanf
+#undef atan2f
+#undef ceilf
+#undef cosf
+#undef coshf
+#undef expf
 #undef fabsf
+#undef floorf
 #undef fmodf
+#undef logf
+#undef log10f
 #undef modff
+#undef powf
+#undef sinf
+#undef sinhf
+#undef sqrtf
+#undef tanf
+#undef tanhf
 #undef rand
 #undef srand
 #undef errno
@@ -501,7 +525,6 @@ function_name() to call the system's implementation
 #undef wcsncmp
 #undef wcschr
 #undef wcsrchr
-#undef wsprintf
 #undef swscanf
 #undef wcspbrk
 #undef wcsstr
@@ -688,7 +711,7 @@ inline T* InterlockedCompareExchangePointerT(
 
 #include "volatile.h"
 
-const char StackOverflowMessage[] = "Process is terminated due to StackOverflowException.\n";
+const char StackOverflowMessage[] = "Process is terminating due to StackOverflowException.\n";
 
 #endif // __cplusplus
 

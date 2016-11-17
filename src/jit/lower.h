@@ -128,7 +128,13 @@ private:
     // return true if this call target is within range of a pc-rel call on the machine
     bool IsCallTargetInRange(void* addr);
 
+#ifdef _TARGET_X86_
+    bool ExcludeNonByteableRegisters(GenTree* tree);
+#endif
+
     void TreeNodeInfoInit(GenTree* stmt);
+
+    void TreeNodeInfoInitCheckByteable(GenTree* tree);
 
 #if defined(_TARGET_XARCH_)
     void TreeNodeInfoInitSimple(GenTree* tree);
@@ -202,10 +208,10 @@ private:
 #endif // FEATURE_SIMD
     void TreeNodeInfoInitCast(GenTree* tree);
 #ifdef _TARGET_ARM64_
-    void TreeNodeInfoInitPutArgStk(GenTree* argNode, fgArgTabEntryPtr info);
+    void TreeNodeInfoInitPutArgStk(GenTreePutArgStk* argNode, fgArgTabEntryPtr info);
 #endif // _TARGET_ARM64_
 #ifdef FEATURE_PUT_STRUCT_ARG_STK
-    void TreeNodeInfoInitPutArgStk(GenTree* tree);
+    void TreeNodeInfoInitPutArgStk(GenTreePutArgStk* tree);
 #endif // FEATURE_PUT_STRUCT_ARG_STK
     void TreeNodeInfoInitLclHeap(GenTree* tree);
 

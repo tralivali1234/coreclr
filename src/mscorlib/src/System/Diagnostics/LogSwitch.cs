@@ -37,7 +37,7 @@ namespace System.Diagnostics {
         public LogSwitch(String name, String description, LogSwitch parent)
         {
             if (name != null && name.Length == 0)
-                throw new ArgumentOutOfRangeException("Name", Environment.GetResourceString("Argument_StringZeroLength"));
+                throw new ArgumentOutOfRangeException(nameof(Name), Environment.GetResourceString("Argument_StringZeroLength"));
             Contract.EndContractBlock();
 
             if ((name != null) && (parent != null))
@@ -55,7 +55,7 @@ namespace System.Diagnostics {
                 Log.AddLogSwitch (this);
             }
             else
-                throw new ArgumentNullException ((name==null ? "name" : "parent"));
+                throw new ArgumentNullException ((name==null ? nameof(name) : nameof(parent)));
         }
     
         [System.Security.SecuritySafeCritical]  // auto-generated

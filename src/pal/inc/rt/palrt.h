@@ -834,7 +834,6 @@ enum tagMIMECONTF {
 
 // note: diff in NULL handing and calling convetion
 #define StrCpyW                 PAL_wcscpy
-#define StrCpyNW                lstrcpynW // note: can't be wcsncpy!
 #define StrCatW                 PAL_wcscat
 #define StrChrW                 (WCHAR*)PAL_wcschr
 #define StrCmpW                 PAL_wcscmp
@@ -855,7 +854,6 @@ STDAPI_(LPWSTR) StrCatBuffW(LPWSTR pszDest, LPCWSTR pszSrc, int cchDestBuffSize)
 
 #ifdef UNICODE
 #define StrCpy                  StrCpyW
-#define StrCpyN                 StrCpyNW
 #define StrCat                  StrCatW
 #define StrNCat                 StrNCatW
 #define StrChr                  StrChrW
@@ -1071,103 +1069,6 @@ inline errno_t __cdecl _fopen_unsafe(PAL_FILE * *ff, const char *fileName, const
   }
 }
 
-/* _itow_s */
-_SAFECRT__EXTERN_C
-errno_t __cdecl _itow_s(int _Value, WCHAR *_Dst, size_t _SizeInWords, int _Radix);
-
-#if defined(__cplusplus) && _SAFECRT_USE_CPP_OVERLOADS
-extern "C++"
-template <size_t _SizeInWords>
-inline
-errno_t __cdecl _itow_s(int _Value, WCHAR (&_Dst)[_SizeInWords], int _Radix)
-{
-    return _itow_s(_Value, _Dst, _SizeInWords, _Radix);
-}
-#endif
-
-#if _SAFECRT_USE_INLINES
-
-__inline
-errno_t __cdecl _itow_s(int _Value, WCHAR *_Dst, size_t _SizeInWords, int _Radix)
-{
-    /* validation section */
-    _SAFECRT__VALIDATE_STRING(_Dst, _SizeInWords);
-
-    /* TODO: do not write past buffer size */
-    _itow(_Value, _Dst, _Radix);
-    return 0;
-}
-
-#endif
-
-/* _i64tow_s */
-_SAFECRT__EXTERN_C
-errno_t __cdecl _i64tow_s(__int64 _Value, WCHAR *_Dst, size_t _SizeInWords, int _Radix);
-
-#if defined(__cplusplus) && _SAFECRT_USE_CPP_OVERLOADS
-extern "C++"
-template <size_t _SizeInWords>
-inline
-errno_t __cdecl _i64tow_s(__int64 _Value, WCHAR (&_Dst)[_SizeInWords], int _Radix)
-{
-    return _i64tow_s(_Value, _Dst, _SizeInWords, _Radix);
-}
-#endif
-
-#if _SAFECRT_USE_INLINES
-
-__inline
-errno_t __cdecl _i64tow_s(__int64 _Value, WCHAR *_Dst, size_t _SizeInWords, int _Radix)
-{
-    /* validation section */
-    _SAFECRT__VALIDATE_STRING(_Dst, _SizeInWords);
-
-    /* TODO: do not write past buffer size */
-    _i64tow(_Value, _Dst, _Radix);
-    return 0;
-}
-
-#endif
-
-/* getenv_s */
-/*
- * _ReturnValue indicates if the variable has been found and size needed
- */
-_SAFECRT__EXTERN_C
-errno_t __cdecl getenv_s(size_t *_ReturnValue, char *_Dst, size_t _SizeInWords, const char *_Name);
-
-#if defined(__cplusplus) && _SAFECRT_USE_CPP_OVERLOADS
-extern "C++"
-template <size_t _SizeInWords>
-inline
-errno_t __cdecl getenv_s(size_t *_ReturnValue, char *_Dst, size_t _SizeInWords, const char *_Name)
-{
-    return getenv_s(_ReturnValue, _Dst, _SizeInWords, _Name);
-}
-#endif
-
-#if _SAFECRT_USE_INLINES
-
-__inline
-errno_t __cdecl getenv_s(size_t *_ReturnValue, char *_Dst, size_t _SizeInWords, const char *_Name)
-{
-    char *szFound;
-
-    /* validation section */
-    _SAFECRT__VALIDATE_STRING(_Dst, _SizeInWords);
-
-    szFound = getenv(_Name);
-    if (szFound == nullptr)
-    {
-        *_ReturnValue = 0;
-        return 0;
-    }
-    *_ReturnValue = strlen(szFound) + 1;
-    return strcpy_s(_Dst, _SizeInWords, szFound);
-}
-
-#endif
- 
 }
 #endif /* __cplusplus */
 

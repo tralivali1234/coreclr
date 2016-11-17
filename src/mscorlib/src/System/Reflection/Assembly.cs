@@ -37,6 +37,9 @@ namespace System.Reflection
     using __HResults = System.__HResults;
     using System.Runtime.Versioning;
     using System.Diagnostics.Contracts;
+#if FEATURE_CORECLR
+    using System.Runtime.Loader;
+#endif
 
 
     [Serializable]
@@ -67,7 +70,7 @@ namespace System.Reflection
         public static Assembly GetAssembly(Type type)
         {
             if (type == null)
-                throw new ArgumentNullException("type");
+                throw new ArgumentNullException(nameof(type));
             Contract.EndContractBlock();
 
             Module m = type.Module;
@@ -105,21 +108,24 @@ namespace System.Reflection
             return base.GetHashCode();
         }
 
-        // Locate an assembly by the name of the file containing the manifest.
 #if FEATURE_CORECLR
-        [System.Security.SecurityCritical] // auto-generated
+        [System.Security.SecurityCritical]
+        public static Assembly LoadFrom(String assemblyFile)
+        {
+            if(assemblyFile == null) 
+                throw new ArgumentNullException(nameof(assemblyFile));
+            string fullPath = Path.GetFullPathInternal(assemblyFile);
+            return AssemblyLoadContext.Default.LoadFromAssemblyPath(fullPath);
+        }
 #else
+        // Locate an assembly by the name of the file containing the manifest.
         [System.Security.SecuritySafeCritical]
-#endif
         [MethodImplAttribute(MethodImplOptions.NoInlining)] // Methods containing StackCrawlMark local var has to be marked non-inlineable
         public static Assembly LoadFrom(String assemblyFile)
         {
             Contract.Ensures(Contract.Result<Assembly>() != null);
             Contract.Ensures(!Contract.Result<Assembly>().ReflectionOnly);
 
-#if FEATURE_WINDOWSPHONE
-            throw new NotSupportedException(Environment.GetResourceString("NotSupported_WindowsPhone", "Assembly.LoadFrom"));
-#else
             StackCrawlMark stackMark = StackCrawlMark.LookForMyCaller;
 
             return RuntimeAssembly.InternalLoadFrom(
@@ -130,8 +136,8 @@ namespace System.Reflection
                 false,// forIntrospection
                 false,// suppressSecurityChecks
                 ref stackMark);
-#endif // FEATURE_WINDOWSPHONE
         }
+#endif
 
         // Locate an assembly for reflection by the name of the file containing the manifest.
         [System.Security.SecuritySafeCritical]  // auto-generated
@@ -202,6 +208,9 @@ namespace System.Reflection
                                         byte[] hashValue,
                                         AssemblyHashAlgorithm hashAlgorithm)
         {
+#if FEATURE_CORECLR
+            throw new NotSupportedException(Environment.GetResourceString("NotSupported_AssemblyLoadFromHash"));
+#else
             StackCrawlMark stackMark = StackCrawlMark.LookForMyCaller;
 
             return RuntimeAssembly.InternalLoadFrom(
@@ -212,6 +221,7 @@ namespace System.Reflection
                 false,
                 false,
                 ref stackMark);
+#endif
         }
 
 #if FEATURE_CAS_POLICY
@@ -233,6 +243,12 @@ namespace System.Reflection
                                                     false, // forIntrospection
                                                     true, // suppressSecurityChecks
                                                     ref stackMark);
+        }
+#elif FEATURE_CORECLR
+        [SecurityCritical]
+        public static Assembly UnsafeLoadFrom(string assemblyFile)
+        {
+            return LoadFrom(assemblyFile);
         }
 #endif // FEATURE_CAS_POLICY
 
@@ -383,6 +399,16 @@ namespace System.Reflection
             StackCrawlMark stackMark = StackCrawlMark.LookForMyCaller;
             return RuntimeAssembly.LoadWithPartialNameInternal(partialName, securityEvidence, ref stackMark);
         }
+#elif FEATURE_CORECLR
+        [System.Security.SecuritySafeCritical]  // auto-generated
+        [Obsolete("This method has been deprecated. Please use Assembly.Load() instead. http://go.microsoft.com/fwlink/?linkid=14202")]
+        public static Assembly LoadWithPartialName(String partialName)
+        {
+            if(partialName == null)
+                throw new ArgumentNullException(nameof(partialName));
+            return Load(partialName);
+        }
+
 #endif // FEATURE_FUSION
 
         // Loads the assembly with a COFF based IMAGE containing
@@ -401,6 +427,9 @@ namespace System.Reflection
 
             AppDomain.CheckLoadByteArraySupported();
 
+#if FEATURE_CORECLR
+            return Load(rawAssembly, null);
+#else
             StackCrawlMark stackMark = StackCrawlMark.LookForMyCaller;
             return RuntimeAssembly.nLoadImage(
                 rawAssembly,
@@ -409,6 +438,7 @@ namespace System.Reflection
                 ref stackMark,
                 false,  // fIntrospection
                 SecurityContextSource.CurrentAssembly);
+#endif
         }
 
         // Loads the assembly for reflection with a COFF based IMAGE containing
@@ -451,6 +481,14 @@ namespace System.Reflection
 
             AppDomain.CheckLoadByteArraySupported();
 
+#if FEATURE_CORECLR
+            if(rawAssembly == null)
+                throw new ArgumentNullException(nameof(rawAssembly));
+            AssemblyLoadContext alc = new IndividualAssemblyLoadContext();
+            MemoryStream assemblyStream = new MemoryStream(rawAssembly);
+            MemoryStream symbolStream = (rawSymbolStore!=null)?new MemoryStream(rawSymbolStore):null;
+            return alc.LoadFromStream(assemblyStream, symbolStream);
+#else
             StackCrawlMark stackMark = StackCrawlMark.LookForMyCaller;
             return RuntimeAssembly.nLoadImage(
                 rawAssembly,
@@ -459,6 +497,7 @@ namespace System.Reflection
                 ref stackMark,
                 false,  // fIntrospection
                 SecurityContextSource.CurrentAssembly);
+#endif
         }
 
         // Load an assembly from a byte array, controlling where the grant set of this assembly is
@@ -478,7 +517,7 @@ namespace System.Reflection
             if (securityContextSource < SecurityContextSource.CurrentAppDomain ||
                 securityContextSource > SecurityContextSource.CurrentAssembly)
             {
-                throw new ArgumentOutOfRangeException("securityContextSource");
+                throw new ArgumentOutOfRangeException(nameof(securityContextSource));
             }
 
             StackCrawlMark stackMark = StackCrawlMark.LookForMyCaller;
@@ -527,6 +566,10 @@ namespace System.Reflection
         }
 #endif // FEATURE_CAS_POLICY
 
+#if FEATURE_CORECLR
+        private static Dictionary<string, Assembly> s_loadfile = new Dictionary<string, Assembly>();
+#endif
+
         [System.Security.SecuritySafeCritical]  // auto-generated
         public static Assembly LoadFile(String path)
         {
@@ -536,8 +579,31 @@ namespace System.Reflection
 
             AppDomain.CheckLoadFileSupported();
 
+#if FEATURE_CORECLR
+            Assembly result = null;
+            if(path == null)
+                throw new ArgumentNullException(nameof(path));
+
+            if (Path.IsRelative(path))
+            {
+                throw new ArgumentException(Environment.GetResourceString("Argument_AbsolutePathRequired"), nameof(path));
+            }
+
+            string normalizedPath = Path.GetFullPathInternal(path);
+
+            lock(s_loadfile)
+            {          
+                if(s_loadfile.TryGetValue(normalizedPath, out result))
+                    return result;
+                AssemblyLoadContext alc = new IndividualAssemblyLoadContext();
+                result = alc.LoadFromAssemblyPath(normalizedPath);
+                s_loadfile.Add(normalizedPath, result);
+            }
+            return result;
+#else
             new FileIOPermission(FileIOPermissionAccess.PathDiscovery | FileIOPermissionAccess.Read, path).Demand();
             return RuntimeAssembly.nLoadFile(path, null);
+#endif
         }
 
 #if FEATURE_CAS_POLICY
@@ -824,7 +890,23 @@ namespace System.Reflection
                 throw new NotImplementedException();
             }
         }
+#elif FEATURE_CORECLR
+        public bool IsFullyTrusted
+        {
+            [SecuritySafeCritical]
+            get
+            {
+                return true;
+            }
+        }
 
+        public virtual SecurityRuleSet SecurityRuleSet
+        {
+            get
+            {
+                return SecurityRuleSet.None;
+            }
+        }
 #endif // FEATURE_CAS_POLICY
 
         // ISerializable implementation
@@ -890,8 +972,6 @@ namespace System.Reflection
             }
         }
 
-#if FEATURE_MULTIMODULE_ASSEMBLIES
-
         public Module LoadModule(String moduleName,
                                  byte[] rawModule)
         {
@@ -904,7 +984,6 @@ namespace System.Reflection
         {
             throw new NotImplementedException();
         }
-#endif //FEATURE_MULTIMODULE_ASSEMBLIES
 
         //
         // Locates a type from this assembly and creates an instance of it using
@@ -1394,7 +1473,7 @@ namespace System.Reflection
         {
             // throw on null strings regardless of the value of "throwOnError"
             if (name == null)
-                throw new ArgumentNullException("name");
+                throw new ArgumentNullException(nameof(name));
 
             RuntimeType type = null;
             Object keepAlive = null;
@@ -1526,7 +1605,7 @@ namespace System.Reflection
         public override void GetObjectData(SerializationInfo info, StreamingContext context)
         {
             if (info==null)
-                throw new ArgumentNullException("info");
+                throw new ArgumentNullException(nameof(info));
 
             Contract.EndContractBlock();
 
@@ -1554,13 +1633,13 @@ namespace System.Reflection
         public override Object[] GetCustomAttributes(Type attributeType, bool inherit)
         {
             if (attributeType == null)
-                throw new ArgumentNullException("attributeType");
+                throw new ArgumentNullException(nameof(attributeType));
             Contract.EndContractBlock();
 
             RuntimeType attributeRuntimeType = attributeType.UnderlyingSystemType as RuntimeType;
 
             if (attributeRuntimeType == null) 
-                throw new ArgumentException(Environment.GetResourceString("Arg_MustBeType"),"attributeType");
+                throw new ArgumentException(Environment.GetResourceString("Arg_MustBeType"),nameof(attributeType));
 
             return CustomAttribute.GetCustomAttributes(this, attributeRuntimeType);
         }
@@ -1568,13 +1647,13 @@ namespace System.Reflection
         public override bool IsDefined(Type attributeType, bool inherit)
         {
             if (attributeType == null)
-                throw new ArgumentNullException("attributeType");
+                throw new ArgumentNullException(nameof(attributeType));
             Contract.EndContractBlock();
 
             RuntimeType attributeRuntimeType = attributeType.UnderlyingSystemType as RuntimeType;
 
             if (attributeRuntimeType == null) 
-                throw new ArgumentException(Environment.GetResourceString("Arg_MustBeType"),"caType");
+                throw new ArgumentException(Environment.GetResourceString("Arg_MustBeType"),nameof(attributeType));
 
             return CustomAttribute.IsDefined(this, attributeRuntimeType);
         }
@@ -1595,7 +1674,7 @@ namespace System.Reflection
                                                          ref StackCrawlMark stackMark)
         {
             if (assemblyFile == null)
-                throw new ArgumentNullException("assemblyFile");
+                throw new ArgumentNullException(nameof(assemblyFile));
 
             Contract.EndContractBlock();
 
@@ -1651,7 +1730,7 @@ namespace System.Reflection
             out RuntimeAssembly assemblyFromResolveEvent)
         {
             if (assemblyString == null)
-                throw new ArgumentNullException("assemblyString");
+                throw new ArgumentNullException(nameof(assemblyString));
             Contract.EndContractBlock();
 
             if ((assemblyString.Length == 0) ||
@@ -1698,7 +1777,7 @@ namespace System.Reflection
         {
        
             if (assemblyRef == null)
-                throw new ArgumentNullException("assemblyRef");
+                throw new ArgumentNullException(nameof(assemblyRef));
             Contract.EndContractBlock();
 
             if (assemblyRef.CodeBase != null)
@@ -2027,7 +2106,7 @@ namespace System.Reflection
         internal static RuntimeAssembly InternalLoadFromStream(Stream assemblyStream, Stream pdbStream, ref StackCrawlMark stackMark)
         {
             if (assemblyStream  == null)
-                throw new ArgumentNullException("assemblyStream");
+                throw new ArgumentNullException(nameof(assemblyStream));
 
             if (assemblyStream.GetType()!=typeof(UnmanagedMemoryStream))
                 throw new NotSupportedException();
@@ -2270,7 +2349,11 @@ namespace System.Reflection
             [System.Security.SecuritySafeCritical]  // auto-generated
             get
             {
+#if FEATURE_CORECLR
+                return false;
+#else
                 return IsGlobalAssemblyCache(GetNativeHandle());
+#endif
             }
         }
 
@@ -2284,7 +2367,11 @@ namespace System.Reflection
             [System.Security.SecuritySafeCritical]  // auto-generated
             get
             {
+#if FEATURE_CORECLR
+                return 0;
+#else
                 return GetHostContext(GetNativeHandle());
+#endif
             }
         }
 
@@ -2326,7 +2413,7 @@ namespace System.Reflection
             StringBuilder sb = new StringBuilder();
             if(type == null) {
                 if (name == null)
-                    throw new ArgumentNullException("type");
+                    throw new ArgumentNullException(nameof(type));
             }
             else {
                 String nameSpace = type.Namespace;
@@ -2690,7 +2777,7 @@ namespace System.Reflection
                                                        ref StackCrawlMark stackMark)
         {
             if (culture == null)
-                throw new ArgumentNullException("culture");
+                throw new ArgumentNullException(nameof(culture));
             Contract.EndContractBlock();
 
 

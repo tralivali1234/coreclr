@@ -27,21 +27,21 @@
 InlinePolicy* InlinePolicy::GetPolicy(Compiler* compiler, bool isPrejitRoot)
 {
 
-#ifdef DEBUG
+#if defined(DEBUG) || defined(INLINE_DATA)
+
+#if defined(DEBUG)
+    const bool useRandomPolicyForStress = compiler->compRandomInlineStress();
+#else
+    const bool useRandomPolicyForStress = false;
+#endif // defined(DEBUG)
+
+    const bool useRandomPolicy = (JitConfig.JitInlinePolicyRandom() != 0);
 
     // Optionally install the RandomPolicy.
-    bool useRandomPolicy = compiler->compRandomInlineStress();
-
-    if (useRandomPolicy)
+    if (useRandomPolicyForStress || useRandomPolicy)
     {
-        unsigned seed = getJitStressLevel();
-        assert(seed != 0);
-        return new (compiler, CMK_Inlining) RandomPolicy(compiler, isPrejitRoot, seed);
+        return new (compiler, CMK_Inlining) RandomPolicy(compiler, isPrejitRoot);
     }
-
-#endif // DEBUG
-
-#if defined(DEBUG) || defined(INLINE_DATA)
 
     // Optionally install the ReplayPolicy.
     bool useReplayPolicy = JitConfig.JitInlinePolicyReplay() != 0;
@@ -106,7 +106,7 @@ InlinePolicy* InlinePolicy::GetPolicy(Compiler* compiler, bool isPrejitRoot)
 void LegalPolicy::NoteFatal(InlineObservation obs)
 {
     // As a safeguard, all fatal impact must be
-    // reported via noteFatal.
+    // reported via NoteFatal.
     assert(InlGetImpact(obs) == InlineImpact::FATAL);
     NoteInternal(obs);
     assert(InlDecisionIsFailure(m_Decision));
@@ -243,7 +243,7 @@ void LegacyPolicy::NoteBool(InlineObservation obs, bool value)
     InlineImpact impact = InlGetImpact(obs);
 
     // As a safeguard, all fatal impact must be
-    // reported via noteFatal.
+    // reported via NoteFatal.
     assert(impact != InlineImpact::FATAL);
 
     // Handle most information here
@@ -382,6 +382,12 @@ void LegacyPolicy::NoteBool(InlineObservation obs, bool value)
 
                 break;
             }
+
+            case InlineObservation::CALLEE_HAS_PINNED_LOCALS:
+                // The legacy policy is to never inline methods with
+                // pinned locals.
+                SetNever(obs);
+                break;
 
             default:
                 // Ignore the remainder for now
@@ -842,16 +848,56 @@ int LegacyPolicy::CodeSizeEstimate()
 // NoteBool: handle a boolean observation with non-fatal impact
 //
 // Arguments:
-//    obs      - the current obsevation
+//    obs      - the current observation
 //    value    - the value of the observation
 
 void EnhancedLegacyPolicy::NoteBool(InlineObservation obs, bool value)
 {
+
+#ifdef DEBUG
+    // Check the impact
+    InlineImpact impact = InlGetImpact(obs);
+
+    // As a safeguard, all fatal impact must be
+    // reported via NoteFatal.
+    assert(impact != InlineImpact::FATAL);
+#endif // DEBUG
+
     switch (obs)
     {
         case InlineObservation::CALLEE_DOES_NOT_RETURN:
             m_IsNoReturn      = value;
             m_IsNoReturnKnown = true;
+            break;
+
+        case InlineObservation::CALLSITE_RARE_GC_STRUCT:
+            // If this is a discretionary or always inline candidate
+            // with a gc struct, we may change our mind about inlining
+            // if the call site is rare, to avoid costs associated with
+            // zeroing the GC struct up in the root prolog.
+            if (m_Observation == InlineObservation::CALLEE_BELOW_ALWAYS_INLINE_SIZE)
+            {
+                assert(m_CallsiteFrequency == InlineCallsiteFrequency::UNUSED);
+                SetFailure(obs);
+                return;
+            }
+            else if (m_Observation == InlineObservation::CALLEE_IS_DISCRETIONARY_INLINE)
+            {
+                assert(m_CallsiteFrequency == InlineCallsiteFrequency::RARE);
+                SetFailure(obs);
+                return;
+            }
+            break;
+
+        case InlineObservation::CALLEE_HAS_PINNED_LOCALS:
+            if (m_CallsiteIsInTryRegion)
+            {
+                // Inlining a method with pinned locals in a try
+                // region requires wrapping the inline body in a
+                // try/finally to ensure unpinning. Bail instead.
+                SetFailure(InlineObservation::CALLSITE_PIN_IN_TRY_REGION);
+                return;
+            }
             break;
 
         default:
@@ -928,7 +974,7 @@ bool EnhancedLegacyPolicy::PropagateNeverToRuntime() const
     return propagate;
 }
 
-#ifdef DEBUG
+#if defined(DEBUG) || defined(INLINE_DATA)
 
 //------------------------------------------------------------------------
 // RandomPolicy: construct a new RandomPolicy
@@ -936,89 +982,10 @@ bool EnhancedLegacyPolicy::PropagateNeverToRuntime() const
 // Arguments:
 //    compiler -- compiler instance doing the inlining (root compiler)
 //    isPrejitRoot -- true if this compiler is prejitting the root method
-//    seed -- seed value for the random number generator
 
-RandomPolicy::RandomPolicy(Compiler* compiler, bool isPrejitRoot, unsigned seed)
-    : LegalPolicy(isPrejitRoot)
-    , m_RootCompiler(compiler)
-    , m_Random(nullptr)
-    , m_CodeSize(0)
-    , m_IsForceInline(false)
-    , m_IsForceInlineKnown(false)
+RandomPolicy::RandomPolicy(Compiler* compiler, bool isPrejitRoot) : DiscretionaryPolicy(compiler, isPrejitRoot)
 {
-    // If necessary, setup and seed the random state.
-    if (compiler->inlRNG == nullptr)
-    {
-        compiler->inlRNG = new (compiler, CMK_Inlining) CLRRandom();
-
-        unsigned hash = m_RootCompiler->info.compMethodHash();
-        assert(hash != 0);
-        assert(seed != 0);
-        int hashSeed = static_cast<int>(hash ^ seed);
-        compiler->inlRNG->Init(hashSeed);
-    }
-
-    m_Random = compiler->inlRNG;
-}
-
-//------------------------------------------------------------------------
-// NoteSuccess: handle finishing all the inlining checks successfully
-
-void RandomPolicy::NoteSuccess()
-{
-    assert(InlDecisionIsCandidate(m_Decision));
-    m_Decision = InlineDecision::SUCCESS;
-}
-
-//------------------------------------------------------------------------
-// NoteBool: handle a boolean observation with non-fatal impact
-//
-// Arguments:
-//    obs      - the current obsevation
-//    value    - the value of the observation
-void RandomPolicy::NoteBool(InlineObservation obs, bool value)
-{
-    // Check the impact
-    InlineImpact impact = InlGetImpact(obs);
-
-    // As a safeguard, all fatal impact must be
-    // reported via noteFatal.
-    assert(impact != InlineImpact::FATAL);
-
-    // Handle most information here
-    bool isInformation = (impact == InlineImpact::INFORMATION);
-    bool propagate     = !isInformation;
-
-    if (isInformation)
-    {
-        switch (obs)
-        {
-            case InlineObservation::CALLEE_IS_FORCE_INLINE:
-                // The RandomPolicy still honors force inlines.
-                //
-                // We may make the force-inline observation more than
-                // once.  All observations should agree.
-                assert(!m_IsForceInlineKnown || (m_IsForceInline == value));
-                m_IsForceInline      = value;
-                m_IsForceInlineKnown = true;
-                break;
-
-            case InlineObservation::CALLEE_HAS_SWITCH:
-            case InlineObservation::CALLEE_UNSUPPORTED_OPCODE:
-                // Pass these on, they should cause inlining to fail.
-                propagate = true;
-                break;
-
-            default:
-                // Ignore the remainder for now
-                break;
-        }
-    }
-
-    if (propagate)
-    {
-        NoteInternal(obs);
-    }
+    m_Random = compiler->m_inlineStrategy->GetRandom();
 }
 
 //------------------------------------------------------------------------
@@ -1032,7 +999,6 @@ void RandomPolicy::NoteInt(InlineObservation obs, int value)
 {
     switch (obs)
     {
-
         case InlineObservation::CALLEE_IL_CODE_SIZE:
         {
             assert(m_IsForceInlineKnown);
@@ -1054,7 +1020,8 @@ void RandomPolicy::NoteInt(InlineObservation obs, int value)
         }
 
         default:
-            // Ignore all other information
+            // Defer to superclass for all other information
+            DiscretionaryPolicy::NoteInt(obs, value);
             break;
     }
 }
@@ -1085,6 +1052,16 @@ void RandomPolicy::DetermineProfitability(CORINFO_METHOD_INFO* methodInfo)
             SetFailure(InlineObservation::CALLSITE_OVER_BUDGET);
             return;
         }
+    }
+
+    // If we're also dumping inline data, make additional observations
+    // based on the method info, and estimate code size and perf
+    // impact, so that the reports have the necessary data.
+    if (JitConfig.JitInlineDumpData() != 0)
+    {
+        MethodInfoObservations(methodInfo);
+        EstimateCodeSize();
+        EstimatePerformanceImpact();
     }
 
     // Use a probability curve that roughly matches the observed
@@ -1165,7 +1142,7 @@ void RandomPolicy::DetermineProfitability(CORINFO_METHOD_INFO* methodInfo)
     }
 }
 
-#endif // DEBUG
+#endif // defined(DEBUG) || defined(INLINE_DATA)
 
 #ifdef _MSC_VER
 // Disable warning about new array member initialization behavior
@@ -1181,7 +1158,7 @@ void RandomPolicy::DetermineProfitability(CORINFO_METHOD_INFO* methodInfo)
 
 // clang-format off
 DiscretionaryPolicy::DiscretionaryPolicy(Compiler* compiler, bool isPrejitRoot)
-    : LegacyPolicy(compiler, isPrejitRoot)
+    : EnhancedLegacyPolicy(compiler, isPrejitRoot)
     , m_Depth(0)
     , m_BlockCount(0)
     , m_Maxstack(0)
@@ -1227,6 +1204,7 @@ DiscretionaryPolicy::DiscretionaryPolicy(Compiler* compiler, bool isPrejitRoot)
     , m_IsSameThis(false)
     , m_CallerHasNewArray(false)
     , m_CallerHasNewObj(false)
+    , m_CalleeHasGCStruct(false)
 {
     // Empty
 }
@@ -1278,8 +1256,17 @@ void DiscretionaryPolicy::NoteBool(InlineObservation obs, bool value)
             m_CallerHasNewObj = value;
             break;
 
+        case InlineObservation::CALLEE_HAS_GC_STRUCT:
+            m_CalleeHasGCStruct = value;
+            break;
+
+        case InlineObservation::CALLSITE_RARE_GC_STRUCT:
+            // This is redundant since this policy tracks call site
+            // hotness for all candidates. So ignore.
+            break;
+
         default:
-            LegacyPolicy::NoteBool(obs, value);
+            EnhancedLegacyPolicy::NoteBool(obs, value);
             break;
     }
 }
@@ -1295,7 +1282,6 @@ void DiscretionaryPolicy::NoteInt(InlineObservation obs, int value)
 {
     switch (obs)
     {
-
         case InlineObservation::CALLEE_IL_CODE_SIZE:
             // Override how code size is handled
             {
@@ -1323,7 +1309,7 @@ void DiscretionaryPolicy::NoteInt(InlineObservation obs, int value)
             // on similarity of impact on codegen.
             OPCODE opcode = static_cast<OPCODE>(value);
             ComputeOpcodeBin(opcode);
-            LegacyPolicy::NoteInt(obs, value);
+            EnhancedLegacyPolicy::NoteInt(obs, value);
             break;
         }
 
@@ -1344,8 +1330,8 @@ void DiscretionaryPolicy::NoteInt(InlineObservation obs, int value)
             break;
 
         default:
-            // Delegate remainder to the LegacyPolicy.
-            LegacyPolicy::NoteInt(obs, value);
+            // Delegate remainder to the super class.
+            EnhancedLegacyPolicy::NoteInt(obs, value);
             break;
     }
 }
@@ -1660,8 +1646,8 @@ void DiscretionaryPolicy::DetermineProfitability(CORINFO_METHOD_INFO* methodInfo
     // model for actual inlining.
     EstimatePerformanceImpact();
 
-    // Delegate to LegacyPolicy for the rest
-    LegacyPolicy::DetermineProfitability(methodInfo);
+    // Delegate to super class for the rest
+    EnhancedLegacyPolicy::DetermineProfitability(methodInfo);
 }
 
 //------------------------------------------------------------------------
@@ -1869,7 +1855,7 @@ int DiscretionaryPolicy::CodeSizeEstimate()
 
 void DiscretionaryPolicy::DumpSchema(FILE* file) const
 {
-    fprintf(file, ",ILSize");
+    fprintf(file, "ILSize");
     fprintf(file, ",CallsiteFrequency");
     fprintf(file, ",InstructionCount");
     fprintf(file, ",LoadStoreCount");
@@ -1938,6 +1924,8 @@ void DiscretionaryPolicy::DumpSchema(FILE* file) const
     fprintf(file, ",IsSameThis");
     fprintf(file, ",CallerHasNewArray");
     fprintf(file, ",CallerHasNewObj");
+    fprintf(file, ",CalleeDoesNotReturn");
+    fprintf(file, ",CalleeHasGCStruct");
 }
 
 //------------------------------------------------------------------------
@@ -1949,7 +1937,7 @@ void DiscretionaryPolicy::DumpSchema(FILE* file) const
 
 void DiscretionaryPolicy::DumpData(FILE* file) const
 {
-    fprintf(file, ",%u", m_CodeSize);
+    fprintf(file, "%u", m_CodeSize);
     fprintf(file, ",%u", m_CallsiteFrequency);
     fprintf(file, ",%u", m_InstructionCount);
     fprintf(file, ",%u", m_LoadStoreCount);
@@ -2018,6 +2006,8 @@ void DiscretionaryPolicy::DumpData(FILE* file) const
     fprintf(file, ",%u", m_IsSameThis ? 1 : 0);
     fprintf(file, ",%u", m_CallerHasNewArray ? 1 : 0);
     fprintf(file, ",%u", m_CallerHasNewObj ? 1 : 0);
+    fprintf(file, ",%u", m_IsNoReturn ? 1 : 0);
+    fprintf(file, ",%u", m_CalleeHasGCStruct ? 1 : 0);
 }
 
 #endif // defined(DEBUG) || defined(INLINE_DATA)

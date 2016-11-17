@@ -2870,6 +2870,12 @@ void SystemDomain::LoadBaseSystemClasses()
     // the SZArrayHelper class here.
     g_pSZArrayHelperClass = MscorlibBinder::GetClass(CLASS__SZARRAYHELPER);
 
+#ifdef FEATURE_SPAN_OF_T
+    // Load Span class
+    g_pSpanClass = MscorlibBinder::GetClass(CLASS__SPAN);
+    g_pReadOnlySpanClass = MscorlibBinder::GetClass(CLASS__READONLY_SPAN);
+#endif
+
     // Load Nullable class
     g_pNullableClass = MscorlibBinder::GetClass(CLASS__NULLABLE);
 
@@ -8084,6 +8090,13 @@ BOOL AppDomain::IsCached(AssemblySpec *pSpec)
     return m_AssemblyCache.Contains(pSpec);
 }
 
+#ifdef FEATURE_CORECLR
+void AppDomain::GetCacheAssemblyList(SetSHash<PTR_DomainAssembly>& assemblyList)
+{
+    CrstHolder holder(&m_DomainCacheCrst);
+    m_AssemblyCache.GetAllAssemblies(assemblyList);
+}
+#endif
 
 PEAssembly* AppDomain::FindCachedFile(AssemblySpec* pSpec, BOOL fThrow /*=TRUE*/)
 {
@@ -8241,7 +8254,7 @@ public:
         }
         else
         {
-            IfFailRet(FString::Utf8_Unicode(szName, bIsAscii, wzBuffer, cchBuffer));
+            IfFailRet(FString::Utf8_Unicode(szName, bIsAscii, wzBuffer, cchName));
             if (pcchBuffer != nullptr)
             {
                 *pcchBuffer = cchName;
@@ -12567,11 +12580,13 @@ AppDomain::RaiseAssemblyResolveEvent(
     {
         if (pSpec->GetParentAssembly() != NULL)
         {
+#ifndef FEATURE_CORECLR
             if ( pSpec->IsIntrospectionOnly() 
 #ifdef FEATURE_FUSION
                     || pSpec->GetParentLoadContext() == LOADCTX_TYPE_UNKNOWN
 #endif
                 )
+#endif // FEATURE_CORECLR
             {
                 gc.AssemblyRef=pSpec->GetParentAssembly()->GetExposedAssemblyObject();
             }
@@ -13695,7 +13710,6 @@ ULONG ADUnloadSink::Release()
     if (ulRef == 0)
     {
         delete this;
-        return 0;
     }
     return ulRef;
 };

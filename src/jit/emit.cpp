@@ -1264,9 +1264,9 @@ void* emitter::emitAllocInstr(size_t sz, emitAttr opsz)
     //     ARM - This is currently broken on _TARGET_ARM_
     //     When nopSize is odd we misalign emitCurIGsize
     //
-    if (!(emitComp->opts.eeFlags & CORJIT_FLG_PREJIT) && !emitInInstrumentation &&
-        !emitIGisInProlog(emitCurIG) // don't do this in prolog or epilog
-        && !emitIGisInEpilog(emitCurIG) &&
+    if (!emitComp->opts.jitFlags->IsSet(JitFlags::JIT_FLAG_PREJIT) && !emitInInstrumentation &&
+        !emitIGisInProlog(emitCurIG) && // don't do this in prolog or epilog
+        !emitIGisInEpilog(emitCurIG) &&
         emitRandomNops // sometimes we turn off where exact codegen is needed (pinvoke inline)
         )
     {
@@ -1670,13 +1670,9 @@ void emitter::emitCreatePlaceholderIG(insGroupPlaceholderType igType,
     emitCurIGsize += MAX_PLACEHOLDER_IG_SIZE;
     emitCurCodeOffset += emitCurIGsize;
 
-#ifdef DEBUGGING_SUPPORT
-
 #if FEATURE_EH_FUNCLETS
     // Add the appropriate IP mapping debugging record for this placeholder
-    // group.
-
-    // genExitCode() adds the mapping for main function epilogs
+    // group. genExitCode() adds the mapping for main function epilogs.
     if (emitComp->opts.compDbgInfo)
     {
         if (igType == IGPT_FUNCLET_PROLOG)
@@ -1689,8 +1685,6 @@ void emitter::emitCreatePlaceholderIG(insGroupPlaceholderType igType,
         }
     }
 #endif // FEATURE_EH_FUNCLETS
-
-#endif // DEBUGGING_SUPPORT
 
     /* Start a new IG if more code follows */
 
@@ -2320,7 +2314,7 @@ bool emitter::emitNoGChelper(unsigned IHX)
 
         case CORINFO_HELP_PROF_FCN_LEAVE:
         case CORINFO_HELP_PROF_FCN_ENTER:
-#ifdef _TARGET_AMD64_
+#if defined(_TARGET_AMD64_) || (defined(_TARGET_X86_) && !defined(LEGACY_BACKEND))
         case CORINFO_HELP_PROF_FCN_TAILCALL:
 #endif
         case CORINFO_HELP_LLSH:
@@ -3414,8 +3408,6 @@ size_t emitter::emitIssue1Instr(insGroup* ig, instrDesc* id, BYTE** dp)
 
 #endif
 
-#if defined(DEBUGGING_SUPPORT) || defined(DEBUG)
-
     /* Did the size of the instruction match our expectations? */
 
     UNATIVE_OFFSET csz = (UNATIVE_OFFSET)(*dp - curInsAdr);
@@ -3446,8 +3438,6 @@ size_t emitter::emitIssue1Instr(insGroup* ig, instrDesc* id, BYTE** dp)
         IMPL_LIMITATION("Over-estimated instruction size");
 #endif
     }
-
-#endif
 
 #ifdef DEBUG
     /* Make sure the instruction descriptor size also matches our expectations */

@@ -694,9 +694,7 @@ public:
         return (unsigned)(roundUp(lvExactSize, TARGET_POINTER_SIZE));
     }
 
-#if defined(DEBUGGING_SUPPORT) || defined(DEBUG)
     unsigned lvSlotNum; // original slot # (if remapped)
-#endif
 
     typeInfo lvVerTypeInfo; // type info needed for verification
 
@@ -2023,7 +2021,18 @@ public:
 
     GenTreePtr gtClone(GenTree* tree, bool complexOK = false);
 
-    GenTreePtr gtCloneExpr(GenTree* tree, unsigned addFlags = 0, unsigned varNum = (unsigned)-1, int varVal = 0);
+    // If `tree` is a lclVar with lclNum `varNum`, return an IntCns with value `varVal`; otherwise,
+    // create a copy of `tree`, adding specified flags, replacing uses of lclVar `deepVarNum` with
+    // IntCnses with value `deepVarVal`.
+    GenTreePtr gtCloneExpr(
+        GenTree* tree, unsigned addFlags, unsigned varNum, int varVal, unsigned deepVarNum, int deepVarVal);
+
+    // Create a copy of `tree`, optionally adding specifed flags, and optionally mapping uses of local
+    // `varNum` to int constants with value `varVal`.
+    GenTreePtr gtCloneExpr(GenTree* tree, unsigned addFlags = 0, unsigned varNum = (unsigned)-1, int varVal = 0)
+    {
+        return gtCloneExpr(tree, addFlags, varNum, varVal, varNum, varVal);
+    }
 
     GenTreePtr gtReplaceTree(GenTreePtr stmt, GenTreePtr tree, GenTreePtr replacementTree);
 
@@ -2787,8 +2796,6 @@ protected:
 
     GenTreePtr impFixupCallStructReturn(GenTreePtr call, CORINFO_CLASS_HANDLE retClsHnd);
 
-    GenTreePtr impInitCallLongReturn(GenTreePtr call);
-
     GenTreePtr impFixupStructReturnType(GenTreePtr op, CORINFO_CLASS_HANDLE retClsHnd);
 
 #ifdef DEBUG
@@ -2915,6 +2922,8 @@ public:
                                CORINFO_LOOKUP*         pLookup,
                                unsigned                flags,
                                void*                   compileTimeHandle);
+
+    GenTreePtr getRuntimeContextTree(CORINFO_RUNTIME_LOOKUP_KIND kind);
 
     GenTreePtr impRuntimeLookupToTree(CORINFO_RESOLVED_TOKEN* pResolvedToken,
                                       CORINFO_LOOKUP*         pLookup,
@@ -3195,8 +3204,6 @@ private:
 #ifdef DEBUG
     static LONG jitNestingLevel;
 #endif // DEBUG
-
-    bool seenConditionalJump;
 
     static BOOL impIsAddressInLocal(GenTreePtr tree, GenTreePtr* lclVarTreeOut);
 
@@ -3505,6 +3512,7 @@ public:
 
     bool fgMorphBlockStmt(BasicBlock* block, GenTreePtr stmt DEBUGARG(const char* msg));
 
+    void fgCheckArgCnt();
     void fgSetOptions();
 
 #ifdef DEBUG
@@ -4354,7 +4362,7 @@ protected:
 
     void fgLinkBasicBlocks();
 
-    void fgMakeBasicBlocks(const BYTE* codeAddr, IL_OFFSET codeSize, BYTE* jumpTarget);
+    unsigned fgMakeBasicBlocks(const BYTE* codeAddr, IL_OFFSET codeSize, BYTE* jumpTarget);
 
     void fgCheckBasicBlockControlFlow();
 
@@ -4550,7 +4558,7 @@ private:
     void fgMorphCallInline(GenTreeCall* call, InlineResult* result);
     void fgMorphCallInlineHelper(GenTreeCall* call, InlineResult* result);
 #if DEBUG
-    void fgNoteNonInlineCandidate(GenTreePtr tree, GenTreeCall* call);
+    void fgNoteNonInlineCandidate(GenTreeStmt* stmt, GenTreeCall* call);
     static fgWalkPreFn fgFindNonInlineCandidate;
 #endif
     GenTreePtr fgOptimizeDelegateConstructor(GenTreePtr call, CORINFO_CONTEXT_HANDLE* ExactContextHnd);
@@ -4585,7 +4593,7 @@ private:
 #endif
     void fgMorphTreeDone(GenTreePtr tree, GenTreePtr oldTree = nullptr DEBUGARG(int morphNum = 0));
 
-    GenTreePtr fgMorphStmt;
+    GenTreeStmt* fgMorphStmt;
 
     unsigned fgGetBigOffsetMorphingTemp(var_types type); // We cache one temp per type to be
                                                          // used when morphing big offset.
@@ -4601,7 +4609,6 @@ private:
 
     void fgMarkUseDef(GenTreeLclVarCommon* tree, GenTree* asgdLclVar = nullptr);
 
-#ifdef DEBUGGING_SUPPORT
     void fgBeginScopeLife(VARSET_TP* inScope, VarScopeDsc* var);
     void fgEndScopeLife(VARSET_TP* inScope, VarScopeDsc* var);
 
@@ -4614,8 +4621,6 @@ private:
 #ifdef DEBUG
     void fgDispDebugScopes();
 #endif // DEBUG
-
-#endif // DEBUGGING_SUPPORT
 
     //-------------------------------------------------------------------------
     //
@@ -4659,6 +4664,7 @@ private:
     void fgInvokeInlineeCompiler(GenTreeCall* call, InlineResult* result);
     void fgInsertInlineeBlocks(InlineInfo* pInlineInfo);
     GenTreePtr fgInlinePrependStatements(InlineInfo* inlineInfo);
+    void fgInlineAppendStatements(InlineInfo* inlineInfo, BasicBlock* block, GenTreePtr stmt);
 
 #if FEATURE_MULTIREG_RET
     GenTreePtr fgGetStructAsStructPtr(GenTreePtr tree);
@@ -4942,6 +4948,7 @@ public:
 #define LPFLG_VAR_LIMIT 0x0100    // iterator is compared with a local var (var # found in lpVarLimit)
 #define LPFLG_CONST_LIMIT 0x0200  // iterator is compared with a constant (found in lpConstLimit)
 #define LPFLG_ARRLEN_LIMIT 0x0400 // iterator is compared with a.len or a[i].len (found in lpArrLenLimit)
+#define LPFLG_SIMD_LIMIT 0x0080   // iterator is compared with Vector<T>.Count (found in lpConstLimit)
 
 #define LPFLG_HAS_PREHEAD 0x0800 // lpHead is known to be a preHead for this loop
 #define LPFLG_REMOVED 0x1000     // has been removed from the loop table (unrolled or optimized away)
@@ -5241,6 +5248,11 @@ protected:
     static const unsigned MAX_CSE_CNT = EXPSET_SZ;
 
     static const int MIN_CSE_COST = 2;
+
+    // Keeps tracked cse indices
+    BitVecTraits* cseTraits;
+    EXPSET_TP     cseFull;
+    EXPSET_TP     cseEmpty;
 
     /* Generic list of nodes - used by the CSE logic */
 
@@ -6274,7 +6286,7 @@ public:
 
     BOOL eeIsValueClass(CORINFO_CLASS_HANDLE clsHnd);
 
-#if defined(DEBUG) || defined(FEATURE_JIT_METHOD_PERF) || defined(FEATURE_SIMD)
+#if defined(DEBUG) || defined(FEATURE_JIT_METHOD_PERF) || defined(FEATURE_SIMD) || defined(TRACK_LSRA_STATS)
 
     bool IsSuperPMIException(unsigned code)
     {
@@ -6559,8 +6571,6 @@ private:
 public:
     CodeGenInterface* codeGen;
 
-#ifdef DEBUGGING_SUPPORT
-
     //  The following holds information about instr offsets in terms of generated code.
 
     struct IPmappingDsc
@@ -6590,7 +6600,6 @@ public:
     typedef SimplerHashTable<GenTreePtr, PtrKeyFuncs<GenTree>, IL_OFFSETX, JitSimplerHashBehavior>
                            CallSiteILOffsetTable;
     CallSiteILOffsetTable* genCallSite2ILOffsetMap;
-#endif // DEBUGGING_SUPPORT
 
     unsigned    genReturnLocal; // Local number for the return value when applicable.
     BasicBlock* genReturnBB;    // jumped to when not optimizing for speed.
@@ -6625,8 +6634,14 @@ public:
     {
         return codeGen->doDoubleAlign();
     }
-    DWORD getCanDoubleAlign(); // Defined & used only by RegAlloc
-#endif                         // DOUBLE_ALIGN
+    DWORD getCanDoubleAlign();
+    bool shouldDoubleAlign(unsigned refCntStk,
+                           unsigned refCntReg,
+                           unsigned refCntWtdReg,
+                           unsigned refCntStkParam,
+                           unsigned refCntWtdStkDbl);
+#endif // DOUBLE_ALIGN
+
     __declspec(property(get = getFullPtrRegMap, put = setFullPtrRegMap)) bool genFullPtrRegMap;
     bool getFullPtrRegMap()
     {
@@ -7109,7 +7124,7 @@ private:
     // and small int base type vectors.
     SIMDIntrinsicID impSIMDIntegralRelOpGreaterThanOrEqual(
         CORINFO_CLASS_HANDLE typeHnd, unsigned simdVectorSize, var_types baseType, GenTree** op1, GenTree** op2);
-#endif // defined(_TARGET_AMD64_) && !defined(LEGACY_BACKEND)
+#endif // defined(_TARGET_XARCH_) && !defined(LEGACY_BACKEND)
 
     void setLclRelatedToSIMDIntrinsic(GenTreePtr tree);
     bool areFieldsContiguous(GenTreePtr op1, GenTreePtr op2);
@@ -7430,9 +7445,8 @@ public:
 
     struct Options
     {
-        CORJIT_FLAGS* jitFlags;  // all flags passed from the EE
-        unsigned      eeFlags;   // CorJitFlag flags passed from the EE
-        unsigned      compFlags; // method attributes
+        JitFlags* jitFlags;  // all flags passed from the EE
+        unsigned  compFlags; // method attributes
 
         codeOptimize compCodeOpt; // what type of code optimizations
 
@@ -7443,8 +7457,8 @@ public:
 
 #ifdef FEATURE_AVX_SUPPORT
         bool compCanUseAVX; // Allow CodeGen to use AVX 256-bit vectors for SIMD operations
-#endif
-#endif
+#endif                      // FEATURE_AVX_SUPPORT
+#endif                      // _TARGET_XARCH_
 
 // optimize maximally and/or favor speed over size?
 
@@ -7501,7 +7515,7 @@ public:
 #ifdef FEATURE_READYTORUN_COMPILER
         inline bool IsReadyToRun()
         {
-            return (eeFlags & CORJIT_FLG_READYTORUN) != 0;
+            return jitFlags->IsSet(JitFlags::JIT_FLAG_READYTORUN);
         }
 #else
         inline bool IsReadyToRun()
@@ -7515,7 +7529,7 @@ public:
         inline bool ShouldUsePInvokeHelpers()
         {
 #if COR_JIT_EE_VERSION > 460
-            return (jitFlags->corJitFlags2 & CORJIT_FLG2_USE_PINVOKE_HELPERS) != 0;
+            return jitFlags->IsSet(JitFlags::JIT_FLAG_USE_PINVOKE_HELPERS);
 #else
             return false;
 #endif
@@ -7526,7 +7540,7 @@ public:
         inline bool IsReversePInvoke()
         {
 #if COR_JIT_EE_VERSION > 460
-            return (jitFlags->corJitFlags2 & CORJIT_FLG2_REVERSE_PINVOKE) != 0;
+            return jitFlags->IsSet(JitFlags::JIT_FLAG_REVERSE_PINVOKE);
 #else
             return false;
 #endif
@@ -7536,7 +7550,7 @@ public:
         inline bool IsJit32Compat()
         {
 #if defined(_TARGET_X86_) && COR_JIT_EE_VERSION > 460
-            return (jitFlags->corJitFlags2 & CORJIT_FLG2_DESKTOP_QUIRKS) != 0;
+            return jitFlags->IsSet(JitFlags::JIT_FLAG_DESKTOP_QUIRKS);
 #else
             return false;
 #endif
@@ -7546,7 +7560,7 @@ public:
         inline bool IsJit64Compat()
         {
 #if defined(_TARGET_AMD64_) && COR_JIT_EE_VERSION > 460
-            return (jitFlags->corJitFlags2 & CORJIT_FLG2_DESKTOP_QUIRKS) != 0;
+            return jitFlags->IsSet(JitFlags::JIT_FLAG_DESKTOP_QUIRKS);
 #elif defined(_TARGET_AMD64_) && !defined(FEATURE_CORECLR)
             return true;
 #else
@@ -7554,14 +7568,10 @@ public:
 #endif
         }
 
-#ifdef DEBUGGING_SUPPORT
         bool compScopeInfo; // Generate the LocalVar info ?
         bool compDbgCode;   // Generate debugger-friendly code?
         bool compDbgInfo;   // Gather debugging info?
         bool compDbgEnC;
-#else
-        static const bool compDbgCode;
-#endif
 
 #ifdef PROFILING_SUPPORTED
         bool compNoPInvokeInlineCB;
@@ -7621,6 +7631,7 @@ public:
         bool altJit;     // True if we are an altjit and are compiling this method
 
 #ifdef DEBUG
+        bool optRepeat;                // Repeat optimizer phases k times
         bool compProcedureSplittingEH; // Separate cold code from hot code for functions with EH
         bool dspCode;                  // Display native code generated
         bool dspEHTable;               // Display the EH table reported to the VM
@@ -7660,9 +7671,11 @@ public:
         // for any call. We have a plan for not needing for stubs though
         bool compNeedStackProbes;
 
-        // Whether to emit Enter/Leave/TailCall hooks using a dummy stub (DummyProfilerELTStub())
-        // This options helps one to make JIT behave as if it is under profiler.
+#ifdef PROFILING_SUPPORTED
+        // Whether to emit Enter/Leave/TailCall hooks using a dummy stub (DummyProfilerELTStub()).
+        // This option helps make the JIT behave as if it is running under a profiler.
         bool compJitELTHookEnabled;
+#endif // PROFILING_SUPPORTED
 
 #if FEATURE_TAILCALL_OPT
         // Whether opportunistic or implicit tail call optimization is enabled.
@@ -7807,10 +7820,6 @@ public:
 #endif
     }
 
-#ifdef DEBUG
-    CLRRandom* inlRNG;
-#endif
-
     //--------------------- Info about the procedure --------------------------
 
     struct Info
@@ -7890,8 +7899,6 @@ public:
                             // and the VM expects that, or the JIT is a "self-host" compiler
                             // (e.g., x86 hosted targeting x86) and the VM expects that.
 
-#if defined(DEBUGGING_SUPPORT) || defined(DEBUG)
-
         /*  The following holds IL scope information about local variables.
          */
 
@@ -7905,8 +7912,6 @@ public:
         IL_OFFSET*                   compStmtOffsets; // sorted
         unsigned                     compStmtOffsetsCount;
         ICorDebugInfo::BoundaryTypes compStmtOffsetsImplicit;
-
-#endif // DEBUGGING_SUPPORT || DEBUG
 
 #define CPU_X86 0x0100 // The generic X86 CPU
 #define CPU_X86_PENTIUM_4 0x0110
@@ -7998,7 +8003,7 @@ public:
 
     void compDispLocalVars();
 
-#endif // DEBUGGING_SUPPORT || DEBUG
+#endif // DEBUG
 
 //-------------------------- Global Compiler Data ------------------------------------
 
@@ -8097,14 +8102,14 @@ public:
                     CORINFO_METHOD_INFO*  methodInfo,
                     void**                methodCodePtr,
                     ULONG*                methodCodeSize,
-                    CORJIT_FLAGS*         compileFlags);
+                    JitFlags*             compileFlags);
     void compCompileFinish();
     int compCompileHelper(CORINFO_MODULE_HANDLE            classPtr,
                           COMP_HANDLE                      compHnd,
                           CORINFO_METHOD_INFO*             methodInfo,
                           void**                           methodCodePtr,
                           ULONG*                           methodCodeSize,
-                          CORJIT_FLAGS*                    compileFlags,
+                          JitFlags*                        compileFlags,
                           CorInfoInstantiationVerification instVerInfo);
 
     ArenaAllocator* compGetAllocator();
@@ -8236,9 +8241,8 @@ public:
     void compDspSrcLinesByLineNum(unsigned line, bool seek = false);
 #endif // DEBUG
 
-//-------------------------------------------------------------------------
+    //-------------------------------------------------------------------------
 
-#ifdef DEBUGGING_SUPPORT
     typedef ListNode<VarScopeDsc*> VarScopeListNode;
 
     struct VarScopeMapInfo
@@ -8296,8 +8300,6 @@ public:
     void compDispScopeLists();
 #endif // DEBUG
 
-#endif // DEBUGGING_SUPPORT
-
     bool compIsProfilerHookNeeded();
 
     //-------------------------------------------------------------------------
@@ -8340,7 +8342,7 @@ public:
 protected:
     size_t compMaxUncheckedOffsetForNullObject;
 
-    void compInitOptions(CORJIT_FLAGS* compileFlags);
+    void compInitOptions(JitFlags* compileFlags);
 
     void compSetProcessor();
     void compInitDebuggingInfo();
@@ -8348,16 +8350,22 @@ protected:
 #ifdef _TARGET_ARMARCH_
     bool compRsvdRegCheck(FrameLayoutState curState);
 #endif
-    void compCompile(void** methodCodePtr, ULONG* methodCodeSize, CORJIT_FLAGS* compileFlags);
+    void compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags* compileFlags);
 
-    // Data required for generating profiler Enter/Leave/TailCall hooks
-    CLANG_FORMAT_COMMENT_ANCHOR;
+    // Clear annotations produced during optimizations; to be used between iterations when repeating opts.
+    void ResetOptAnnotations();
+
+    // Regenerate loop descriptors; to be used between iterations when repeating opts.
+    void RecomputeLoopInfo();
 
 #ifdef PROFILING_SUPPORTED
+    // Data required for generating profiler Enter/Leave/TailCall hooks
+
     bool  compProfilerHookNeeded; // Whether profiler Enter/Leave/TailCall hook needs to be generated for the method
     void* compProfilerMethHnd;    // Profiler handle of the method being compiled. Passed as param to ELT callbacks
     bool  compProfilerMethHndIndirected; // Whether compProfilerHandle is pointer to the handle or is an actual handle
 #endif
+
 #ifdef _TARGET_AMD64_
     bool compQuirkForPPP(); // Check if this method should be Quirked for the PPP issue
 #endif

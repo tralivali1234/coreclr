@@ -206,6 +206,7 @@ Arg_ArithmeticException = Overflow or underflow in the arithmetic operation.
 Arg_ArrayLengthsDiffer = Array lengths must be the same.
 Arg_ArrayPlusOffTooSmall = Destination array is not long enough to copy all the items in the collection. Check array index and length.
 Arg_ArrayTypeMismatchException = Attempted to access an element as a type incompatible with the array.
+Arg_BadDecimal = Read an invalid decimal value from the buffer.
 Arg_BadImageFormatException = Format of the executable (.exe) or library (.dll) is invalid.
 Argument_BadImageFormatExceptionResolve = A BadImageFormatException has been thrown while parsing the signature. This is likely due to lack of a generic context. Ensure genericTypeArguments and genericMethodArguments are provided and contain enough context.
 Arg_BufferTooSmall = Not enough space available in the buffer.
@@ -630,6 +631,10 @@ Argument_UnmanagedMemAccessorWrapAround = The UnmanagedMemoryAccessor capacity a
 Argument_UnrecognizedLoaderOptimization = Unrecognized LOADER_OPTIMIZATION property value.  Supported values may include "SingleDomain", "MultiDomain", "MultiDomainHost", and "NotSpecified".
 ArgumentException_NotAllCustomSortingFuncsDefined = Implementations of all the NLS functions must be provided.
 ArgumentException_MinSortingVersion = The runtime does not support a version of "{0}" less than {1}.
+#if FEATURE_SPAN_OF_T
+Argument_InvalidTypeWithPointersNotSupported = Cannot use type '{0}'. Only value types without pointers or references are supported.
+#endif // FEATURE_SPAN_OF_T
+
 
 ;
 ; =====================================================

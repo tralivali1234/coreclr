@@ -14,7 +14,6 @@ include(functions.cmake)
 if (WIN32)
   message(STATUS "VS_PLATFORM_TOOLSET is ${CMAKE_VS_PLATFORM_TOOLSET}")
   message(STATUS "VS_PLATFORM_NAME is ${CMAKE_VS_PLATFORM_NAME}")
-  message(STATUS "VS_WINDOWS_TARGET_PLATFORM_VERSION is ${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}")
 endif (WIN32)
 
 # Set commonly used directory names
@@ -40,11 +39,19 @@ endif()
 # Ensure other tools are present
 if (WIN32)
     if(CLR_CMAKE_HOST_ARCH STREQUAL arm)
+      
+      # Confirm that Windows SDK is present
+      if(NOT DEFINED CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION OR CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION STREQUAL "" )
+	      message(FATAL_ERROR "Windows SDK is required for the Arm32 build.")
+      else()
+	      message("Using Windows SDK version ${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}")
+      endif()
+
       # Explicitly specify the assembler to be used for Arm32 compile
       file(TO_CMAKE_PATH "$ENV{VCINSTALLDIR}\\bin\\x86_arm\\armasm.exe" CMAKE_ASM_COMPILER)
 
       set(CMAKE_ASM_MASM_COMPILER ${CMAKE_ASM_COMPILER})
-      message(CMAKE_ASM_MASM_COMPILER explicitly set to: ${CMAKE_ASM_MASM_COMPILER}) 
+      message("CMAKE_ASM_MASM_COMPILER explicitly set to: ${CMAKE_ASM_MASM_COMPILER}") 
       
       # Enable generic assembly compilation to avoid CMake generate VS proj files that explicitly
       # use ml[64].exe as the assembler.
@@ -132,6 +139,16 @@ if(CMAKE_SYSTEM_NAME STREQUAL Linux)
         clr_unknown_arch()
     endif()
     set(CLR_CMAKE_PLATFORM_LINUX 1)
+
+    # Detect Alpine Linux
+    SET(OS_RELEASE_FILENAME "/etc/os-release")
+    if (EXISTS ${OS_RELEASE_FILENAME})
+        file(READ ${OS_RELEASE_FILENAME} OS_RELEASE)
+        string(FIND "${OS_RELEASE}" "ID=alpine" CLR_CMAKE_PLATFORM_ALPINE_LINUX)
+        if(CLR_CMAKE_PLATFORM_ALPINE_LINUX EQUAL -1)
+            unset(CLR_CMAKE_PLATFORM_ALPINE_LINUX)
+        endif(CLR_CMAKE_PLATFORM_ALPINE_LINUX EQUAL -1)
+    endif(EXISTS ${OS_RELEASE_FILENAME})
 endif(CMAKE_SYSTEM_NAME STREQUAL Linux)
 
 if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
@@ -265,10 +282,8 @@ if (WIN32)
     endforeach (Definition)
   endforeach (Config)
 
-  if(NOT CLR_CMAKE_PLATFORM_ARCH_ARM64)
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /guard:cf")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /guard:cf")
-  endif (NOT CLR_CMAKE_PLATFORM_ARCH_ARM64)
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /guard:cf")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /guard:cf")
 
   # Incremental linking with CFG is broken until next VS release.
   # This needs to be appended to the last for each build type to override the default flag.
@@ -485,6 +500,11 @@ include(compileoptions.cmake)
 if(CLR_CROSS_COMPONENTS_BUILD)
   include(crosscomponents.cmake)
 endif(CLR_CROSS_COMPONENTS_BUILD)
+
+#-------------------
+# Enable PGO support
+#-------------------
+include(pgosupport.cmake)
 
 #-----------------------------------------
 # Add Projects

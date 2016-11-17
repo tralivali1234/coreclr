@@ -195,6 +195,7 @@
 #include "finalizerthread.h"
 #include "threadsuspend.h"
 #include "disassembler.h"
+#include "gcenv.ee.h"
 
 #ifndef FEATURE_PAL
 #include "dwreport.h"
@@ -3719,7 +3720,15 @@ void InitializeGarbageCollector()
     g_pFreeObjectMethodTable->SetBaseSize(ObjSizeOf (ArrayBase));
     g_pFreeObjectMethodTable->SetComponentSize(1);
 
-    IGCHeap *pGCHeap = InitializeGarbageCollector(nullptr);
+#ifdef FEATURE_STANDALONE_GC
+    IGCToCLR* gcToClr = new (nothrow) GCToEEInterface();
+    if (!gcToClr)
+        ThrowOutOfMemory();
+#else
+    IGCToCLR* gcToClr = nullptr;
+#endif
+
+    IGCHeap *pGCHeap = InitializeGarbageCollector(gcToClr);
     g_pGCHeap = pGCHeap;
     if (!pGCHeap)
         ThrowOutOfMemory();
@@ -4644,7 +4653,6 @@ VOID STDMETHODCALLTYPE LogHelp_LogAssert( LPCSTR szFile, int iLine, LPCSTR expr)
 
 }
 
-extern BOOL NoGuiOnAssert();
 extern "C"
 //__declspec(dllexport)
 BOOL STDMETHODCALLTYPE LogHelp_NoGuiOnAssert()
@@ -4657,7 +4665,6 @@ BOOL STDMETHODCALLTYPE LogHelp_NoGuiOnAssert()
     return fRet;
 }
 
-extern VOID TerminateOnAssert();
 extern "C"
 //__declspec(dllexport)
 VOID STDMETHODCALLTYPE LogHelp_TerminateOnAssert()

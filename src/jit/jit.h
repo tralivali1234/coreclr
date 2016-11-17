@@ -28,6 +28,7 @@
 
 #ifdef _MSC_VER
 // These don't seem useful, so turning them off is no big deal
+#pragma warning(disable : 4065) // "switch statement contains 'default' but no 'case' labels" (happens due to #ifdefs)
 #pragma warning(disable : 4510) // can't generate default constructor
 #pragma warning(disable : 4511) // can't generate copy constructor
 #pragma warning(disable : 4512) // can't generate assignment constructor
@@ -209,6 +210,7 @@
 
 #include "corhdr.h"
 #include "corjit.h"
+#include "jitee.h"
 
 #define __OPERATOR_NEW_INLINE 1 // indicate that I will define these
 #define __PLACEMENT_NEW_INLINE  // don't bring in the global placement new, it is easy to make a mistake
@@ -386,17 +388,6 @@ typedef ptrdiff_t ssize_t;
 
 /*****************************************************************************/
 
-// Debugging support is ON by default. Can be turned OFF by
-// adding /DDEBUGGING_SUPPORT=0 on the command line.
-
-#ifndef DEBUGGING_SUPPORT
-#define DEBUGGING_SUPPORT
-#elif !DEBUGGING_SUPPORT
-#undef DEBUGGING_SUPPORT
-#endif
-
-/*****************************************************************************/
-
 // Late disassembly is OFF by default. Can be turned ON by
 // adding /DLATE_DISASM=1 on the command line.
 // Always OFF in the non-debug version
@@ -483,9 +474,11 @@ typedef ptrdiff_t ssize_t;
 #ifdef DEBUG
 #define MEASURE_MEM_ALLOC 1 // Collect memory allocation stats.
 #define LOOP_HOIST_STATS 1  // Collect loop hoisting stats.
+#define TRACK_LSRA_STATS 1  // Collect LSRA stats
 #else
 #define MEASURE_MEM_ALLOC 0 // You can set this to 1 to get memory stats in retail, as well
 #define LOOP_HOIST_STATS 0  // You can set this to 1 to get loop hoist stats in retail, as well
+#define TRACK_LSRA_STATS 0  // You can set this to 1 to get LSRA stats in retail, as well
 #endif
 
 // Timing calls to clr.dll is only available under certain conditions.
@@ -837,7 +830,7 @@ extern int jitNativeCode(CORINFO_METHOD_HANDLE methodHnd,
                          CORINFO_METHOD_INFO*  methodInfo,
                          void**                methodCodePtr,
                          ULONG*                methodCodeSize,
-                         CORJIT_FLAGS*         compileFlags,
+                         JitFlags*             compileFlags,
                          void*                 inlineInfoPtr);
 
 #ifdef _HOST_64BIT_

@@ -118,7 +118,7 @@ namespace System {
       public static double Round(double value, int digits)
       {
            if ((digits < 0) || (digits > maxRoundingDigits))
-               throw new ArgumentOutOfRangeException("digits", Environment.GetResourceString("ArgumentOutOfRange_RoundingDigits"));
+               throw new ArgumentOutOfRangeException(nameof(digits), Environment.GetResourceString("ArgumentOutOfRange_RoundingDigits"));
            Contract.EndContractBlock();
            return InternalRound(value, digits, MidpointRounding.ToEven);                     
       }
@@ -129,9 +129,9 @@ namespace System {
       
       public static double Round(double value, int digits, MidpointRounding mode) {
           if ((digits < 0) || (digits > maxRoundingDigits))
-              throw new ArgumentOutOfRangeException("digits", Environment.GetResourceString("ArgumentOutOfRange_RoundingDigits"));
+              throw new ArgumentOutOfRangeException(nameof(digits), Environment.GetResourceString("ArgumentOutOfRange_RoundingDigits"));
           if (mode < MidpointRounding.ToEven || mode > MidpointRounding.AwayFromZero) {            
-              throw new ArgumentException(Environment.GetResourceString("Argument_InvalidEnumValue", mode, "MidpointRounding"), "mode");
+              throw new ArgumentException(Environment.GetResourceString("Argument_InvalidEnumValue", mode, nameof(MidpointRounding)), nameof(mode));
           }
           Contract.EndContractBlock();
           return InternalRound(value, digits, mode);                           
@@ -726,13 +726,21 @@ namespace System {
         }
 
         public static int DivRem(int a, int b, out int result) {
-            result =  a%b;
-            return a/b;
+            // TODO https://github.com/dotnet/coreclr/issues/3439:
+            // Restore to using % and / when the JIT is able to eliminate one of the idivs.
+            // In the meantime, a * and - is measurably faster than an extra /.
+            int div = a / b;
+            result = a - (div * b);
+            return div;
         }
 
         public static long DivRem(long a, long b, out long result) {
-            result =  a%b;
-            return a/b;
+            // TODO https://github.com/dotnet/coreclr/issues/3439:
+            // Restore to using % and / when the JIT is able to eliminate one of the idivs.
+            // In the meantime, a * and - is measurably faster than an extra /.
+            long div = a / b;
+            result = a - (div * b);
+            return div;
         }
     }
 }

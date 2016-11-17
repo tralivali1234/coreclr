@@ -928,13 +928,12 @@ GenTreePtr Lowering::NewPutArg(GenTreeCall* call, GenTreePtr arg, fgArgTabEntryP
 
 #if FEATURE_FASTTAILCALL
         putArg = new (comp, GT_PUTARG_STK)
-            GenTreePutArgStk(GT_PUTARG_STK, type, arg, info->slotNum PUT_STRUCT_ARG_STK_ONLY_ARG(info->numSlots)
-                                                           PUT_STRUCT_ARG_STK_ONLY_ARG(info->isStruct),
+            GenTreePutArgStk(GT_PUTARG_STK, type, arg, info->slotNum PUT_STRUCT_ARG_STK_ONLY_ARG(info->numSlots),
                              call->IsFastTailCall() DEBUGARG(call));
 #else
         putArg = new (comp, GT_PUTARG_STK)
-            GenTreePutArgStk(GT_PUTARG_STK, type, arg, info->slotNum PUT_STRUCT_ARG_STK_ONLY_ARG(info->numSlots)
-                                                           PUT_STRUCT_ARG_STK_ONLY_ARG(info->isStruct) DEBUGARG(call));
+            GenTreePutArgStk(GT_PUTARG_STK, type, arg,
+                             info->slotNum PUT_STRUCT_ARG_STK_ONLY_ARG(info->numSlots) DEBUGARG(call));
 #endif
 
 #ifdef FEATURE_PUT_STRUCT_ARG_STK
@@ -1395,6 +1394,7 @@ void Lowering::CheckVSQuirkStackPaddingNeeded(GenTreeCall* call)
 
 // Inserts profiler hook, GT_PROF_HOOK for a tail call node.
 //
+// AMD64:
 // We need to insert this after all nested calls, but before all the arguments to this call have been set up.
 // To do this, we look for the first GT_PUTARG_STK or GT_PUTARG_REG, and insert the hook immediately before
 // that. If there are no args, then it should be inserted before the call node.
@@ -1419,15 +1419,29 @@ void Lowering::CheckVSQuirkStackPaddingNeeded(GenTreeCall* call)
 // In this case, the GT_PUTARG_REG src is a nested call. We need to put the instructions after that call
 // (as shown). We assume that of all the GT_PUTARG_*, only the first one can have a nested call.
 //
+// X86:
+// Insert the profiler hook immediately before the call. The profiler hook will preserve
+// all argument registers (ECX, EDX), but nothing else.
+//
 // Params:
 //    callNode        - tail call node
-//    insertionPoint  - if caller has an insertion point; If null
-//                      profiler hook is inserted before args are setup
+//    insertionPoint  - if non-null, insert the profiler hook before this point.
+//                      If null, insert the profiler hook before args are setup
 //                      but after all arg side effects are computed.
+//
 void Lowering::InsertProfTailCallHook(GenTreeCall* call, GenTree* insertionPoint)
 {
     assert(call->IsTailCall());
     assert(comp->compIsProfilerHookNeeded());
+
+#if defined(_TARGET_X86_)
+
+    if (insertionPoint == nullptr)
+    {
+        insertionPoint = call;
+    }
+
+#else // !defined(_TARGET_X86_)
 
     if (insertionPoint == nullptr)
     {
@@ -1464,6 +1478,8 @@ void Lowering::InsertProfTailCallHook(GenTreeCall* call, GenTree* insertionPoint
             }
         }
     }
+
+#endif // !defined(_TARGET_X86_)
 
     assert(insertionPoint != nullptr);
     GenTreePtr profHookNode = new (comp, GT_PROF_HOOK) GenTree(GT_PROF_HOOK, TYP_VOID);
@@ -1744,8 +1760,9 @@ GenTree* Lowering::LowerTailCallViaHelper(GenTreeCall* call, GenTree* callTarget
 
     // The TailCall helper call never returns to the caller and is not GC interruptible.
     // Therefore the block containing the tail call should be a GC safe point to avoid
-    // GC starvation.
-    assert(comp->compCurBB->bbFlags & BBF_GC_SAFE_POINT);
+    // GC starvation. It is legal for the block to be unmarked iff the entry block is a
+    // GC safe point, as the entry block trivially dominates every reachable block.
+    assert((comp->compCurBB->bbFlags & BBF_GC_SAFE_POINT) || (comp->fgFirstBB->bbFlags & BBF_GC_SAFE_POINT));
 
     // If PInvokes are in-lined, we have to remember to execute PInvoke method epilog anywhere that
     // a method returns.  This is a case of caller method has both PInvokes and tail calls.
@@ -1870,12 +1887,16 @@ GenTree* Lowering::LowerTailCallViaHelper(GenTreeCall* call, GenTree* callTarget
     // Now add back tail call flags for identifying this node as tail call dispatched via helper.
     call->gtCallMoreFlags |= GTF_CALL_M_TAILCALL | GTF_CALL_M_TAILCALL_VIA_HELPER;
 
+#ifdef PROFILING_SUPPORTED
     // Insert profiler tail call hook if needed.
     // Since we don't know the insertion point, pass null for second param.
     if (comp->compIsProfilerHookNeeded())
     {
         InsertProfTailCallHook(call, nullptr);
     }
+#endif // PROFILING_SUPPORTED
+
+    assert(call->IsTailCallViaHelper());
 
     return result;
 }
@@ -2613,8 +2634,12 @@ void Lowering::InsertPInvokeMethodProlog()
     DISPTREERANGE(firstBlockRange, storeFP);
 
     // --------------------------------------------------------
+    // On 32-bit targets, CORINFO_HELP_INIT_PINVOKE_FRAME initializes the PInvoke frame and then pushes it onto
+    // the current thread's Frame stack. On 64-bit targets, it only initializes the PInvoke frame.
+    CLANG_FORMAT_COMMENT_ANCHOR;
 
-    if (comp->opts.eeFlags & CORJIT_FLG_IL_STUB)
+#ifdef _TARGET_64BIT_
+    if (comp->opts.jitFlags->IsSet(JitFlags::JIT_FLAG_IL_STUB))
     {
         // Push a frame - if we are NOT in an IL stub, this is done right before the call
         // The init routine sets InlinedCallFrame's m_pNext, so we just set the thead's top-of-stack
@@ -2622,6 +2647,7 @@ void Lowering::InsertPInvokeMethodProlog()
         firstBlockRange.InsertBefore(insertionPoint, LIR::SeqTree(comp, frameUpd));
         DISPTREERANGE(firstBlockRange, frameUpd);
     }
+#endif // _TARGET_64BIT_
 }
 
 //------------------------------------------------------------------------
@@ -2684,9 +2710,14 @@ void Lowering::InsertPInvokeMethodEpilog(BasicBlock* returnBB DEBUGARG(GenTreePt
     GenTree* storeGCState = SetGCState(1);
     returnBlockRange.InsertBefore(insertionPoint, LIR::SeqTree(comp, storeGCState));
 
-    if (comp->opts.eeFlags & CORJIT_FLG_IL_STUB)
+    // Pop the frame if necessary. This always happens in the epilog on 32-bit targets. For 64-bit targets, we only do
+    // this in the epilog for IL stubs; for non-IL stubs the frame is popped after every PInvoke call.
+    CLANG_FORMAT_COMMENT_ANCHOR;
+
+#ifdef _TARGET_64BIT_
+    if (comp->opts.jitFlags->IsSet(JitFlags::JIT_FLAG_IL_STUB))
+#endif // _TARGET_64BIT_
     {
-        // Pop the frame, in non-stubs we do this around each PInvoke call
         GenTree* frameUpd = CreateFrameLinkUpdate(PopFrame);
         returnBlockRange.InsertBefore(insertionPoint, LIR::SeqTree(comp, frameUpd));
     }
@@ -2733,6 +2764,7 @@ void Lowering::InsertPInvokeCallProlog(GenTreeCall* call)
 
         comp->fgMorphTree(helperCall);
         BlockRange().InsertBefore(insertBefore, LIR::SeqTree(comp, helperCall));
+        LowerNode(helperCall); // helper call is inserted before current node and should be lowered here.
         return;
     }
 #endif
@@ -2743,7 +2775,7 @@ void Lowering::InsertPInvokeCallProlog(GenTreeCall* call)
     // InlinedCallFrame.m_pCallSiteSP = SP          // x86 only
     // InlinedCallFrame.m_pCallerReturnAddress = return address
     // Thread.gcState = 0
-    // (non-stub) - update top Frame on TCB
+    // (non-stub) - update top Frame on TCB         // 64-bit targets only
 
     // ----------------------------------------------------------------------------------
     // Setup InlinedCallFrame.callSiteTarget (which is how the JIT refers to it).
@@ -2753,11 +2785,19 @@ void Lowering::InsertPInvokeCallProlog(GenTreeCall* call)
 
     if (callType == CT_INDIRECT)
     {
+#if !defined(_TARGET_64BIT_)
+        // On 32-bit targets, indirect calls need the size of the stack args in InlinedCallFrame.m_Datum.
+        const unsigned numStkArgBytes = call->fgArgInfo->GetNextSlotNum() * TARGET_POINTER_SIZE;
+
+        src = comp->gtNewIconNode(numStkArgBytes, TYP_INT);
+#else
+        // On 64-bit targets, indirect calls may need the stub parameter value in InlinedCallFrame.m_Datum.
+        // If the stub parameter value is not needed, m_Datum will be initialized by the VM.
         if (comp->info.compPublishStubParam)
         {
-            src = new (comp, GT_LCL_VAR) GenTreeLclVar(TYP_I_IMPL, comp->lvaStubArgumentVar, BAD_IL_OFFSET);
+            src = comp->gtNewLclvNode(comp->lvaStubArgumentVar, TYP_I_IMPL);
         }
-        // else { If we don't have secret parameter, m_Datum will be initialized by VM code }
+#endif // !defined(_TARGET_64BIT_)
     }
     else
     {
@@ -2821,7 +2861,12 @@ void Lowering::InsertPInvokeCallProlog(GenTreeCall* call)
 
     BlockRange().InsertBefore(insertBefore, LIR::SeqTree(comp, storeLab));
 
-    if (!(comp->opts.eeFlags & CORJIT_FLG_IL_STUB))
+    // Push the PInvoke frame if necessary. On 32-bit targets this only happens in the method prolog if a method
+    // contains PInvokes; on 64-bit targets this is necessary in non-stubs.
+    CLANG_FORMAT_COMMENT_ANCHOR;
+
+#ifdef _TARGET_64BIT_
+    if (!comp->opts.jitFlags->IsSet(JitFlags::JIT_FLAG_IL_STUB))
     {
         // Set the TCB's frame to be the one we just created.
         // Note the init routine for the InlinedCallFrame (CORINFO_HELP_INIT_PINVOKE_FRAME)
@@ -2831,6 +2876,7 @@ void Lowering::InsertPInvokeCallProlog(GenTreeCall* call)
         GenTree* frameUpd = CreateFrameLinkUpdate(PushFrame);
         BlockRange().InsertBefore(insertBefore, LIR::SeqTree(comp, frameUpd));
     }
+#endif // _TARGET_64BIT_
 
     // IMPORTANT **** This instruction must come last!!! ****
     // It changes the thread's state to Preemptive mode
@@ -2883,12 +2929,17 @@ void Lowering::InsertPInvokeCallEpilog(GenTreeCall* call)
     tree = CreateReturnTrapSeq();
     BlockRange().InsertBefore(insertionPoint, LIR::SeqTree(comp, tree));
 
-    // Pop the frame if necessasry
-    if (!(comp->opts.eeFlags & CORJIT_FLG_IL_STUB))
+    // Pop the frame if necessary. On 32-bit targets this only happens in the method epilog; on 64-bit targets thi
+    // happens after every PInvoke call in non-stubs.
+    CLANG_FORMAT_COMMENT_ANCHOR;
+
+#ifdef _TARGET_64BIT_
+    if (!comp->opts.jitFlags->IsSet(JitFlags::JIT_FLAG_IL_STUB))
     {
         tree = CreateFrameLinkUpdate(PopFrame);
         BlockRange().InsertBefore(insertionPoint, LIR::SeqTree(comp, tree));
     }
+#endif // _TARGET_64BIT_
 }
 
 //------------------------------------------------------------------------
@@ -2903,7 +2954,7 @@ void Lowering::InsertPInvokeCallEpilog(GenTreeCall* call)
 GenTree* Lowering::LowerNonvirtPinvokeCall(GenTreeCall* call)
 {
     // PInvoke lowering varies depending on the flags passed in by the EE. By default,
-    // GC transitions are generated inline; if CORJIT_FLG2_USE_PINVOKE_HELPERS is specified,
+    // GC transitions are generated inline; if CORJIT_FLAG_USE_PINVOKE_HELPERS is specified,
     // GC transitions are instead performed using helper calls. Examples of each case are given
     // below. Note that the data structure that is used to store information about a call frame
     // containing any P/Invoke calls is initialized in the method prolog (see
@@ -2976,7 +3027,7 @@ GenTree* Lowering::LowerNonvirtPinvokeCall(GenTreeCall* call)
 #if COR_JIT_EE_VERSION > 460
         comp->info.compCompHnd->getAddressOfPInvokeTarget(methHnd, &lookup);
 #else
-        void*          pIndirection;
+        void* pIndirection;
         lookup.accessType = IAT_PVALUE;
         lookup.addr       = comp->info.compCompHnd->getAddressOfPInvokeFixup(methHnd, &pIndirection);
         if (lookup.addr == nullptr)
@@ -3321,8 +3372,6 @@ bool Lowering::AreSourcesPossiblyModifiedLocals(GenTree* addr, GenTree* base, Ge
             return true;
         }
     }
-
-    unreached();
 }
 
 //------------------------------------------------------------------------

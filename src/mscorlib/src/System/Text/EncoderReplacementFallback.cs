@@ -23,7 +23,7 @@ namespace System.Text
         {
             // Must not be null
             if (replacement == null)
-                throw new ArgumentNullException("replacement");
+                throw new ArgumentNullException(nameof(replacement));
             Contract.EndContractBlock();
 
             // Make sure it doesn't have bad surrogate pairs
@@ -60,7 +60,7 @@ namespace System.Text
                     break;
             }
             if (bFoundHigh)
-                throw new ArgumentException(Environment.GetResourceString("Argument_InvalidCharSequenceNoIndex", "replacement"));
+                throw new ArgumentException(Environment.GetResourceString("Argument_InvalidCharSequenceNoIndex", nameof(replacement)));
 
             strDefault = replacement;
         }
@@ -147,7 +147,7 @@ namespace System.Text
         {
             // Double check input surrogate pair
             if (!Char.IsHighSurrogate(charUnknownHigh))
-                throw new ArgumentOutOfRangeException("charUnknownHigh",
+                throw new ArgumentOutOfRangeException(nameof(charUnknownHigh),
                     Environment.GetResourceString("ArgumentOutOfRange_Range",
                     0xD800, 0xDBFF));
 

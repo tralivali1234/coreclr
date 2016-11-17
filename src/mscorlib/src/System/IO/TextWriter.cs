@@ -35,11 +35,7 @@ namespace System.IO {
     // There are methods on the Stream class for writing bytes. 
     [Serializable]
     [ComVisible(true)]
-#if FEATURE_REMOTING
     public abstract class TextWriter : MarshalByRefObject, IDisposable {
-#else // FEATURE_REMOTING
-    public abstract class TextWriter : IDisposable {
-#endif // FEATURE_REMOTING
         public static readonly TextWriter Null = new NullTextWriter();
 
         // This should be initialized to Environment.NewLine, but
@@ -131,7 +127,7 @@ namespace System.IO {
         [HostProtection(Synchronization=true)]
         public static TextWriter Synchronized(TextWriter writer) {
             if (writer==null)
-                throw new ArgumentNullException("writer");
+                throw new ArgumentNullException(nameof(writer));
             Contract.Ensures(Contract.Result<TextWriter>() != null);
             Contract.EndContractBlock();
 
@@ -162,11 +158,11 @@ namespace System.IO {
         //
         public virtual void Write(char[] buffer, int index, int count) {
             if (buffer==null)
-                throw new ArgumentNullException("buffer", Environment.GetResourceString("ArgumentNull_Buffer"));
+                throw new ArgumentNullException(nameof(buffer), Environment.GetResourceString("ArgumentNull_Buffer"));
             if (index < 0)
-                throw new ArgumentOutOfRangeException("index", Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegNum"));
+                throw new ArgumentOutOfRangeException(nameof(index), Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegNum"));
             if (count < 0)
-                throw new ArgumentOutOfRangeException("count", Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegNum"));
+                throw new ArgumentOutOfRangeException(nameof(count), Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegNum"));
             if (buffer.Length - index < count)
                 throw new ArgumentException(Environment.GetResourceString("Argument_InvalidOffLen"));
             Contract.EndContractBlock();

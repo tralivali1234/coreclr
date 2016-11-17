@@ -21,6 +21,7 @@
     <FeatureDbiOopDebugging_HostOneCoreamd64 Condition="'$(TargetArch)' == 'amd64'">true</FeatureDbiOopDebugging_HostOneCoreamd64>
     <FeatureEventTrace>true</FeatureEventTrace>
     <FeatureExceptionDispatchInfo>true</FeatureExceptionDispatchInfo>
+    <FeatureExceptionNotifications>true</FeatureExceptionNotifications>
     <FeatureFrameworkInternal>true</FeatureFrameworkInternal>
     <FeatureHijack>true</FeatureHijack>
     <FeatureInteropDebugging Condition="('$(TargetArch)' == 'i386') or ('$(TargetArch)' == 'amd64')">true</FeatureInteropDebugging>
@@ -33,6 +34,7 @@
     <FeatureMergeJitAndEngine>true</FeatureMergeJitAndEngine>
     <FeatureMulticoreJIT>true</FeatureMulticoreJIT>
     <FeaturePrejit>true</FeaturePrejit>
+    <FeatureSpanOfT Condition="'$(UseLegacyCompiler)'!='true'">true</FeatureSpanOfT>
     <FeatureStandaloneSn>true</FeatureStandaloneSn>
     <FeatureStrongnameDelaySigningAllowed>true</FeatureStrongnameDelaySigningAllowed>
     <FeatureStrongnameMigration>true</FeatureStrongnameMigration>
@@ -49,6 +51,7 @@
     <FeatureUseAsmGCWriteBarriers>true</FeatureUseAsmGCWriteBarriers>
     <!-- Setting this to "false" works only for workstation GC, not server. -->
     <FeatureSymDiff>true</FeatureSymDiff>
+    <FeatureSynchronizationContextWait>true</FeatureSynchronizationContextWait>
     <FeatureReadyToRun Condition="'$(TargetArch)'!='arm64'">true</FeatureReadyToRun>
 
     <FeatureCoreSystem>true</FeatureCoreSystem>
@@ -76,6 +79,12 @@
      -->
     <FeatureImplicitTls Condition="'$(TargetArch)' == 'arm64'">true</FeatureImplicitTls>
     <FeatureSvrGc Condition="'$(TargetArch)' != 'arm'">true</FeatureSvrGc>
+    <FeatureCoreFxFileStream>true</FeatureCoreFxFileStream>
+    <FeatureCoreFxShim>true</FeatureCoreFxShim>
+    <FeatureCoreFxOverlapped>true</FeatureCoreFxOverlapped>
+
+    <!-- We only want to use the CoreFx implementation of SecureString when we are not building the legacy surface area -->
+    <FeatureCoreFxSecureString Condition="'$(FeatureLegacySurface)'==''" >true</FeatureCoreFxSecureString>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetsUnix)' == 'true'">
@@ -100,5 +109,12 @@
   <PropertyGroup Condition="'$(TargetsUnix)' != 'true'">
     <FeatureUseLcid>true</FeatureUseLcid>
     <FeatureImplicitLongPath>true</FeatureImplicitLongPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetsUnix)' != 'true' and '$(ClrProduct)' == 'core_clr'">
+    <FeatureCoreFxWindowsInterop>true</FeatureCoreFxWindowsInterop>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetsUnix)' == 'true' and '$(ClrProduct)' == 'core_clr'">
+    <FeatureCoreFxUnixInterop>true</FeatureCoreFxUnixInterop>
   </PropertyGroup>
 </Project>

@@ -768,15 +768,15 @@ public:
 #ifdef LEGACY_BACKEND
 #define GTF_SPILLED_OPER 0x00000100 // op1 has been spilled
 #define GTF_SPILLED_OP2 0x00000200  // op2 has been spilled
-#else
+#else                               // !LEGACY_BACKEND
 #define GTF_NOREG_AT_USE 0x00000100 // tree node is in memory at the point of use
-#endif                              // LEGACY_BACKEND
+#endif                              // !LEGACY_BACKEND
 
 #define GTF_ZSF_SET 0x00000400 // the zero(ZF) and sign(SF) flags set to the operand
-#if FEATURE_SET_FLAGS
+
 #define GTF_SET_FLAGS 0x00000800 // Requires that codegen for this node set the flags
                                  // Use gtSetFlags() to check this flags
-#endif
+
 #define GTF_IND_NONFAULTING 0x00000800 // An indir that cannot fault.  GTF_SET_FLAGS is not used on indirs
 
 #define GTF_MAKE_CSE 0x00002000   // Hoisted Expression: try hard to make this into CSE  (see optPerformHoistExpr)
@@ -932,6 +932,8 @@ public:
 #define GTF_ICON_BBC_PTR 0xF0000000    // GT_CNS_INT -- constant is a basic block count pointer
 
 #define GTF_ICON_FIELD_OFF 0x08000000 // GT_CNS_INT -- constant is a field offset
+
+#define GTF_ICON_SIMD_COUNT 0x04000000 // GT_CNS_INT -- constant is Vector<T>.Count
 
 #define GTF_BLK_VOLATILE 0x40000000  // GT_ASG, GT_STORE_BLK, GT_STORE_OBJ, GT_STORE_DYNBLK
                                      // -- is a volatile block operation
@@ -1214,7 +1216,7 @@ public:
         return OperIsLocalRead(OperGet());
     }
 
-    bool OperIsCompare()
+    bool OperIsCompare() const
     {
         return (OperKind(gtOper) & GTK_RELOP) != 0;
     }
@@ -1441,6 +1443,26 @@ public:
         return (gtOper == GT_JTRUE) || (gtOper == GT_JCC);
     }
 
+    static bool OperIsBoundsCheck(genTreeOps op)
+    {
+        if (op == GT_ARR_BOUNDS_CHECK)
+        {
+            return true;
+        }
+#ifdef FEATURE_SIMD
+        if (op == GT_SIMD_CHK)
+        {
+            return true;
+        }
+#endif // FEATURE_SIMD
+        return false;
+    }
+
+    bool OperIsBoundsCheck() const
+    {
+        return OperIsBoundsCheck(OperGet());
+    }
+
     // Requires that "op" is an op= operator.  Returns
     // the corresponding "op".
     static genTreeOps OpAsgToOper(genTreeOps op);
@@ -1494,6 +1516,8 @@ public:
     inline bool IsIntegralConstVector(ssize_t constVal);
 
     inline bool IsBoxedValue();
+
+    inline bool IsSIMDEqualityOrInequality() const;
 
     static bool OperIsList(genTreeOps gtOper)
     {
@@ -1842,6 +1866,14 @@ public:
     bool gtOverflowEx() const;
     bool gtSetFlags() const;
     bool gtRequestSetFlags();
+
+    // Returns true if the codegen of this tree node
+    // sets ZF and SF flags.
+    bool gtSetZSFlags() const
+    {
+        return (gtFlags & GTF_ZSF_SET) != 0;
+    }
+
 #ifdef DEBUG
     bool       gtIsValid64RsltMul();
     static int gtDispFlags(unsigned flags, unsigned debugFlags);
@@ -1892,10 +1924,10 @@ public:
     // Returns an iterator that will produce the use edge to each operand of this node. Differs
     // from the sequence of nodes produced by a loop over `GetChild` in its handling of call, phi,
     // and block op nodes.
-    GenTreeUseEdgeIterator GenTree::UseEdgesBegin();
-    GenTreeUseEdgeIterator GenTree::UseEdgesEnd();
+    GenTreeUseEdgeIterator UseEdgesBegin();
+    GenTreeUseEdgeIterator UseEdgesEnd();
 
-    IteratorPair<GenTreeUseEdgeIterator> GenTree::UseEdges();
+    IteratorPair<GenTreeUseEdgeIterator> UseEdges();
 
     // Returns an iterator that will produce each operand of this node. Differs from the sequence
     // of nodes produced by a loop over `GetChild` in its handling of call, phi, and block op
@@ -2197,7 +2229,7 @@ struct GenTreeIntConCommon : public GenTree
     }
 
     bool ImmedValNeedsReloc(Compiler* comp);
-    bool GenTreeIntConCommon::ImmedValCanBeFolded(Compiler* comp, genTreeOps op);
+    bool ImmedValCanBeFolded(Compiler* comp, genTreeOps op);
 
 #ifdef _TARGET_XARCH_
     bool FitsInAddrBase(Compiler* comp);
@@ -4315,10 +4347,7 @@ struct GenTreeStmt : public GenTree
     GenTreePtr     gtStmtExpr;      // root of the expression tree
     GenTreePtr     gtStmtList;      // first node (for forward walks)
     InlineContext* gtInlineContext; // The inline context for this statement.
-
-#if defined(DEBUGGING_SUPPORT) || defined(DEBUG)
-    IL_OFFSETX gtStmtILoffsx; // instr offset (if available)
-#endif
+    IL_OFFSETX     gtStmtILoffsx;   // instr offset (if available)
 
 #ifdef DEBUG
     IL_OFFSET gtStmtLastILoffs; // instr offset at end of stmt
@@ -4357,9 +4386,7 @@ struct GenTreeStmt : public GenTree
         , gtStmtExpr(expr)
         , gtStmtList(nullptr)
         , gtInlineContext(nullptr)
-#if defined(DEBUGGING_SUPPORT) || defined(DEBUG)
         , gtStmtILoffsx(offset)
-#endif
 #ifdef DEBUG
         , gtStmtLastILoffs(BAD_IL_OFFSET)
 #endif
@@ -4475,9 +4502,8 @@ struct GenTreePutArgStk : public GenTreeUnOp
         , gtSlotNum(slotNum)
         , putInIncomingArgArea(_putInIncomingArgArea)
 #ifdef FEATURE_PUT_STRUCT_ARG_STK
-        , gtPutArgStkKind(PutArgStkKindInvalid)
+        , gtPutArgStkKind(Kind::Invalid)
         , gtNumSlots(numSlots)
-        , gtIsStruct(isStruct)
         , gtNumberReferenceSlots(0)
         , gtGcPtrs(nullptr)
 #endif // FEATURE_PUT_STRUCT_ARG_STK
@@ -4490,17 +4516,15 @@ struct GenTreePutArgStk : public GenTreeUnOp
     GenTreePutArgStk(genTreeOps oper,
                      var_types  type,
                      GenTreePtr op1,
-                     unsigned slotNum PUT_STRUCT_ARG_STK_ONLY_ARG(unsigned numSlots)
-                         PUT_STRUCT_ARG_STK_ONLY_ARG(bool isStruct),
+                     unsigned slotNum PUT_STRUCT_ARG_STK_ONLY_ARG(unsigned numSlots),
                      bool _putInIncomingArgArea = false DEBUGARG(GenTreePtr callNode = nullptr)
                          DEBUGARG(bool largeNode = false))
         : GenTreeUnOp(oper, type, op1 DEBUGARG(largeNode))
         , gtSlotNum(slotNum)
         , putInIncomingArgArea(_putInIncomingArgArea)
 #ifdef FEATURE_PUT_STRUCT_ARG_STK
-        , gtPutArgStkKind(PutArgStkKindInvalid)
+        , gtPutArgStkKind(Kind::Invalid)
         , gtNumSlots(numSlots)
-        , gtIsStruct(isStruct)
         , gtNumberReferenceSlots(0)
         , gtGcPtrs(nullptr)
 #endif // FEATURE_PUT_STRUCT_ARG_STK
@@ -4515,14 +4539,12 @@ struct GenTreePutArgStk : public GenTreeUnOp
     GenTreePutArgStk(genTreeOps oper,
                      var_types  type,
                      unsigned slotNum PUT_STRUCT_ARG_STK_ONLY_ARG(unsigned numSlots)
-                         PUT_STRUCT_ARG_STK_ONLY_ARG(bool isStruct) DEBUGARG(GenTreePtr callNode = NULL)
-                             DEBUGARG(bool largeNode = false))
+                         DEBUGARG(GenTreePtr callNode = NULL) DEBUGARG(bool largeNode = false))
         : GenTreeUnOp(oper, type DEBUGARG(largeNode))
         , gtSlotNum(slotNum)
 #ifdef FEATURE_PUT_STRUCT_ARG_STK
-        , gtPutArgStkKind(PutArgStkKindInvalid)
+        , gtPutArgStkKind(Kind::Invalid)
         , gtNumSlots(numSlots)
-        , gtIsStruct(isStruct)
         , gtNumberReferenceSlots(0)
         , gtGcPtrs(nullptr)
 #endif // FEATURE_PUT_STRUCT_ARG_STK
@@ -4536,14 +4558,12 @@ struct GenTreePutArgStk : public GenTreeUnOp
                      var_types  type,
                      GenTreePtr op1,
                      unsigned slotNum PUT_STRUCT_ARG_STK_ONLY_ARG(unsigned numSlots)
-                         PUT_STRUCT_ARG_STK_ONLY_ARG(bool isStruct) DEBUGARG(GenTreePtr callNode = NULL)
-                             DEBUGARG(bool largeNode = false))
+                         DEBUGARG(GenTreePtr callNode = NULL) DEBUGARG(bool largeNode = false))
         : GenTreeUnOp(oper, type, op1 DEBUGARG(largeNode))
         , gtSlotNum(slotNum)
 #ifdef FEATURE_PUT_STRUCT_ARG_STK
-        , gtPutArgStkKind(PutArgStkKindInvalid)
+        , gtPutArgStkKind(Kind::Invalid)
         , gtNumSlots(numSlots)
-        , gtIsStruct(isStruct)
         , gtNumberReferenceSlots(0)
         , gtGcPtrs(nullptr)
 #endif // FEATURE_PUT_STRUCT_ARG_STK
@@ -4600,14 +4620,13 @@ struct GenTreePutArgStk : public GenTreeUnOp
     // TODO-Throughput: The following information should be obtained from the child
     // block node.
 
-    enum PutArgStkKind : __int8{
-        PutArgStkKindInvalid, PutArgStkKindRepInstr, PutArgStkKindUnroll,
+    enum class Kind : __int8{
+        Invalid, RepInstr, Unroll, AllSlots,
     };
 
-    PutArgStkKind gtPutArgStkKind;
+    Kind gtPutArgStkKind;
 
     unsigned gtNumSlots;             // Number of slots for the argument to be passed on stack
-    bool     gtIsStruct;             // This stack arg is a struct.
     unsigned gtNumberReferenceSlots; // Number of reference slots.
     BYTE*    gtGcPtrs;               // gcPointers
 #endif                               // FEATURE_PUT_STRUCT_ARG_STK
@@ -4916,6 +4935,21 @@ inline bool GenTree::IsBoxedValue()
     return (gtOper == GT_BOX) && (gtFlags & GTF_BOX_VALUE);
 }
 
+inline bool GenTree::IsSIMDEqualityOrInequality() const
+{
+#ifdef FEATURE_SIMD
+    if (gtOper == GT_SIMD)
+    {
+        // Has to cast away const-ness since AsSIMD() method is non-const.
+        GenTreeSIMD* simdNode = const_cast<GenTree*>(this)->AsSIMD();
+        return (simdNode->gtSIMDIntrinsicID == SIMDIntrinsicOpEquality ||
+                simdNode->gtSIMDIntrinsicID == SIMDIntrinsicOpInEquality);
+    }
+#endif
+
+    return false;
+}
+
 inline GenTreePtr GenTree::MoveNext()
 {
     assert(OperIsAnyList());
@@ -4955,13 +4989,13 @@ inline bool GenTree::IsValidCallArgument()
     }
     if (OperIsFieldList())
     {
-#if defined(LEGACY_BACKEND) || !FEATURE_MULTIREG_ARGS
+#if defined(LEGACY_BACKEND) || (!FEATURE_MULTIREG_ARGS && !FEATURE_PUT_STRUCT_ARG_STK)
         // Not allowed to have a GT_FIELD_LIST for an argument
-        // unless we have a RyuJIT backend and FEATURE_MULTIREG_ARGS
+        // unless we have a RyuJIT backend and FEATURE_MULTIREG_ARGS or FEATURE_PUT_STRUCT_ARG_STK
 
         return false;
 
-#else // we have RyuJIT backend and FEATURE_MULTIREG_ARGS
+#else // we have RyuJIT backend and FEATURE_MULTIREG_ARGS or FEATURE_PUT_STRUCT_ARG_STK
 
 #ifdef FEATURE_UNIX_AMD64_STRUCT_PASSING
         // For UNIX ABI we currently only allow a GT_FIELD_LIST of GT_LCL_FLDs nodes
@@ -5082,23 +5116,22 @@ inline GenTreePtr GenTree::gtGetOp2()
 
 inline GenTreePtr GenTree::gtEffectiveVal(bool commaOnly)
 {
-    switch (gtOper)
+    GenTree* effectiveVal = this;
+    for (;;)
     {
-        case GT_COMMA:
-            return gtOp.gtOp2->gtEffectiveVal(commaOnly);
-
-        case GT_NOP:
-            if (!commaOnly && gtOp.gtOp1 != nullptr)
-            {
-                return gtOp.gtOp1->gtEffectiveVal();
-            }
-            break;
-
-        default:
-            break;
+        if (effectiveVal->gtOper == GT_COMMA)
+        {
+            effectiveVal = effectiveVal->gtOp.gtOp2;
+        }
+        else if (!commaOnly && (effectiveVal->gtOper == GT_NOP) && (effectiveVal->gtOp.gtOp1 != nullptr))
+        {
+            effectiveVal = effectiveVal->gtOp.gtOp1;
+        }
+        else
+        {
+            return effectiveVal;
+        }
     }
-
-    return this;
 }
 
 inline GenTree* GenTree::gtSkipReloadOrCopy()

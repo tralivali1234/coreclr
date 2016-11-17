@@ -11,13 +11,14 @@
 ** 
 ===========================================================*/
 namespace System {
-    
+
     using System;
     using System.Runtime;
     using System.Runtime.CompilerServices;
     using System.Globalization;
     using System.Diagnostics.Contracts;
-[System.Runtime.InteropServices.ComVisible(true)]
+
+    [System.Runtime.InteropServices.ComVisible(true)]
     [Serializable]
     public class Random {
       //
@@ -46,11 +47,17 @@ namespace System {
       //
       // Constructors
       //
-    
+      
+      /*=========================================================================================
+      **Action: Initializes a new instance of the Random class, using a default seed value
+      ===========================================================================================*/
       public Random() 
-        : this(Environment.TickCount) {
+        : this(GenerateSeed()) {
       }
-    
+      
+      /*=========================================================================================
+      **Action: Initializes a new instance of the Random class, using a specified seed value
+      ===========================================================================================*/
       public Random(int Seed) {
         int ii = 0;
         int mj, mk;
@@ -79,11 +86,11 @@ namespace System {
         inextp = 21;
         Seed = 1;
       }
-    
+
       //
       // Package Private Methods
       //
-    
+
       /*====================================Sample====================================
       **Action: Return a new random number [0..1) and reSeed the Seed array.
       **Returns: A double [0..1)
@@ -117,11 +124,41 @@ namespace System {
           return retVal;
       }
 
+
+      [ThreadStatic]
+      private static Random t_threadRandom;
+      private static readonly Random s_globalRandom = new Random(GenerateGlobalSeed());
+
+      /*=====================================GenerateSeed=====================================
+      **Returns: An integer that can be used as seed values for consecutively
+                 creating lots of instances on the same thread within a short period of time.
+      ========================================================================================*/
+      private static int GenerateSeed() {
+          Random rnd = t_threadRandom;
+          if (rnd == null) {
+              int seed;
+              lock (s_globalRandom) {
+                  seed = s_globalRandom.Next();
+              }
+              rnd = new Random(seed);
+              t_threadRandom = rnd;
+          }
+          return rnd.Next();
+      }
+
+      /*==================================GenerateGlobalSeed====================================
+      **Action:  Creates a number to use as global seed.
+      **Returns: An integer that is safe to use as seed values for thread-local seed generators.
+      ==========================================================================================*/
+      private static int GenerateGlobalSeed() {
+          return Guid.NewGuid().GetHashCode();
+      }
+
       //
       // Public Instance Methods
       // 
-    
-    
+
+
       /*=====================================Next=====================================
       **Returns: An int [0..Int32.MaxValue)
       **Arguments: None
@@ -158,7 +195,7 @@ namespace System {
       ==============================================================================*/
       public virtual int Next(int minValue, int maxValue) {
           if (minValue>maxValue) {
-              throw new ArgumentOutOfRangeException("minValue",Environment.GetResourceString("Argument_MinMaxValue", "minValue", "maxValue"));
+              throw new ArgumentOutOfRangeException(nameof(minValue),Environment.GetResourceString("Argument_MinMaxValue", nameof(minValue), nameof(maxValue)));
           }
           Contract.EndContractBlock();
           
@@ -179,7 +216,7 @@ namespace System {
       ==============================================================================*/
       public virtual int Next(int maxValue) {
           if (maxValue<0) {
-              throw new ArgumentOutOfRangeException("maxValue", Environment.GetResourceString("ArgumentOutOfRange_MustBePositive", "maxValue"));
+              throw new ArgumentOutOfRangeException(nameof(maxValue), Environment.GetResourceString("ArgumentOutOfRange_MustBePositive", nameof(maxValue)));
           }
           Contract.EndContractBlock();
           return (int)(Sample()*maxValue);
@@ -203,14 +240,11 @@ namespace System {
       **Exceptions: None
       ==============================================================================*/
       public virtual void NextBytes(byte [] buffer){
-        if (buffer==null) throw new ArgumentNullException("buffer");
+        if (buffer==null) throw new ArgumentNullException(nameof(buffer));
         Contract.EndContractBlock();
         for (int i=0; i<buffer.Length; i++) {
           buffer[i]=(byte)(InternalSample()%(Byte.MaxValue+1)); 
         }
       }
     }
-
-
-
 }

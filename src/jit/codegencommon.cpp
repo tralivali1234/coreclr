@@ -167,12 +167,10 @@ CodeGen::CodeGen(Compiler* theCompiler) : CodeGenInterface(theCompiler)
     genFlagsEqualToNone();
 #endif // LEGACY_BACKEND
 
-#ifdef DEBUGGING_SUPPORT
     //  Initialize the IP-mapping logic.
     compiler->genIPmappingList        = nullptr;
     compiler->genIPmappingLast        = nullptr;
     compiler->genCallSite2ILOffsetMap = nullptr;
-#endif
 
     /* Assume that we not fully interruptible */
 
@@ -363,7 +361,7 @@ void CodeGen::genPrepForCompiler()
             {
                 VarSetOps::AddElemD(compiler, compiler->raRegVarsMask, varDsc->lvVarIndex);
             }
-            else if (compiler->lvaIsGCTracked(varDsc) && (!varDsc->lvIsParam || varDsc->lvIsRegArg))
+            else if (compiler->lvaIsGCTracked(varDsc))
             {
                 VarSetOps::AddElemD(compiler, gcInfo.gcTrkStkPtrLcls, varDsc->lvVarIndex);
             }
@@ -658,17 +656,24 @@ regMaskTP Compiler::compHelperCallKillSet(CorInfoHelpFunc helper)
 #endif
 
         case CORINFO_HELP_PROF_FCN_ENTER:
-#ifdef _TARGET_AMD64_
+#ifdef RBM_PROFILER_ENTER_TRASH
             return RBM_PROFILER_ENTER_TRASH;
 #else
-            unreached();
+            NYI("Model kill set for CORINFO_HELP_PROF_FCN_ENTER on target arch");
 #endif
+
         case CORINFO_HELP_PROF_FCN_LEAVE:
-        case CORINFO_HELP_PROF_FCN_TAILCALL:
-#ifdef _TARGET_AMD64_
+#ifdef RBM_PROFILER_LEAVE_TRASH
             return RBM_PROFILER_LEAVE_TRASH;
 #else
-            unreached();
+            NYI("Model kill set for CORINFO_HELP_PROF_FCN_LEAVE on target arch");
+#endif
+
+        case CORINFO_HELP_PROF_FCN_TAILCALL:
+#ifdef RBM_PROFILER_TAILCALL_TRASH
+            return RBM_PROFILER_TAILCALL_TRASH;
+#else
+            NYI("Model kill set for CORINFO_HELP_PROF_FCN_TAILCALL on target arch");
 #endif
 
         case CORINFO_HELP_STOP_FOR_GC:
@@ -691,26 +696,29 @@ regMaskTP Compiler::compHelperCallKillSet(CorInfoHelpFunc helper)
 regMaskTP Compiler::compNoGCHelperCallKillSet(CorInfoHelpFunc helper)
 {
     assert(emitter::emitNoGChelper(helper));
-#ifdef _TARGET_AMD64_
+
     switch (helper)
     {
+#if defined(_TARGET_AMD64_) || defined(_TARGET_X86_)
         case CORINFO_HELP_PROF_FCN_ENTER:
             return RBM_PROFILER_ENTER_TRASH;
 
         case CORINFO_HELP_PROF_FCN_LEAVE:
-        case CORINFO_HELP_PROF_FCN_TAILCALL:
             return RBM_PROFILER_LEAVE_TRASH;
 
+        case CORINFO_HELP_PROF_FCN_TAILCALL:
+            return RBM_PROFILER_TAILCALL_TRASH;
+#endif // defined(_TARGET_AMD64_) || defined(_TARGET_X86_)
+
+#if defined(_TARGET_AMD64_)
         case CORINFO_HELP_ASSIGN_BYREF:
             // this helper doesn't trash RSI and RDI
             return RBM_CALLEE_TRASH_NOGC & ~(RBM_RSI | RBM_RDI);
+#endif // defined(_TARGET_AMD64_)
 
         default:
             return RBM_CALLEE_TRASH_NOGC;
     }
-#else
-    return RBM_CALLEE_TRASH_NOGC;
-#endif
 }
 
 // Update liveness (always var liveness, i.e., compCurLife, and also, if "ForCodeGen" is true, reg liveness, i.e.,
@@ -1010,9 +1018,7 @@ void Compiler::compUpdateLifeVar(GenTreePtr tree, VARSET_TP* pLastUseVars)
 
 #endif // LEGACY_BACKEND
 
-#ifdef DEBUGGING_SUPPORT
             codeGen->siUpdate();
-#endif
         }
     }
 
@@ -1178,9 +1184,7 @@ void Compiler::compChangeLife(VARSET_VALARG_TP newLife DEBUGARG(GenTreePtr tree)
 #endif // !LEGACY_BACKEND
     }
 
-#ifdef DEBUGGING_SUPPORT
     codeGen->siUpdate();
-#endif
 }
 
 // Need an explicit instantiation.
@@ -1630,6 +1634,44 @@ void CodeGen::genAdjustSP(ssize_t delta)
     else
 #endif
         inst_RV_IV(INS_add, REG_SPBASE, delta, EA_PTRSIZE);
+}
+
+//------------------------------------------------------------------------
+// genAdjustStackLevel: Adjust the stack level, if required, for a throw helper block
+//
+// Arguments:
+//    block - The BasicBlock for which we are about to generate code.
+//
+// Assumptions:
+//    Must be called just prior to generating code for 'block'.
+//
+// Notes:
+//    This only makes an adjustment if !FEATURE_FIXED_OUT_ARGS, if there is no frame pointer,
+//    and if 'block' is a throw helper block with a non-zero stack level.
+
+void CodeGen::genAdjustStackLevel(BasicBlock* block)
+{
+#if !FEATURE_FIXED_OUT_ARGS
+    // Check for inserted throw blocks and adjust genStackLevel.
+
+    if (!isFramePointerUsed() && compiler->fgIsThrowHlpBlk(block))
+    {
+        noway_assert(block->bbFlags & BBF_JMP_TARGET);
+
+        genStackLevel = compiler->fgThrowHlpBlkStkLevel(block) * sizeof(int);
+
+        if (genStackLevel != 0)
+        {
+#ifdef _TARGET_X86_
+            getEmitter()->emitMarkStackLvl(genStackLevel);
+            inst_RV_IV(INS_add, REG_SPBASE, genStackLevel, EA_PTRSIZE);
+            genStackLevel = 0;
+#else  // _TARGET_X86_
+            NYI("Need emitMarkStackLvl()");
+#endif // _TARGET_X86_
+        }
+    }
+#endif // !FEATURE_FIXED_OUT_ARGS
 }
 
 #ifdef _TARGET_ARM_
@@ -2545,14 +2587,12 @@ emitJumpKind CodeGen::genJumpKindForOper(genTreeOps cmp, CompareKind compareKind
 
 void CodeGen::genExitCode(BasicBlock* block)
 {
-#ifdef DEBUGGING_SUPPORT
     /* Just wrote the first instruction of the epilog - inform debugger
        Note that this may result in a duplicate IPmapping entry, and
        that this is ok  */
 
     // For non-optimized debuggable code, there is only one epilog.
     genIPmappingAdd((IL_OFFSETX)ICorDebugInfo::EPILOG, true);
-#endif // DEBUGGING_SUPPORT
 
     bool jmpEpilog = ((block->bbFlags & BBF_HAS_JMP) != 0);
     if (compiler->getNeedsGSSecurityCookie())
@@ -2974,7 +3014,7 @@ void CodeGen::genGenerateCode(void** codePtr, ULONG* nativeSizeOfCode)
 #if defined(DEBUG)
                                 ,
                             (compiler->compCodeOpt() != Compiler::SMALL_CODE) &&
-                                !(compiler->opts.eeFlags & CORJIT_FLG_PREJIT)
+                                !compiler->opts.jitFlags->IsSet(JitFlags::JIT_FLAG_PREJIT)
 #endif
 #ifdef LEGACY_BACKEND
                                 ,
@@ -3122,8 +3162,6 @@ void CodeGen::genGenerateCode(void** codePtr, ULONG* nativeSizeOfCode)
 
     compiler->unwindEmit(*codePtr, coldCodePtr);
 
-#ifdef DEBUGGING_SUPPORT
-
     /* Finalize the line # tracking logic after we know the exact block sizes/offsets */
 
     genIPmappingGen();
@@ -3131,8 +3169,6 @@ void CodeGen::genGenerateCode(void** codePtr, ULONG* nativeSizeOfCode)
     /* Finalize the Local Var info in terms of generated code */
 
     genSetScopeInfo();
-
-#endif // DEBUGGING_SUPPORT
 
 #ifdef LATE_DISASM
     unsigned finalHotCodeSize;
@@ -7001,12 +7037,12 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
             noway_assert(varTypeIsGC(varDsc->TypeGet()) || (varDsc->TypeGet() == TYP_STRUCT) ||
                          compiler->info.compInitMem || compiler->opts.compDbgCode);
 
-#ifdef _TARGET_64BIT_
+#ifndef LEGACY_BACKEND
             if (!varDsc->lvOnFrame)
             {
                 continue;
             }
-#else  // !_TARGET_64BIT_
+#else  // LEGACY_BACKEND
             if (varDsc->lvRegister)
             {
                 if (varDsc->lvOnFrame)
@@ -7022,7 +7058,7 @@ void CodeGen::genZeroInitFrame(int untrLclHi, int untrLclLo, regNumber initReg, 
                 }
                 continue;
             }
-#endif // !_TARGET_64BIT_
+#endif // LEGACY_BACKEND
 
             if ((varDsc->TypeGet() == TYP_STRUCT) && !compiler->info.compInitMem &&
                 (varDsc->lvExactSize >= TARGET_POINTER_SIZE))
@@ -7227,11 +7263,31 @@ void CodeGen::genSetGSSecurityCookie(regNumber initReg, bool* pInitRegZeroed)
 
 #ifdef PROFILING_SUPPORTED
 
-/*-----------------------------------------------------------------------------
- *
- *  Generate the profiling function enter callback.
- */
-
+//-----------------------------------------------------------------------------------
+// genProfilingEnterCallback: Generate the profiling function enter callback.
+//
+// Arguments:
+//     initReg        - register to use as scratch register
+//     pInitRegZeroed - OUT parameter. *pInitRegZeroed set to 'false' if 'initReg' is
+//                      not zero after this call.
+//
+// Return Value:
+//     None
+//
+// Notes:
+// The x86 profile enter helper has the following requirements (see ProfileEnterNaked in
+// VM\i386\asmhelpers.asm for details):
+// 1. The calling sequence for calling the helper is:
+//          push FunctionIDOrClientID
+//          call ProfileEnterHelper
+// 2. The calling function has an EBP frame.
+// 3. EBP points to the saved ESP which is the first thing saved in the function. Thus,
+//    the following prolog is assumed:
+//          push ESP
+//          mov EBP, ESP
+// 4. All registers are preserved.
+// 5. The helper pops the FunctionIDOrClientID argument from the stack.
+//
 void CodeGen::genProfilingEnterCallback(regNumber initReg, bool* pInitRegZeroed)
 {
     assert(compiler->compGeneratingProlog);
@@ -7242,7 +7298,6 @@ void CodeGen::genProfilingEnterCallback(regNumber initReg, bool* pInitRegZeroed)
         return;
     }
 
-#ifndef LEGACY_BACKEND
 #if defined(_TARGET_AMD64_) && !defined(UNIX_AMD64_ABI) // No profiling for System V systems yet.
     unsigned   varNum;
     LclVarDsc* varDsc;
@@ -7286,7 +7341,7 @@ void CodeGen::genProfilingEnterCallback(regNumber initReg, bool* pInitRegZeroed)
     else
     {
         // No need to record relocations, if we are generating ELT hooks under the influence
-        // of complus_JitELtHookEnabled=1
+        // of COMPlus_JitELTHookEnabled=1
         if (compiler->opts.compJitELTHookEnabled)
         {
             genSetRegToIcon(REG_ARG_0, (ssize_t)compiler->compProfilerMethHnd, TYP_I_IMPL);
@@ -7352,11 +7407,7 @@ void CodeGen::genProfilingEnterCallback(regNumber initReg, bool* pInitRegZeroed)
         *pInitRegZeroed = false;
     }
 
-#else //!_TARGET_AMD64_
-    NYI("RyuJIT: Emit Profiler Enter callback");
-#endif
-
-#else // LEGACY_BACKEND
+#elif defined(_TARGET_X86_) || (defined(_TARGET_ARM_) && defined(LEGACY_BACKEND))
 
     unsigned saveStackLvl2 = genStackLevel;
 
@@ -7429,17 +7480,41 @@ void CodeGen::genProfilingEnterCallback(regNumber initReg, bool* pInitRegZeroed)
     /* Restore the stack level */
 
     genStackLevel = saveStackLvl2;
-#endif // LEGACY_BACKEND
+
+#else  // target
+    NYI("Emit Profiler Enter callback");
+#endif // target
 }
 
-/*****************************************************************************
- *
- *  Generates Leave profiler hook.
- *  Technically, this is not part of the epilog; it is called when we are generating code for a GT_RETURN node.
- */
-
+//-----------------------------------------------------------------------------------
+// genProfilingLeaveCallback: Generate the profiling function leave or tailcall callback.
+// Technically, this is not part of the epilog; it is called when we are generating code for a GT_RETURN node.
+//
+// Arguments:
+//     helper - which helper to call. Either CORINFO_HELP_PROF_FCN_LEAVE or CORINFO_HELP_PROF_FCN_TAILCALL
+//
+// Return Value:
+//     None
+//
+// Notes:
+// The x86 profile leave/tailcall helper has the following requirements (see ProfileLeaveNaked and
+// ProfileTailcallNaked in VM\i386\asmhelpers.asm for details):
+// 1. The calling sequence for calling the helper is:
+//          push FunctionIDOrClientID
+//          call ProfileLeaveHelper or ProfileTailcallHelper
+// 2. The calling function has an EBP frame.
+// 3. EBP points to the saved ESP which is the first thing saved in the function. Thus,
+//    the following prolog is assumed:
+//          push ESP
+//          mov EBP, ESP
+// 4. helper == CORINFO_HELP_PROF_FCN_LEAVE: All registers are preserved.
+//    helper == CORINFO_HELP_PROF_FCN_TAILCALL: Only argument registers are preserved.
+// 5. The helper pops the FunctionIDOrClientID argument from the stack.
+//
 void CodeGen::genProfilingLeaveCallback(unsigned helper /*= CORINFO_HELP_PROF_FCN_LEAVE*/)
 {
+    assert((helper == CORINFO_HELP_PROF_FCN_LEAVE) || (helper == CORINFO_HELP_PROF_FCN_TAILCALL));
+
     // Only hook if profiler says it's okay.
     if (!compiler->compIsProfilerHookNeeded())
     {
@@ -7448,12 +7523,11 @@ void CodeGen::genProfilingLeaveCallback(unsigned helper /*= CORINFO_HELP_PROF_FC
 
     compiler->info.compProfilerCallback = true;
 
-    // Need to save on to the stack level, since the callee will pop the argument
+    // Need to save on to the stack level, since the helper call will pop the argument
     unsigned saveStackLvl2 = genStackLevel;
 
-#ifndef LEGACY_BACKEND
-
 #if defined(_TARGET_AMD64_) && !defined(UNIX_AMD64_ABI) // No profiling for System V systems yet.
+
     // Since the method needs to make a profiler callback, it should have out-going arg space allocated.
     noway_assert(compiler->lvaOutgoingArgSpaceVar != BAD_VAR_NUM);
     noway_assert(compiler->lvaOutgoingArgSpaceSize >= (4 * REGSIZE_BYTES));
@@ -7483,7 +7557,7 @@ void CodeGen::genProfilingLeaveCallback(unsigned helper /*= CORINFO_HELP_PROF_FC
     else
     {
         // Don't record relocations, if we are generating ELT hooks under the influence
-        // of complus_JitELtHookEnabled=1
+        // of COMPlus_JitELTHookEnabled=1
         if (compiler->opts.compJitELTHookEnabled)
         {
             genSetRegToIcon(REG_ARG_0, (ssize_t)compiler->compProfilerMethHnd, TYP_I_IMPL);
@@ -7523,13 +7597,8 @@ void CodeGen::genProfilingLeaveCallback(unsigned helper /*= CORINFO_HELP_PROF_FC
     // "mov r8, helper addr; call r8"
     genEmitHelperCall(helper, 0, EA_UNKNOWN, REG_ARG_2);
 
-#else  //!_TARGET_AMD64_
-    NYI("RyuJIT: Emit Profiler Leave callback");
-#endif // _TARGET_*
+#elif defined(_TARGET_X86_)
 
-#else // LEGACY_BACKEND
-
-#if defined(_TARGET_X86_)
     //
     // Push the profilerHandle
     //
@@ -7544,7 +7613,7 @@ void CodeGen::genProfilingLeaveCallback(unsigned helper /*= CORINFO_HELP_PROF_FC
     }
     genSinglePush();
 
-    genEmitHelperCall(CORINFO_HELP_PROF_FCN_LEAVE,
+    genEmitHelperCall(helper,
                       sizeof(int) * 1, // argSize
                       EA_UNKNOWN);     // retSize
 
@@ -7555,7 +7624,9 @@ void CodeGen::genProfilingLeaveCallback(unsigned helper /*= CORINFO_HELP_PROF_FC
     {
         compiler->fgPtrArgCntMax = 1;
     }
-#elif defined(_TARGET_ARM_)
+
+#elif defined(LEGACY_BACKEND) && defined(_TARGET_ARM_)
+
     //
     // Push the profilerHandle
     //
@@ -7631,11 +7702,10 @@ void CodeGen::genProfilingLeaveCallback(unsigned helper /*= CORINFO_HELP_PROF_FC
     }
 
     regSet.rsUnlockReg(RBM_PROFILER_RET_USED);
-#else  // _TARGET_*
-    NYI("Pushing the profilerHandle & caller's sp for the profiler callout and locking them");
-#endif // _TARGET_*
 
-#endif // LEGACY_BACKEND
+#else  // target
+    NYI("Emit Profiler Leave callback");
+#endif // target
 
     /* Restore the stack level */
     genStackLevel = saveStackLvl2;
@@ -7747,7 +7817,7 @@ void CodeGen::genPrologPadForReJit()
     assert(compiler->compGeneratingProlog);
 
 #ifdef _TARGET_XARCH_
-    if (!(compiler->opts.eeFlags & CORJIT_FLG_PROF_REJIT_NOPS))
+    if (!compiler->opts.jitFlags->IsSet(JitFlags::JIT_FLAG_PROF_REJIT_NOPS))
     {
         return;
     }
@@ -8171,11 +8241,9 @@ void CodeGen::genFnProlog()
     getEmitter()->emitBegProlog();
     compiler->unwindBegProlog();
 
-#ifdef DEBUGGING_SUPPORT
     // Do this so we can put the prolog instruction group ahead of
     // other instruction groups
     genIPmappingAddToFront((IL_OFFSETX)ICorDebugInfo::PROLOG);
-#endif // DEBUGGING_SUPPORT
 
 #ifdef DEBUG
     if (compiler->opts.dspCode)
@@ -8184,13 +8252,11 @@ void CodeGen::genFnProlog()
     }
 #endif
 
-#ifdef DEBUGGING_SUPPORT
     if (compiler->opts.compScopeInfo && (compiler->info.compVarScopesCount > 0))
     {
         // Create new scopes for the method-parameters for the prolog-block.
         psiBegProlog();
     }
-#endif
 
 #ifdef DEBUG
 
@@ -8876,12 +8942,10 @@ void CodeGen::genFnProlog()
         getEmitter()->emitMarkPrologEnd();
     }
 
-#ifdef DEBUGGING_SUPPORT
     if (compiler->opts.compScopeInfo && (compiler->info.compVarScopesCount > 0))
     {
         psiEndProlog();
     }
-#endif
 
     if (hasGCRef)
     {
@@ -8933,7 +8997,7 @@ void CodeGen::genFnProlog()
         // LEA EAX, &<VARARGS HANDLE> + EAX
         getEmitter()->emitIns_R_ARR(INS_lea, EA_PTRSIZE, REG_EAX, genFramePointerReg(), REG_EAX, offset);
 
-        if (varDsc->lvRegister)
+        if (varDsc->lvIsInReg())
         {
             if (varDsc->lvRegNum != REG_EAX)
             {
@@ -11014,9 +11078,6 @@ void CodeGen::genPopRegs(regMaskTP regs, regMaskTP byrefRegs, regMaskTP noRefReg
 #endif // FEATURE_FIXED_OUT_ARGS
 }
 
-/*****************************************************************************/
-#ifdef DEBUGGING_SUPPORT
-
 /*****************************************************************************
  *                          genSetScopeInfo
  *
@@ -11312,6 +11373,103 @@ void CodeGen::genSetScopeInfo()
     }
 
     compiler->eeSetLVdone();
+}
+
+//------------------------------------------------------------------------
+// genSetScopeInfo: Record scope information for debug info
+//
+// Arguments:
+//    which
+//    startOffs - the starting offset for this scope
+//    length    - the length of this scope
+//    varNum    - the lclVar for this scope info
+//    LVnum
+//    avail
+//    varLoc
+//
+// Notes:
+//    Called for every scope info piece to record by the main genSetScopeInfo()
+
+void CodeGen::genSetScopeInfo(unsigned            which,
+                              UNATIVE_OFFSET      startOffs,
+                              UNATIVE_OFFSET      length,
+                              unsigned            varNum,
+                              unsigned            LVnum,
+                              bool                avail,
+                              Compiler::siVarLoc& varLoc)
+{
+    // We need to do some mapping while reporting back these variables.
+
+    unsigned ilVarNum = compiler->compMap2ILvarNum(varNum);
+    noway_assert((int)ilVarNum != ICorDebugInfo::UNKNOWN_ILNUM);
+
+#ifdef _TARGET_X86_
+    // Non-x86 platforms are allowed to access all arguments directly
+    // so we don't need this code.
+
+    // Is this a varargs function?
+
+    if (compiler->info.compIsVarArgs && varNum != compiler->lvaVarargsHandleArg &&
+        varNum < compiler->info.compArgsCount && !compiler->lvaTable[varNum].lvIsRegArg)
+    {
+        noway_assert(varLoc.vlType == Compiler::VLT_STK || varLoc.vlType == Compiler::VLT_STK2);
+
+        // All stack arguments (except the varargs handle) have to be
+        // accessed via the varargs cookie. Discard generated info,
+        // and just find its position relative to the varargs handle
+
+        PREFIX_ASSUME(compiler->lvaVarargsHandleArg < compiler->info.compArgsCount);
+        if (!compiler->lvaTable[compiler->lvaVarargsHandleArg].lvOnFrame)
+        {
+            noway_assert(!compiler->opts.compDbgCode);
+            return;
+        }
+
+        // Can't check compiler->lvaTable[varNum].lvOnFrame as we don't set it for
+        // arguments of vararg functions to avoid reporting them to GC.
+        noway_assert(!compiler->lvaTable[varNum].lvRegister);
+        unsigned cookieOffset = compiler->lvaTable[compiler->lvaVarargsHandleArg].lvStkOffs;
+        unsigned varOffset    = compiler->lvaTable[varNum].lvStkOffs;
+
+        noway_assert(cookieOffset < varOffset);
+        unsigned offset     = varOffset - cookieOffset;
+        unsigned stkArgSize = compiler->compArgSize - intRegState.rsCalleeRegArgCount * sizeof(void*);
+        noway_assert(offset < stkArgSize);
+        offset = stkArgSize - offset;
+
+        varLoc.vlType                   = Compiler::VLT_FIXED_VA;
+        varLoc.vlFixedVarArg.vlfvOffset = offset;
+    }
+
+#endif // _TARGET_X86_
+
+    VarName name = nullptr;
+
+#ifdef DEBUG
+
+    for (unsigned scopeNum = 0; scopeNum < compiler->info.compVarScopesCount; scopeNum++)
+    {
+        if (LVnum == compiler->info.compVarScopes[scopeNum].vsdLVnum)
+        {
+            name = compiler->info.compVarScopes[scopeNum].vsdName;
+        }
+    }
+
+    // Hang on to this compiler->info.
+
+    TrnslLocalVarInfo& tlvi = genTrnslLocalVarInfo[which];
+
+    tlvi.tlviVarNum    = ilVarNum;
+    tlvi.tlviLVnum     = LVnum;
+    tlvi.tlviName      = name;
+    tlvi.tlviStartPC   = startOffs;
+    tlvi.tlviLength    = length;
+    tlvi.tlviAvailable = avail;
+    tlvi.tlviVarLoc    = varLoc;
+
+#endif // DEBUG
+
+    compiler->eeSetLVinfo(which, startOffs, length, ilVarNum, LVnum, name, avail, varLoc);
 }
 
 /*****************************************************************************/
@@ -11910,19 +12068,16 @@ void CodeGen::genIPmappingGen()
     compiler->eeSetLIdone();
 }
 
-#endif // DEBUGGING_SUPPORT
-
 /*============================================================================
  *
  *   These are empty stubs to help the late dis-assembler to compile
- *   if DEBUGGING_SUPPORT is not enabled, or the late disassembler is being
- *   built into a non-DEBUG build.
+ *   if the late disassembler is being built into a non-DEBUG build.
  *
  *============================================================================
  */
 
 #if defined(LATE_DISASM)
-#if !defined(DEBUGGING_SUPPORT) || !defined(DEBUG)
+#if !defined(DEBUG)
 
 /* virtual */
 const char* CodeGen::siRegVarName(size_t offs, size_t size, unsigned reg)
@@ -11937,6 +12092,6 @@ const char* CodeGen::siStackVarName(size_t offs, size_t size, unsigned reg, unsi
 }
 
 /*****************************************************************************/
-#endif // !defined(DEBUGGING_SUPPORT) || !defined(DEBUG)
+#endif // !defined(DEBUG)
 #endif // defined(LATE_DISASM)
 /*****************************************************************************/

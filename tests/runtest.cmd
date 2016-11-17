@@ -1,10 +1,11 @@
-@if not defined __echo @echo off
+@if not defined _echo @echo off
 setlocal EnableDelayedExpansion
 
 :: Set the default arguments
 set __BuildArch=x64
 set __BuildType=Debug
 set __BuildOS=Windows_NT
+set __MSBuildBuildArch=x64
 
 :: Default to highest Visual Studio version available
 set __VSVersion=vs2015
@@ -30,6 +31,7 @@ set __Sequential=
 set __msbuildExtraArgs=
 set __LongGCTests=
 set __GCSimulatorTests=
+set __AgainstPackages=
 
 :Arg_Loop
 if "%1" == "" goto ArgsDone
@@ -43,6 +45,7 @@ if /i "%1" == "-help" goto Usage
 
 if /i "%1" == "x64"                   (set __BuildArch=x64&set __MSBuildBuildArch=x64&shift&goto Arg_Loop)
 if /i "%1" == "x86"                   (set __BuildArch=x86&set __MSBuildBuildArch=x86&shift&goto Arg_Loop)
+if /i "%1" == "arm"                   (set __BuildArch=arm&set __MSBuildBuildArch=arm&shift&goto Arg_Loop)
 
 if /i "%1" == "debug"                 (set __BuildType=Debug&shift&goto Arg_Loop)
 if /i "%1" == "release"               (set __BuildType=Release&shift&goto Arg_Loop)
@@ -55,6 +58,7 @@ if /i "%1" == "SkipWrapperGeneration" (set __SkipWrapperGeneration=true&shift&go
 if /i "%1" == "Exclude"               (set __Exclude=%2&shift&shift&goto Arg_Loop)
 if /i "%1" == "Exclude0"              (set __Exclude0=%2&shift&shift&goto Arg_Loop)
 if /i "%1" == "TestEnv"               (set __TestEnv=%2&shift&shift&goto Arg_Loop)
+if /i "%1" == "AgainstPackages"       (set __AgainstPackages=1&shift&goto Arg_Loop)
 if /i "%1" == "sequential"            (set __Sequential=1&shift&goto Arg_Loop)
 if /i "%1" == "crossgen"              (set __DoCrossgen=1&shift&goto Arg_Loop)
 if /i "%1" == "longgc"                (set __LongGCTests=1&shift&goto Arg_Loop)
@@ -67,7 +71,7 @@ if /i "%1" == "GenerateLayoutOnly"    (set __GenerateLayoutOnly=1&set __SkipWrap
 if /i "%1" == "PerfTests"             (set __PerfTests=true&set __SkipWrapperGeneration=true&shift&goto Arg_Loop)
 if /i "%1" == "runcrossgentests"      (set RunCrossGen=true&shift&goto Arg_Loop)
 REM change it to COMPlus_GCStress when we stop using xunit harness
-if /i "%1" == "gcstresslevel"         (set __GCSTRESSLEVEL=%2&set __TestTimeout=1800000&shift&shift&goto Arg_Loop) 
+if /i "%1" == "gcstresslevel"         (set __GCSTRESSLEVEL=%2&set __TestTimeout=1800000&shift&shift&goto Arg_Loop)
 
 if /i not "%1" == "msbuildargs" goto SkipMsbuildArgs
 :: All the rest of the args will be collected and passed directly to msbuild.
@@ -142,6 +146,10 @@ if not defined __Sequential (
     set __msbuildCommonArgs=%__msbuildCommonArgs% /p:ParallelRun=false
 )
 
+if defined __AgainstPackages (
+    set __msbuildCommonArgs=%__msbuildCommonArgs% /p:BuildTestsAgainstPackages=true
+)
+
 REM Prepare the Test Drop
 REM Cleans any NI from the last run
 powershell "Get-ChildItem -path %__TestWorkingDir% -Include '*.ni.*' -Recurse -Force | Remove-Item -force"
@@ -185,7 +193,7 @@ call :PrecompileFX
 :SkipPrecompileFX
 
 if  defined __GenerateLayoutOnly (
-    exit /b 1
+    exit /b 0
 )
 
 if not exist %CORE_ROOT%\coreclr.dll (
@@ -360,6 +368,7 @@ echo                                Set to "" to disable default exclusion file.
 echo Exclude-  Optional parameter - this will exclude individual tests from running, specified by ExcludeList ItemGroup in an .targets file.
 echo TestEnv- Optional parameter - this will run a custom script to set custom test environment settings.
 echo VSVersion- Optional parameter - VS2013 or VS2015 ^(default: VS2015^)
+echo AgainstPackages - Optional parameter - this indicates that we are running tests that were built against packages
 echo GenerateLayoutOnly - If specified will not run the tests and will only create the Runtime Dependency Layout
 echo RunCrossgenTests   - Runs ReadytoRun tests
 echo jitstress n        - Runs the tests with COMPlus_JitStress=n

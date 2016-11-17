@@ -39,11 +39,7 @@ namespace System {
 #if !FEATURE_CORECLR
     [SecurityPermissionAttribute(SecurityAction.InheritanceDemand, Flags = SecurityPermissionFlag.Infrastructure)]
 #endif
-#if FEATURE_REMOTING
     public class AppDomainManager : MarshalByRefObject {
-#else // FEATURE_REMOTING
-    public class AppDomainManager {
-#endif // FEATURE_REMOTING
         public AppDomainManager () {}
 #if FEATURE_REMOTING
         [System.Security.SecurityCritical]  // auto-generated
@@ -59,7 +55,7 @@ namespace System {
                                                        Evidence securityInfo,
                                                        AppDomainSetup appDomainInfo) {
             if (friendlyName == null)
-                throw new ArgumentNullException("friendlyName", Environment.GetResourceString("ArgumentNull_String"));
+                throw new ArgumentNullException(nameof(friendlyName), Environment.GetResourceString("ArgumentNull_String"));
 
             Contract.EndContractBlock();
             // If evidence is provided, we check to make sure that is allowed.

@@ -1,4 +1,4 @@
-@if "%_echo%" neq "on" echo off
+@if not defined _echo @echo off
 setlocal EnableDelayedExpansion
 
 if /I [%1] == [-?] goto Usage
@@ -7,6 +7,7 @@ if /I [%1] == [-help] goto Usage
 @if [%1]==[] set __args=-p
 
  @call %~dp0run.cmd sync %__args% %*
+ @call %~dp0run.cmd sync -PublishTestNativeBins %__args% %*
 @exit /b %ERRORLEVEL%
 
 :Usage
@@ -24,6 +25,8 @@ echo                 -AzureToken="Access token"
 echo              To download a specific group of product packages, specify:
 echo                 -BuildMajor
 echo                 -BuildMinor
+echo              To download from a specific container, specify:
+echo                 -Container="container name"
 echo.
 echo.
 echo If no option is specified then sync.cmd -p is implied.

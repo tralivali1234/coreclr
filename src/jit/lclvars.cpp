@@ -1756,13 +1756,14 @@ void Compiler::lvaPromoteLongVars()
     {
         return;
     }
+
     // The lvaTable might grow as we grab temps. Make a local copy here.
     unsigned startLvaCount = lvaCount;
     for (unsigned lclNum = 0; lclNum < startLvaCount; lclNum++)
     {
         LclVarDsc* varDsc = &lvaTable[lclNum];
         if (!varTypeIsLong(varDsc) || varDsc->lvDoNotEnregister || varDsc->lvIsMultiRegArgOrRet() ||
-            (varDsc->lvRefCnt == 0) || varDsc->lvIsStructField)
+            (varDsc->lvRefCnt == 0) || varDsc->lvIsStructField || (fgNoStructPromotion && varDsc->lvIsParam))
         {
             continue;
         }
@@ -2689,6 +2690,10 @@ void Compiler::lvaSortByRefCount()
     lvaTrackedCount             = 0;
     lvaTrackedCountInSizeTUnits = 0;
 
+#ifdef DEBUG
+    VarSetOps::AssignNoCopy(this, lvaTrackedVars, VarSetOps::MakeEmpty(this));
+#endif
+
     if (lvaCount == 0)
     {
         return;
@@ -3396,8 +3401,6 @@ void Compiler::lvaMarkLocalVars()
 
     BasicBlock* block;
 
-#if defined(DEBUGGING_SUPPORT) || defined(DEBUG)
-
 #ifndef DEBUG
     // Assign slot numbers to all variables.
     // If compiler generated local variables, slot numbers will be
@@ -3419,8 +3422,6 @@ void Compiler::lvaMarkLocalVars()
             varDsc->lvSlotNum = lclNum;
         }
     }
-
-#endif // defined(DEBUGGING_SUPPORT) || defined(DEBUG)
 
     /* Mark all local variable references */
 

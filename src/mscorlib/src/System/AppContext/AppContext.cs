@@ -49,6 +49,12 @@ namespace System
             return AppDomain.CurrentDomain.GetData(name);
         }
 
+        [System.Security.SecuritySafeCritical]
+        public static void SetData(string name, object data)
+        {
+            AppDomain.CurrentDomain.SetData(name, data);
+        }
+
         public static event UnhandledExceptionEventHandler UnhandledException
         {
             [System.Security.SecurityCritical]
@@ -62,6 +68,34 @@ namespace System
             {
                 AppDomain.CurrentDomain.UnhandledException -= value;
             }
+        }
+
+        public static event System.EventHandler<System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs> FirstChanceException
+        {  
+            [System.Security.SecurityCritical]
+            add  
+            {  
+                AppDomain.CurrentDomain.FirstChanceException += value;  
+            }  
+            [System.Security.SecurityCritical]
+            remove  
+            {  
+                AppDomain.CurrentDomain.FirstChanceException -= value;  
+            }  
+        }  
+
+        public static event System.EventHandler ProcessExit
+        {  
+            [System.Security.SecurityCritical]
+            add  
+            {  
+                AppDomain.CurrentDomain.ProcessExit += value;  
+            }  
+            [System.Security.SecurityCritical]  
+            remove  
+            {  
+                AppDomain.CurrentDomain.ProcessExit -= value;  
+            }  
         }
 
         #region Switch APIs
@@ -80,9 +114,9 @@ namespace System
         public static bool TryGetSwitch(string switchName, out bool isEnabled)
         {
             if (switchName == null)
-                throw new ArgumentNullException("switchName");
+                throw new ArgumentNullException(nameof(switchName));
             if (switchName.Length == 0)
-                throw new ArgumentException(Environment.GetResourceString("Argument_EmptyName"), "switchName");
+                throw new ArgumentException(Environment.GetResourceString("Argument_EmptyName"), nameof(switchName));
 
             // By default, the switch is not enabled.
             isEnabled = false;
@@ -176,9 +210,9 @@ namespace System
         public static void SetSwitch(string switchName, bool isEnabled)
         {
             if (switchName == null)
-                throw new ArgumentNullException("switchName");
+                throw new ArgumentNullException(nameof(switchName));
             if (switchName.Length == 0)
-                throw new ArgumentException(Environment.GetResourceString("Argument_EmptyName"), "switchName");
+                throw new ArgumentException(Environment.GetResourceString("Argument_EmptyName"), nameof(switchName));
 
             SwitchValueState switchValue = (isEnabled ? SwitchValueState.HasTrueValue : SwitchValueState.HasFalseValue)
                                             | SwitchValueState.HasLookedForOverride;

@@ -83,6 +83,17 @@ namespace System.Runtime.Loader
         [DllImport(JitHelpers.QCall, CharSet = CharSet.Unicode)]
         [SuppressUnmanagedCodeSecurity]
         private static extern void LoadFromPath(IntPtr ptrNativeAssemblyLoadContext, string ilPath, string niPath, ObjectHandleOnStack retAssembly);
+
+        [DllImport(JitHelpers.QCall, CharSet = CharSet.Unicode)]
+        [SuppressUnmanagedCodeSecurity]
+        private static extern void GetLoadedAssembliesInternal(ObjectHandleOnStack assemblies);
+        
+        public static Assembly[] GetLoadedAssemblies()
+        {
+            Assembly[] assemblies = null;
+            GetLoadedAssembliesInternal(JitHelpers.GetObjectHandleOnStack(ref assemblies));
+            return assemblies;
+        }
         
         // These are helpers that can be used by AssemblyLoadContext derivations.
         // They are used to load assemblies in DefaultContext.
@@ -90,12 +101,12 @@ namespace System.Runtime.Loader
         {
             if (assemblyPath == null)
             {
-                throw new ArgumentNullException("assemblyPath");
+                throw new ArgumentNullException(nameof(assemblyPath));
             }
 
             if (Path.IsRelative(assemblyPath))
             {
-                throw new ArgumentException( Environment.GetResourceString("Argument_AbsolutePathRequired"), "assemblyPath");
+                throw new ArgumentException( Environment.GetResourceString("Argument_AbsolutePathRequired"), nameof(assemblyPath));
             }
 
             RuntimeAssembly loadedAssembly = null;
@@ -107,17 +118,17 @@ namespace System.Runtime.Loader
         {
             if (nativeImagePath == null)
             {
-                throw new ArgumentNullException("nativeImagePath");
+                throw new ArgumentNullException(nameof(nativeImagePath));
             }
 
             if (Path.IsRelative(nativeImagePath))
             {
-                throw new ArgumentException( Environment.GetResourceString("Argument_AbsolutePathRequired"), "nativeImagePath");
+                throw new ArgumentException( Environment.GetResourceString("Argument_AbsolutePathRequired"), nameof(nativeImagePath));
             }
 
             if (assemblyPath != null && Path.IsRelative(assemblyPath))
             {
-                throw new ArgumentException(Environment.GetResourceString("Argument_AbsolutePathRequired"), "assemblyPath");
+                throw new ArgumentException(Environment.GetResourceString("Argument_AbsolutePathRequired"), nameof(assemblyPath));
             }
 
             // Basic validation has succeeded - lets try to load the NI image.
@@ -136,7 +147,7 @@ namespace System.Runtime.Loader
         {
             if (assembly == null)
             {
-                throw new ArgumentNullException("assembly");
+                throw new ArgumentNullException(nameof(assembly));
             }
             
             int iAssemblyStreamLength = (int)assembly.Length;
@@ -291,15 +302,15 @@ namespace System.Runtime.Loader
         {
             if (unmanagedDllPath == null)
             {
-                throw new ArgumentNullException("unmanagedDllPath");
+                throw new ArgumentNullException(nameof(unmanagedDllPath));
             }
             if (unmanagedDllPath.Length == 0)
             {
-                throw new ArgumentException(Environment.GetResourceString("Argument_EmptyPath"), "unmanagedDllPath");
+                throw new ArgumentException(Environment.GetResourceString("Argument_EmptyPath"), nameof(unmanagedDllPath));
             }
             if (Path.IsRelative(unmanagedDllPath))
             {
-                throw new ArgumentException(Environment.GetResourceString("Argument_AbsolutePathRequired"), "unmanagedDllPath");
+                throw new ArgumentException(Environment.GetResourceString("Argument_AbsolutePathRequired"), nameof(unmanagedDllPath));
             }
 
             return InternalLoadUnmanagedDllFromPath(unmanagedDllPath);
@@ -355,7 +366,7 @@ namespace System.Runtime.Loader
         {
             if (context == null)
             {
-                throw new ArgumentNullException("context");
+                throw new ArgumentNullException(nameof(context));
             }
             
             // Try to override the default assembly load context
@@ -378,7 +389,7 @@ namespace System.Runtime.Loader
         {
             if (assemblyPath == null)
             {
-                throw new ArgumentNullException("assemblyPath");
+                throw new ArgumentNullException(nameof(assemblyPath));
             }
             
             String fullPath = Path.GetFullPathInternal(assemblyPath);
@@ -394,7 +405,7 @@ namespace System.Runtime.Loader
         {
             if (assembly == null)
             {
-                throw new ArgumentNullException("assembly");
+                throw new ArgumentNullException(nameof(assembly));
             }
             
             AssemblyLoadContext loadContextForAssembly = null;
@@ -459,6 +470,35 @@ namespace System.Runtime.Loader
 
         // Synchronization primitive for controlling initialization of Default load context
         private static readonly object s_initLock = new Object();
+
+        // Occurs when an Assembly is loaded
+        public static event AssemblyLoadEventHandler AssemblyLoad 
+        { 
+            add { AppDomain.CurrentDomain.AssemblyLoad += value; } 
+            remove { AppDomain.CurrentDomain.AssemblyLoad -= value; } 
+        }
+
+        // Occurs when resolution of type fails
+        public static event ResolveEventHandler TypeResolve 
+        { 
+            add { AppDomain.CurrentDomain.TypeResolve += value; } 
+            remove { AppDomain.CurrentDomain.TypeResolve -= value; } 
+        }
+
+        // Occurs when resolution of resource fails
+        public static event ResolveEventHandler ResourceResolve 
+        { 
+            add { AppDomain.CurrentDomain.ResourceResolve += value; } 
+            remove { AppDomain.CurrentDomain.ResourceResolve -= value; } 
+        } 
+
+        // Occurs when resolution of assembly fails
+        // This event is fired after resolve events of AssemblyLoadContext fails
+        public static event ResolveEventHandler AssemblyResolve
+        {
+            add { AppDomain.CurrentDomain.AssemblyResolve += value; } 
+            remove { AppDomain.CurrentDomain.AssemblyResolve -= value; } 
+        }
     }
 
     [System.Security.SecuritySafeCritical]
@@ -473,6 +513,20 @@ namespace System.Runtime.Loader
         {
             // We were loading an assembly into TPA ALC that was not found on TPA list. As a result we are here.
             // Returning null will result in the AssemblyResolve event subscribers to be invoked to help resolve the assembly.
+            return null;
+        }
+    }
+
+    [System.Security.SecuritySafeCritical]
+    internal class IndividualAssemblyLoadContext : AssemblyLoadContext
+    {
+        internal IndividualAssemblyLoadContext() : base(false)
+        {
+        }
+
+        [System.Security.SecuritySafeCritical]  
+        protected override Assembly Load(AssemblyName assemblyName)
+        {
             return null;
         }
     }

@@ -1856,9 +1856,7 @@ private:
     OBJECTREF dateTimeInfo;
     OBJECTREF calendar;
     OBJECTREF m_cultureData;
-#ifndef FEATURE_CORECLR
     OBJECTREF m_consoleFallbackCulture;
-#endif // !FEATURE_CORECLR
     STRINGREF m_name;                       // "real" name - en-US, de-DE_phoneb or fj-FJ
     STRINGREF m_nonSortName;                // name w/o sort info (de-DE for de-DE_phoneb)
     STRINGREF m_sortName;                   // Sort only name (de-DE_phoneb, en-us for fj-fj (w/us sort)
@@ -2194,15 +2192,28 @@ public:
     }
 #endif // FEATURE_LEAK_CULTURE_INFO
 
-#ifndef FEATURE_CORECLR
+#ifdef FEATURE_SYNCHRONIZATIONCONTEXT_WAIT
+#ifdef FEATURE_CORECLR
     OBJECTREF GetSynchronizationContext()
     {
-        LIMITED_METHOD_CONTRACT; 
+        LIMITED_METHOD_CONTRACT;
+        return m_SynchronizationContext;
+    }
+#else // !FEATURE_CORECLR
+    OBJECTREF GetSynchronizationContext()
+    {
+        LIMITED_METHOD_CONTRACT;
         if (m_ExecutionContext != NULL)
+        {
             return m_ExecutionContext->GetSynchronizationContext();
+        }
         return NULL;
     }
-    OBJECTREF GetExecutionContext() 
+#endif // FEATURE_CORECLR
+#endif // FEATURE_SYNCHRONIZATIONCONTEXT_WAIT
+
+#ifndef FEATURE_CORECLR
+    OBJECTREF GetExecutionContext()
     { 
         LIMITED_METHOD_CONTRACT; 
         return (OBJECTREF)m_ExecutionContext;
@@ -4563,9 +4574,7 @@ public:
     INT32 cPositivePercentFormat;   // positivePercentFormat
     INT32 cNegativePercentFormat;   // negativePercentFormat
     INT32 cPercentDecimals;         // percentDecimalDigits
-#ifndef FEATURE_COREFX_GLOBALIZATION    
     INT32 iDigitSubstitution;       // digitSubstitution
-#endif
 
     CLR_BOOL bIsReadOnly;              // Is this NumberFormatInfo ReadOnly?
 #ifndef FEATURE_COREFX_GLOBALIZATION

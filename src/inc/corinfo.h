@@ -231,11 +231,11 @@ TODO: Talk about initializing strutures before use
 #if COR_JIT_EE_VERSION > 460
 
 // Update this one
-SELECTANY const GUID JITEEVersionIdentifier = { /* 0b17dfeb-1ead-4e06-b025-d60d3a493b53 */
-    0x0b17dfeb,
-    0x1ead,
-    0x4e06,
-    { 0xb0, 0x25, 0xd6, 0x0d, 0x3a, 0x49, 0x3b, 0x53 }
+SELECTANY const GUID JITEEVersionIdentifier = { /* 4bd06266-8ef7-4172-bec6-d3149fde7859 */
+    0x4bd06266,
+    0x8ef7,
+    0x4172,
+    {0xbe, 0xc6, 0xd3, 0x14, 0x9f, 0xde, 0x78, 0x59}
 };
 
 #else
@@ -642,6 +642,7 @@ enum CorInfoHelpFunc
 #if COR_JIT_EE_VERSION > 460
     CORINFO_HELP_READYTORUN_GENERIC_HANDLE,
     CORINFO_HELP_READYTORUN_DELEGATE_CTOR,
+    CORINFO_HELP_READYTORUN_GENERIC_STATIC_BASE,
 #else
     #define CORINFO_HELP_READYTORUN_DELEGATE_CTOR CORINFO_HELP_EE_PRESTUB
 #endif // COR_JIT_EE_VERSION
@@ -1706,6 +1707,9 @@ enum CORINFO_FIELD_ACCESSOR
     CORINFO_FIELD_STATIC_GENERICS_STATIC_HELPER, // static field access using the "generic static" helper (argument is MethodTable *)
     CORINFO_FIELD_STATIC_ADDR_HELPER,       // static field accessed using address-of helper (argument is FieldDesc *)
     CORINFO_FIELD_STATIC_TLS,               // unmanaged TLS access
+#if COR_JIT_EE_VERSION > 460
+    CORINFO_FIELD_STATIC_READYTORUN_HELPER, // static field access using a runtime lookup helper
+#endif
 
     CORINFO_FIELD_INTRINSIC_ZERO,           // intrinsic zero (IntPtr.Zero, UIntPtr.Zero)
     CORINFO_FIELD_INTRINSIC_EMPTY_STRING,   // intrinsic emptry string (String.Empty)
@@ -2631,7 +2635,7 @@ public:
     // in the code are.  The native compiler will ensure that these places
     // have a corresponding break point in native code.
     //
-    // Note that unless CORJIT_FLG_DEBUG_CODE is specified, this function will
+    // Note that unless CORJIT_FLAG_DEBUG_CODE is specified, this function will
     // be used only as a hint and the native compiler should not change its
     // code generation.
     virtual void getBoundaries(
@@ -2661,7 +2665,7 @@ public:
     // under debugging, the JIT needs to keep them live over their
     // entire scope so that they can be inspected.
     //
-    // Note that unless CORJIT_FLG_DEBUG_CODE is specified, this function will
+    // Note that unless CORJIT_FLAG_DEBUG_CODE is specified, this function will
     // be used only as a hint and the native compiler should not change its
     // code generation.
     virtual void getVars(

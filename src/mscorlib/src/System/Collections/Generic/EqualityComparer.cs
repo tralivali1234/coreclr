@@ -177,11 +177,13 @@ namespace System.Collections.Generic
         }
 
         // Equals method for the comparer itself.
+        // If in the future this type is made sealed, change the is check to obj != null && GetType() == obj.GetType().
         public override bool Equals(Object obj) =>
-            obj != null && GetType() == obj.GetType();
+            obj is GenericEqualityComparer<T>;
 
+        // If in the future this type is made sealed, change typeof(...) to GetType().
         public override int GetHashCode() =>
-            GetType().GetHashCode();
+            typeof(GenericEqualityComparer<T>).GetHashCode();
     }
 
     [Serializable]
@@ -299,7 +301,7 @@ namespace System.Collections.Generic
     // We use NonRandomizedStringEqualityComparer as default comparer as it doesnt use the randomized string hashing which 
     // keep the perofrmance not affected till we hit collision threshold and then we switch to the comparer which is using 
     // randomized string hashing GenericEqualityComparer<string>
-
+    [Serializable]
     internal class NonRandomizedStringEqualityComparer : GenericEqualityComparer<string> {
         static IEqualityComparer<string> s_nonRandomizedComparer;
         
@@ -338,11 +340,11 @@ namespace System.Collections.Generic
         [System.Security.SecuritySafeCritical]  // auto-generated
         internal unsafe override int IndexOf(byte[] array, byte value, int startIndex, int count) {
             if (array==null)
-                throw new ArgumentNullException("array");
+                throw new ArgumentNullException(nameof(array));
             if (startIndex < 0)
-                throw new ArgumentOutOfRangeException("startIndex", Environment.GetResourceString("ArgumentOutOfRange_Index"));
+                throw new ArgumentOutOfRangeException(nameof(startIndex), Environment.GetResourceString("ArgumentOutOfRange_Index"));
             if (count < 0)
-                throw new ArgumentOutOfRangeException("count", Environment.GetResourceString("ArgumentOutOfRange_Count"));
+                throw new ArgumentOutOfRangeException(nameof(count), Environment.GetResourceString("ArgumentOutOfRange_Count"));
             if (count > array.Length - startIndex)
                 throw new ArgumentException(Environment.GetResourceString("Argument_InvalidOffLen"));
             Contract.EndContractBlock();

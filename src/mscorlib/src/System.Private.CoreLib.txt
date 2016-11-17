@@ -630,6 +630,13 @@ Argument_UnmanagedMemAccessorWrapAround = The UnmanagedMemoryAccessor capacity a
 Argument_UnrecognizedLoaderOptimization = Unrecognized LOADER_OPTIMIZATION property value.  Supported values may include "SingleDomain", "MultiDomain", "MultiDomainHost", and "NotSpecified".
 ArgumentException_NotAllCustomSortingFuncsDefined = Implementations of all the NLS functions must be provided.
 ArgumentException_MinSortingVersion = The runtime does not support a version of "{0}" less than {1}.
+Argument_PreAllocatedAlreadyAllocated = 'preAllocated' is already in use.
+Argument_NativeOverlappedWrongBoundHandle = 'overlapped' was not allocated by this ThreadPoolBoundHandle instance.
+Argument_NativeOverlappedAlreadyFree = 'overlapped' has already been freed.
+Argument_AlreadyBoundOrSyncHandle = 'handle' has already been bound to the thread pool, or was not opened for asynchronous I/O.
+#if FEATURE_SPAN_OF_T
+Argument_InvalidTypeWithPointersNotSupported = Cannot use type '{0}'. Only value types without pointers or references are supported.
+#endif // FEATURE_SPAN_OF_T
 
 ;
 ; =====================================================
@@ -1157,6 +1164,7 @@ InvalidOperation_MethodBaked = Type definition of the method is complete.
 InvalidOperation_MethodHasBody = Method already has a body.
 InvalidOperation_ModificationOfNonCanonicalAcl = This access control list is not in canonical form and therefore cannot be modified.
 InvalidOperation_Method = This method is not supported by the current object.
+InvalidOperation_NativeOverlappedReused = NativeOverlapped cannot be reused for multiple operations.
 InvalidOperation_NotADebugModule = Not a debug ModuleBuilder.
 InvalidOperation_NoMultiModuleAssembly = You cannot have more than one dynamic module in each dynamic assembly in this version of the runtime.
 InvalidOperation_OpenLocalVariableScope = Local variable scope was not properly closed.
@@ -1242,7 +1250,7 @@ InvalidOperation_CannotUseAFCOtherThread = AsyncFlowControl object must be used 
 InvalidOperation_CannotRestoreUnsupressedFlow = Cannot restore context flow when it is not suppressed.
 InvalidOperation_CannotSupressFlowMultipleTimes = Context flow is already suppressed.
 InvalidOperation_CannotUseAFCMultiple = AsyncFlowControl object can be used only once to call Undo().
-InvalidOperation_AsyncFlowCtrlCtxMismatch = AsyncFlowControl objects can be used to restore flow only on the Context that had its flow suppressed.
+InvalidOperation_AsyncFlowCtrlCtxMismatch = AsyncFlowControl objects can be used to restore flow only on a Context that had its flow suppressed.
 InvalidOperation_TimeoutsNotSupported = Timeouts are not supported on this stream.
 InvalidOperation_Overlapped_Pack = Cannot pack a packed Overlapped again.
 InvalidOperation_OnlyValidForDS = Adding ACEs with Object Flags and Object GUIDs is only valid for directory-object ACLs.
@@ -1405,6 +1413,7 @@ NotSupported_SignalAndWaitSTAThread = SignalAndWait on a STA thread is not suppo
 NotSupported_CreateInstanceWithTypeBuilder = CreateInstance cannot be used with an object of type TypeBuilder.
 NotSupported_NonUrlAttrOnMBR = UrlAttribute is the only attribute supported for MarshalByRefObject.
 NotSupported_ActivAttrOnNonMBR = Activation Attributes are not supported for types not deriving from MarshalByRefObject.
+NotSupported_ActivAttr = Activation Attributes are not supported. 
 NotSupported_ActivForCom = Activation Attributes not supported for COM Objects.
 NotSupported_NoCodepageData = No data is available for encoding {0}. For information on defining a custom encoding, see the documentation for the Encoding.RegisterProvider method.
 NotSupported_CodePage50229 = The ISO-2022-CN Encoding (Code page 50229) is not supported.
@@ -1476,6 +1485,7 @@ NotSupported_PIAInAppxProcess = A Primary Interop Assembly is not supported in A
 ; Not referring to "Windows Phone" in the messages, as FEATURE_WINDOWSPHONE is defined for .NET Core as well.
 NotSupported_WindowsPhone = {0} is not supported.
 NotSupported_AssemblyLoadCodeBase = Assembly.Load with a Codebase is not supported.
+NotSupported_AssemblyLoadFromHash = Assembly.LoadFrom with hashValue is not supported.
 #endif
 
 ; TypeLoadException
@@ -1872,7 +1882,7 @@ IO.PathNotFound_Path = Could not find a part of the path '{0}'.
 IO.PathNotFound_NoPathName = Could not find a part of the path.
 
 ; PathTooLongException
-IO.PathTooLong = The specified path, file name, or both are too long. The fully qualified file name must be less than 260 characters, and the directory name must be less than 248 characters.
+IO.PathTooLong = The specified file name or path is too long, or a component of the specified path is too long.
 
 #if FEATURE_CORECLR
 ; SecurityException
@@ -2380,6 +2390,9 @@ ArgumentOutOfRange_IndexOutOfRange=The specified index is outside the current in
 InvalidOperation_CollectionBackingListTooLarge=The collection backing this List contains too many elements.
 InvalidOperation_CollectionBackingDictionaryTooLarge=The collection backing this Dictionary contains too many elements.
 InvalidOperation_CannotRemoveLastFromEmptyCollection=Cannot remove the last element from an empty collection.
+
+; Buffers
+ArgumentException_BufferNotFromPool=The buffer is not associated with this pool and may not be returned to it.
 
 ; Globalization resources
 ;------------------

@@ -70,7 +70,7 @@ namespace System {
                                             Object[] activationAttributes)
         {
             if ((object)type == null)
-                throw new ArgumentNullException("type");
+                throw new ArgumentNullException(nameof(type));
             Contract.EndContractBlock();
 
             if (type is System.Reflection.Emit.TypeBuilder)
@@ -93,14 +93,16 @@ namespace System {
                     }
                 }
                 else
-#endif                    
                     throw new NotSupportedException(Environment.GetResourceString("NotSupported_ActivAttrOnNonMBR" ));
+#else
+                    throw new PlatformNotSupportedException(Environment.GetResourceString("NotSupported_ActivAttr" ));
+#endif
             }
 
             RuntimeType rt = type.UnderlyingSystemType as RuntimeType;
 
             if (rt == null)
-                throw new ArgumentException(Environment.GetResourceString("Arg_MustBeType"),"type");
+                throw new ArgumentException(Environment.GetResourceString("Arg_MustBeType"), nameof(type));
 
             StackCrawlMark stackMark = StackCrawlMark.LookForMyCaller;
             return rt.CreateInstanceImpl(bindingAttr,binder,args,culture,activationAttributes, ref stackMark);
@@ -180,13 +182,13 @@ namespace System {
         static public Object CreateInstance(Type type, bool nonPublic)
         {
             if ((object)type == null)
-                throw new ArgumentNullException("type");
+                throw new ArgumentNullException(nameof(type));
             Contract.EndContractBlock();
 
             RuntimeType rt = type.UnderlyingSystemType as RuntimeType;
 
             if (rt == null)
-                throw new ArgumentException(Environment.GetResourceString("Arg_MustBeType"), "type");
+                throw new ArgumentException(Environment.GetResourceString("Arg_MustBeType"), nameof(type));
 
             StackCrawlMark stackMark = StackCrawlMark.LookForMyCaller;
             return rt.CreateInstanceDefaultCtor(!nonPublic, false, true, ref stackMark);
@@ -439,7 +441,7 @@ namespace System {
         [System.Security.SecurityCritical]  // auto-generated_required
         public static ObjectHandle CreateInstance (AppDomain domain, string assemblyName, string typeName) {
             if (domain == null)
-                throw new ArgumentNullException("domain");
+                throw new ArgumentNullException(nameof(domain));
             Contract.EndContractBlock();
             return domain.InternalCreateInstanceWithNoSecurity(assemblyName, typeName);
         }
@@ -457,7 +459,7 @@ namespace System {
                                                    Object[] activationAttributes,
                                                    Evidence securityAttributes) {
             if (domain == null)
-                throw new ArgumentNullException("domain");
+                throw new ArgumentNullException(nameof(domain));
             Contract.EndContractBlock();
 
 #if FEATURE_CAS_POLICY
@@ -482,7 +484,7 @@ namespace System {
                                                   object[] activationAttributes)
         {
             if (domain == null)
-                throw new ArgumentNullException("domain");
+                throw new ArgumentNullException(nameof(domain));
             Contract.EndContractBlock();
 
             return domain.InternalCreateInstanceWithNoSecurity(assemblyName,
@@ -506,7 +508,7 @@ namespace System {
         [System.Security.SecurityCritical]  // auto-generated_required
         public static ObjectHandle CreateInstanceFrom (AppDomain domain, string assemblyFile, string typeName) {
             if (domain == null)
-                throw new ArgumentNullException("domain");
+                throw new ArgumentNullException(nameof(domain));
             Contract.EndContractBlock();
             return domain.InternalCreateInstanceFromWithNoSecurity(assemblyFile, typeName);
         }
@@ -524,7 +526,7 @@ namespace System {
                                                        Object[] activationAttributes,
                                                        Evidence securityAttributes) {
             if (domain == null)
-                throw new ArgumentNullException("domain");
+                throw new ArgumentNullException(nameof(domain));
             Contract.EndContractBlock();
 
 #if FEATURE_CAS_POLICY
@@ -549,7 +551,7 @@ namespace System {
                                                       object[] activationAttributes)
         {
             if (domain == null)
-                throw new ArgumentNullException("domain");
+                throw new ArgumentNullException(nameof(domain));
             Contract.EndContractBlock();
 
             return domain.InternalCreateInstanceFromWithNoSecurity(assemblyFile,
@@ -645,7 +647,7 @@ namespace System {
         static public Object GetObject(Type type, String url, Object state)
         {
             if (type == null)
-                throw new ArgumentNullException("type");
+                throw new ArgumentNullException(nameof(type));
             Contract.EndContractBlock();
             return RemotingServices.Connect(type, url, state);
         }

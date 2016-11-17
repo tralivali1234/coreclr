@@ -228,7 +228,7 @@ void DACNotifyCompilationFinished(MethodDesc *methodDesc)
         // Are we listed?
         USHORT jnt = jn.Requested((TADDR) modulePtr, t);
         if (jnt & CLRDATA_METHNOTIFY_GENERATED)
-        {            
+        {
             // If so, throw an exception!
 #endif
             DACNotify::DoJITNotification(methodDesc);
@@ -256,7 +256,7 @@ void DACNotifyCompilationFinished(MethodDesc *methodDesc)
 // which prevents us from trying to JIT the same method more that once.
 
 
-PCODE MethodDesc::MakeJitWorker(COR_ILMETHOD_DECODER* ILHeader, DWORD flags, DWORD flags2)
+PCODE MethodDesc::MakeJitWorker(COR_ILMETHOD_DECODER* ILHeader, CORJIT_FLAGS flags)
 {
     STANDARD_VM_CONTRACT;
 
@@ -280,7 +280,7 @@ PCODE MethodDesc::MakeJitWorker(COR_ILMETHOD_DECODER* ILHeader, DWORD flags, DWO
 #ifdef FEATURE_MULTICOREJIT
     MulticoreJitManager & mcJitManager = GetAppDomain()->GetMulticoreJitManager();
 
-    bool fBackgroundThread = (flags & CORJIT_FLG_MCJIT_BACKGROUND) != 0;
+    bool fBackgroundThread = flags.IsSet(CORJIT_FLAGS::CORJIT_FLAG_MCJIT_BACKGROUND);
 #endif
 
     {
@@ -424,22 +424,30 @@ PCODE MethodDesc::MakeJitWorker(COR_ILMETHOD_DECODER* ILHeader, DWORD flags, DWO
             {
                 BEGIN_PIN_PROFILER(CORProfilerTrackJITInfo());
 
+#ifdef FEATURE_MULTICOREJIT
                 // Multicore JIT should be disabled when CORProfilerTrackJITInfo is on
                 // But there could be corner case in which profiler is attached when multicore background thread is calling MakeJitWorker
                 // Disable this block when calling from multicore JIT background thread
-                if (!IsNoMetadata()
-#ifdef FEATURE_MULTICOREJIT
-
-                    && (! fBackgroundThread)
+                if (!fBackgroundThread)
 #endif
-                    )
                 {
-                    g_profControlBlock.pProfInterface->JITCompilationStarted((FunctionID) this, TRUE);
-                    // The profiler may have changed the code on the callback.  Need to
-                    // pick up the new code.  Note that you have to be fully trusted in
-                    // this mode and the code will not be verified.
-                    COR_ILMETHOD *pilHeader = GetILHeader(TRUE);
-                    new (ILHeader) COR_ILMETHOD_DECODER(pilHeader, GetMDImport(), NULL);
+                    if (!IsNoMetadata())
+                    {
+                        g_profControlBlock.pProfInterface->JITCompilationStarted((FunctionID) this, TRUE);
+                        // The profiler may have changed the code on the callback.  Need to
+                        // pick up the new code.  Note that you have to be fully trusted in
+                        // this mode and the code will not be verified.
+                        COR_ILMETHOD *pilHeader = GetILHeader(TRUE);
+                        new (ILHeader) COR_ILMETHOD_DECODER(pilHeader, GetMDImport(), NULL);
+                    }
+                    else
+                    {
+                        unsigned int ilSize, unused;
+                        CorInfoOptions corOptions;
+                        LPCBYTE ilHeaderPointer = this->AsDynamicMethodDesc()->GetResolver()->GetCodeInfo(&ilSize, &unused, &corOptions, &unused);
+
+                        g_profControlBlock.pProfInterface->DynamicMethodJITCompilationStarted((FunctionID) this, TRUE, ilHeaderPointer, ilSize);
+                    }
                 }
                 END_PIN_PROFILER();
             }
@@ -457,13 +465,13 @@ PCODE MethodDesc::MakeJitWorker(COR_ILMETHOD_DECODER* ILHeader, DWORD flags, DWO
             if (!fBackgroundThread)
 #endif // FEATURE_MULTICOREJIT
             {
-                StackSampler::RecordJittingInfo(this, flags, flags2);
+                StackSampler::RecordJittingInfo(this, flags);
             }
 #endif // FEATURE_STACK_SAMPLING
 
             EX_TRY
             {
-                pCode = UnsafeJitFunction(this, ILHeader, flags, flags2, &sizeOfCode);
+                pCode = UnsafeJitFunction(this, ILHeader, flags, &sizeOfCode);
             }
             EX_CATCH
             {
@@ -592,6 +600,10 @@ GotNewCode:
                         JITCompilationFinished((FunctionID) this,
                                                 pEntry->m_hrResultCode, 
                                                 TRUE);
+                }
+                else
+                {
+                    g_profControlBlock.pProfInterface->DynamicMethodJITCompilationFinished((FunctionID) this, pEntry->m_hrResultCode, TRUE);
                 }
                 END_PIN_PROFILER();
             }
@@ -1455,7 +1467,7 @@ PCODE MethodDesc::DoPrestub(MethodTable *pDispatchingMT)
             // Mark the code as hot in case the method ends up in the native image
             g_IBCLogger.LogMethodCodeAccess(this);
 
-            pCode = MakeJitWorker(pHeader, 0, 0);
+            pCode = MakeJitWorker(pHeader, CORJIT_FLAGS());
 
 #ifdef FEATURE_INTERPRETER
             if ((pCode != NULL) && !HasStableEntryPoint())

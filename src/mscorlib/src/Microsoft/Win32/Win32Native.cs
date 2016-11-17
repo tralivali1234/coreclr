@@ -327,7 +327,7 @@ namespace Microsoft.Win32 {
                 // } REG_TZI_FORMAT;
                 //
                 if (bytes == null || bytes.Length != 44) {
-                    throw new ArgumentException(Environment.GetResourceString("Argument_InvalidREG_TZI_FORMAT"), "bytes");
+                    throw new ArgumentException(Environment.GetResourceString("Argument_InvalidREG_TZI_FORMAT"), nameof(bytes));
                 }
                 Bias = BitConverter.ToInt32(bytes, 0);
                 StandardBias = BitConverter.ToInt32(bytes, 4);
@@ -910,6 +910,7 @@ namespace Microsoft.Win32 {
         [DllImport(KERNEL32, SetLastError = true, CharSet = CharSet.Unicode, ExactSpelling = true)]
         internal static extern uint GetLongPathNameW(string lpszShortPath, SafeHandle lpszLongPath, uint cchBuffer);
 
+#if !FEATURE_CORECLR
         // Disallow access to all non-file devices from methods that take
         // a String.  This disallows DOS devices like "con:", "com1:", 
         // "lpt1:", etc.  Use this to avoid security problems, like allowing
@@ -935,7 +936,7 @@ namespace Microsoft.Win32 {
             }
 
             return handle;
-        }            
+        }
 
         [System.Security.SecurityCritical]  // auto-generated
         internal static SafeFileHandle UnsafeCreateFile(String lpFileName,
@@ -948,8 +949,8 @@ namespace Microsoft.Win32 {
                                 dwFlagsAndAttributes, hTemplateFile );
 
             return handle;
-        }            
-    
+        }
+
         // Do not use these directly, use the safe or unsafe versions above.
         // The safe version does not support devices (aka if will only open
         // files on disk), while the unsafe version give you the full semantic
@@ -959,6 +960,7 @@ namespace Microsoft.Win32 {
                     int dwDesiredAccess, System.IO.FileShare dwShareMode,
                     SECURITY_ATTRIBUTES securityAttrs, System.IO.FileMode dwCreationDisposition,
                     int dwFlagsAndAttributes, IntPtr hTemplateFile);
+#endif
 
         [DllImport(KERNEL32, SetLastError=true, CharSet=CharSet.Auto, BestFitMapping=false)]
         internal static extern SafeFileMappingHandle CreateFileMapping(SafeFileHandle hFile, IntPtr lpAttributes, uint fProtect, uint dwMaximumSizeHigh, uint dwMaximumSizeLow, String lpName);
@@ -1070,7 +1072,6 @@ namespace Microsoft.Win32 {
         internal const int FIND_FROMSTART   = 0x00400000; // look for value in source, starting at the beginning
         internal const int FIND_FROMEND     = 0x00800000; // look for value in source, starting at the end
 
-#if !FEATURE_CORECLR
         [StructLayout(LayoutKind.Sequential)]
         internal struct NlsVersionInfoEx 
         {
@@ -1080,7 +1081,6 @@ namespace Microsoft.Win32 {
             internal int dwEffectiveId;
             internal Guid guidCustomVersion;
         }
-#endif
 
         [DllImport(KERNEL32, CharSet=CharSet.Auto, SetLastError=true, BestFitMapping=false)]
         internal static extern int GetWindowsDirectory([Out]StringBuilder sb, int length);

@@ -665,11 +665,9 @@ void dumpILRange(const BYTE* const codeAddr, unsigned codeSize) // in bytes
 
 /*****************************************************************************
  *
- *  Display a variable set (which may be a 32-bit or 64-bit number); only
- *  one or two of these can be used at once.
+ *  Display a variable set.
  */
-
-const char* genES2str(EXPSET_TP set)
+const char* genES2str(BitVecTraits* traits, EXPSET_TP set)
 {
     const int   bufSize = 17;
     static char num1[bufSize];
@@ -682,11 +680,7 @@ const char* genES2str(EXPSET_TP set)
 
     nump = (nump == num1) ? num2 : num1;
 
-#if EXPSET_SZ == 32
-    sprintf_s(temp, bufSize, "%08X", set);
-#else
-    sprintf_s(temp, bufSize, "%08X%08X", (int)(set >> 32), (int)set);
-#endif
+    sprintf_s(temp, bufSize, "%s", BitVecOps::ToString(traits, set));
 
     return temp;
 }
@@ -1417,6 +1411,9 @@ void HelperCallProperties::init()
             case CORINFO_HELP_GETGENERICS_GCSTATIC_BASE:
             case CORINFO_HELP_GETGENERICS_NONGCSTATIC_BASE:
             case CORINFO_HELP_READYTORUN_STATIC_BASE:
+#if COR_JIT_EE_VERSION > 460
+            case CORINFO_HELP_READYTORUN_GENERIC_STATIC_BASE:
+#endif // COR_JIT_EE_VERSION > 460
 
                 // These may invoke static class constructors
                 // These can throw InvalidProgram exception if the class can not be constructed

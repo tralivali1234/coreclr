@@ -35,6 +35,7 @@ usage()
     echo "clangx.y - optional argument to build using clang version x.y."
     echo "cross - optional argument to signify cross compilation,"
     echo "      - will use ROOTFS_DIR environment variable if set."
+    echo "pgoinstrument - generate instrumented code for profile guided optimization enabled binaries."
     echo "configureonly - do not perform any builds; just configure the build."
     echo "skipconfigure - skip build configuration."
     echo "skipnative - do not build native components."
@@ -177,8 +178,9 @@ build_coreclr()
 
 		pushd "$__IntermediatesDir"
         # Regenerate the CMake solution
-        echo "Invoking \"$__ProjectRoot/src/pal/tools/gen-buildsys-clang.sh\" \"$__ProjectRoot\" $__ClangMajorVersion $__ClangMinorVersion $__BuildArch $__BuildType $__CodeCoverage $__IncludeTests $generator $__cmakeargs"
-        "$__ProjectRoot/src/pal/tools/gen-buildsys-clang.sh" "$__ProjectRoot" $__ClangMajorVersion $__ClangMinorVersion $__BuildArch $__BuildType $__CodeCoverage $__IncludeTests $generator "$__cmakeargs"
+        __ExtraCmakeArgs="-DCLR_CMAKE_TARGET_OS=$__BuildOS -DCLR_CMAKE_PACKAGES_DIR=$__PackagesDir -DCLR_CMAKE_PGO_INSTRUMENT=$__PgoInstrument"
+        echo "Invoking \"$__ProjectRoot/src/pal/tools/gen-buildsys-clang.sh\" \"$__ProjectRoot\" $__ClangMajorVersion $__ClangMinorVersion $__BuildArch $__BuildType $__CodeCoverage $__IncludeTests $generator $__ExtraCmakeArgs $__cmakeargs"
+        "$__ProjectRoot/src/pal/tools/gen-buildsys-clang.sh" "$__ProjectRoot" $__ClangMajorVersion $__ClangMinorVersion $__BuildArch $__BuildType $__CodeCoverage $__IncludeTests $generator "$__ExtraCmakeArgs" "$__cmakeargs"
         popd
     fi
 
@@ -215,6 +217,15 @@ build_coreclr()
         echo "Failed to build coreclr components."
         exit 1
     fi
+
+    echo "Verifying System.Globalization.Native.so dependencies"
+
+    ldd -r $__BinDir/System.Globalization.Native.so | awk 'BEGIN {count=0} /undefined symbol:/ { if (count==0) {print "Undefined symbol(s) found:"} print " " $3; count++ } END {if (count>0) exit(1)}'
+    if [ $? != 0 ]; then
+        echo "Failed. System.Globalization.Native.so has undefined dependencies. These are likely ICU APIs that need to be added to icushim.h"
+        exit 1
+    fi
+
 	popd
 }
 
@@ -254,6 +265,9 @@ isMSBuildOnNETCoreSupported()
                     __isMSBuildOnNETCoreSupported=1
                     ;;
                 "ubuntu.16.10-x64")
+                    __isMSBuildOnNETCoreSupported=1
+                    ;;
+                "alpine.3.4.3-x64")
                     __isMSBuildOnNETCoreSupported=1
                     ;;
                 *)
@@ -459,6 +473,7 @@ __RunArgs=
 __MSBCleanBuildArgs=
 __UseNinja=0
 __VerboseBuild=0
+__PgoInstrument=0
 __ConfigureOnly=0
 __SkipConfigure=0
 __SkipRestore=""
@@ -556,6 +571,10 @@ while :; do
 
         ninja)
             __UseNinja=1
+            ;;
+
+        pgoinstrument)
+            __PgoInstrument=1
             ;;
 
         configureonly)

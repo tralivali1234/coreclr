@@ -1,6 +1,7 @@
-@if not defined __echo @echo off
+@if not defined _echo @echo off
 setlocal EnableDelayedExpansion EnableExtensions
 
+echo Starting Build at %TIME%
 set __ThisScriptFull="%~f0"
 set __VSToolsRoot=%VS140COMNTOOLS%
 :: Note that the msbuild project files (specifically, dir.proj) will use the following variables, if set:
@@ -51,6 +52,8 @@ set __BuildTypeDebug=0
 set __BuildTypeChecked=0
 set __BuildTypeRelease=0
 set __BuildJit32="-DBUILD_JIT32=0"
+
+set __PgoInstrument=0
 
 REM __PassThroughArgs is a set of things that will be passed through to nested calls to build.cmd
 REM when using "all".
@@ -103,7 +106,9 @@ if /i "%1" == "skiptests"           (set __BuildTests=0&set processedArgs=!proce
 if /i "%1" == "skipbuildpackages"   (set __BuildPackages=0&set processedArgs=!processedArgs! %1&shift&goto Arg_Loop)
 if /i "%1" == "usenmakemakefiles"   (set __NMakeMakefiles=1&set __ConfigureOnly=1&set __BuildNative=1&set __BuildNativeCoreLib=0&set __BuildCoreLib=0&set __BuildTests=0&set __BuildPackages=0&set processedArgs=!processedArgs! %1&shift&goto Arg_Loop)
 if /i "%1" == "buildjit32"          (set __BuildJit32="-DBUILD_JIT32=1"&set processedArgs=!processedArgs! %1&shift&goto Arg_Loop)
+if /i "%1" == "pgoinstrument"       (set __PgoInstrument=1&set processedArgs=!processedArgs! %1&shift&goto Arg_Loop)
 if /i "%1" == "toolset_dir"         (set __ToolsetDir=%2&set __PassThroughArgs=%__PassThroughArgs% %2&set processedArgs=!processedArgs! %1 %2&shift&shift&goto Arg_Loop)
+if /i "%1" == "altjitcrossgen"      (set __AltJitCrossgen=1&set processedArgs=!processedArgs! %1&shift&goto Arg_Loop)
 
 if [!processedArgs!]==[] (
   call set __UnprocessedBuildArgs=!__args!
@@ -217,24 +222,32 @@ if %__BuildNative% EQU 1 (
     :: Set the environment for the native build
     set __VCBuildArch=x86_amd64
     if /i "%__BuildArch%" == "x86" ( set __VCBuildArch=x86 )
-    if /i "%__BuildArch%" == "arm" (set __VCBuildArch=x86_arm)
+    if /i "%__BuildArch%" == "arm" (
+        set __VCBuildArch=x86_arm
+        
+        REM Make CMake pick the highest installed version in the 10.0.* range
+        set ___SDKVersion="-DCMAKE_SYSTEM_VERSION=10.0"
+    )
+
     echo %__MsgPrefix%Using environment: "%__VSToolsRoot%\..\..\VC\vcvarsall.bat" !__VCBuildArch!
     call                                 "%__VSToolsRoot%\..\..\VC\vcvarsall.bat" !__VCBuildArch!
-	@if defined __echo @echo on
+	@if defined _echo @echo on
 
     if not defined VSINSTALLDIR (
         echo %__MsgPrefix%Error: VSINSTALLDIR variable not defined.
         exit /b 1
     )
     if not exist "!VSINSTALLDIR!DIA SDK" goto NoDIA
+
 :GenVSSolution
     if defined __SkipConfigure goto SkipConfigure
 
     echo %__MsgPrefix%Regenerating the Visual Studio solution
 
     pushd "%__IntermediatesDir%"
-    call "%__SourceDir%\pal\tools\gen-buildsys-win.bat" "%__ProjectDir%" %__VSVersion% %__BuildArch% %__BuildJit32%
-	@if defined __echo @echo on
+    set __ExtraCmakeArgs=!___SDKVersion! "-DCLR_CMAKE_TARGET_OS=%__BuildOs%" "-DCLR_CMAKE_PACKAGES_DIR=%__PackagesDir%" "-DCLR_CMAKE_PGO_INSTRUMENT=%__PgoInstrument%"
+    call "%__SourceDir%\pal\tools\gen-buildsys-win.bat" "%__ProjectDir%" %__VSVersion% %__BuildArch% %__BuildJit32% !__ExtraCmakeArgs!
+	@if defined _echo @echo on
     popd
 :SkipConfigure
     if defined __ConfigureOnly goto SkipNativeBuild
@@ -278,7 +291,7 @@ if /i "%__DoCrossArchBuild%"=="1" (
     set __VCBuildArch=x86_amd64
     if /i "%__CrossArch%" == "x86" ( set __VCBuildArch=x86 )
     @call "%__VSToolsRoot%\..\..\VC\vcvarsall.bat" !__VCBuildArch!
-    @if defined __echo @echo on
+    @if defined _echo @echo on
 
     if not exist "%__CrossCompIntermediatesDir%" md "%__CrossCompIntermediatesDir%"
     if defined __SkipConfigure goto SkipConfigureCrossBuild
@@ -286,9 +299,9 @@ if /i "%__DoCrossArchBuild%"=="1" (
     pushd "%__CrossCompIntermediatesDir%"
     set __CMakeBinDir=%__CrossComponentBinDir%
     set "__CMakeBinDir=!__CMakeBinDir:\=/!"
-    set __ExtraCmakeArgs="-DCLR_CROSS_COMPONENTS_BUILD=1" "-DCLR_CMAKE_TARGET_ARCH=%__BuildArch%"
+    set __ExtraCmakeArgs="-DCLR_CROSS_COMPONENTS_BUILD=1" "-DCLR_CMAKE_TARGET_ARCH=%__BuildArch%" "-DCLR_CMAKE_TARGET_OS=%__BuildOs%" "-DCLR_CMAKE_PACKAGES_DIR=%__PackagesDir%" "-DCLR_CMAKE_PGO_INSTRUMENT=%__PgoInstrument%"
     call "%__SourceDir%\pal\tools\gen-buildsys-win.bat" "%__ProjectDir%" %__VSVersion% %__CrossArch% !__ExtraCmakeArgs!
-    @if defined __echo @echo on
+    @if defined _echo @echo on
     popd
 :SkipConfigureCrossBuild
     if not exist "%__CrossCompIntermediatesDir%\install.vcxproj" (
@@ -354,7 +367,12 @@ set PATH=%PATH%;%WinDir%\Microsoft.Net\Framework64\V4.0.30319;%WinDir%\Microsoft
 
 if %__BuildNativeCoreLib% EQU 1 (
     echo %__MsgPrefix%Generating native image of System.Private.CoreLib for %__BuildOS%.%__BuildArch%.%__BuildType%
-	
+
+    if "%__AltJitCrossgen%"=="1" (
+        set COMPlus_AltJitNgen=*
+        set COMPlus_AltJitName=protojit.dll
+    )
+
     echo "%__CrossgenExe%" /Platform_Assemblies_Paths "%__BinDir%" /out "%__BinDir%\System.Private.CoreLib.ni.dll" "%__BinDir%\System.Private.CoreLib.dll"
     "%__CrossgenExe%" /Platform_Assemblies_Paths "%__BinDir%" /out "%__BinDir%\System.Private.CoreLib.ni.dll" "%__BinDir%\System.Private.CoreLib.dll" > "%__CrossGenCoreLibLog%" 2>&1
     if NOT !errorlevel! == 0 (
@@ -373,8 +391,16 @@ if %__BuildNativeCoreLib% EQU 1 (
 
     set "__CrossGenCoreLibLog=%__LogsDir%\CrossgenMSCoreLib_%__BuildOS%__%__BuildArch%__%__BuildType%.log"
     set "__CrossgenExe=%__CrossComponentBinDir%\crossgen.exe"
+
     "!__CrossgenExe!" /Platform_Assemblies_Paths "%__BinDir%" /out "%__BinDir%\mscorlib.ni.dll" "%__BinDir%\mscorlib.dll" > "!__CrossGenCoreLibLog!" 2>&1
-    if NOT !errorlevel! == 0 (
+    set err=!errorlevel!
+
+    if "%__AltJitCrossgen%"=="1" (
+        set COMPlus_AltJitNgen=
+        set COMPlus_AltJitName=
+    )
+
+    if NOT !err! == 0 (
         echo %__MsgPrefix%Error: CrossGen mscorlib facade build failed. Refer to the build log file for details:
         echo     !__CrossGenCoreLibLog!
         exit /b 1
@@ -430,7 +456,7 @@ REM === All builds complete!
 REM ===
 REM =========================================================================================
 
-echo %__MsgPrefix%Repo successfully built.
+echo %__MsgPrefix%Repo successfully built.  Finished at %TIME%
 echo %__MsgPrefix%Product binaries are available at !__BinDir!
 if %__BuildTests% EQU 1 (
     echo %__MsgPrefix%Test binaries are available at !__TestBinDir!
@@ -538,6 +564,7 @@ echo     for the specified platform ^(FreeBSD, Linux, NetBSD, OS X or Windows,
 echo     respectively^).
 echo     add nativemscorlib to go further and build the native image for designated mscorlib.
 echo toolset_dir ^<dir^> : set the toolset directory -- Arm64 use only. Required for Arm64 builds.
+echo pgoinstrument: generate instrumented code for profile guided optimization enabled binaries.
 echo configureonly: skip all builds; only run CMake ^(default: CMake and builds are run^)
 echo skipconfigure: skip CMake ^(default: CMake is run^)
 echo skipmscorlib: skip building System.Private.CoreLib ^(default: System.Private.CoreLib is built^).

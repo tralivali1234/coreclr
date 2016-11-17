@@ -40,7 +40,7 @@ void genCkfinite(GenTreePtr treeNode);
 
 void genIntrinsic(GenTreePtr treeNode);
 
-void genPutArgStk(GenTreePtr treeNode);
+void genPutArgStk(GenTreePutArgStk* treeNode);
 unsigned getBaseVarForPutArgStk(GenTreePtr treeNode);
 
 #if defined(_TARGET_XARCH_) || defined(_TARGET_ARM64_)
@@ -107,6 +107,7 @@ void genUnspillRegIfNeeded(GenTree* tree);
 
 regNumber genConsumeReg(GenTree* tree);
 
+void genCopyRegIfNeeded(GenTree* tree, regNumber needReg);
 void genConsumeRegAndCopy(GenTree* tree, regNumber needReg);
 
 void genConsumeIfReg(GenTreePtr tree)
@@ -125,9 +126,9 @@ void genConsumeAddress(GenTree* addr);
 
 void genConsumeAddrMode(GenTreeAddrMode* mode);
 
-void genConsumeBlockSize(GenTreeBlk* blkNode, regNumber sizeReg);
-void genConsumeBlockDst(GenTreeBlk* blkNode);
-GenTree* genConsumeBlockSrc(GenTreeBlk* blkNode);
+void genSetBlockSize(GenTreeBlk* blkNode, regNumber sizeReg);
+void genConsumeBlockSrc(GenTreeBlk* blkNode);
+void genSetBlockSrc(GenTreeBlk* blkNode, regNumber srcReg);
 void genConsumeBlockOp(GenTreeBlk* blkNode, regNumber dstReg, regNumber srcReg, regNumber sizeReg);
 
 #ifdef FEATURE_PUT_STRUCT_ARG_STK
@@ -161,6 +162,10 @@ void genCodeForCpBlkRepMovs(GenTreeBlk* cpBlkNode);
 void genCodeForCpBlkUnroll(GenTreeBlk* cpBlkNode);
 
 #ifdef FEATURE_PUT_STRUCT_ARG_STK
+#ifdef _TARGET_X86_
+bool genAdjustStackForPutArgStk(GenTreePutArgStk* putArgStk, bool isSrcInMemory);
+#endif // _TARGET_X86_
+
 void genPutStructArgStk(GenTreePutArgStk* treeNode);
 
 int genMove8IfNeeded(unsigned size, regNumber tmpReg, GenTree* srcAddr, unsigned offset);
@@ -169,7 +174,7 @@ int genMove2IfNeeded(unsigned size, regNumber tmpReg, GenTree* srcAddr, unsigned
 int genMove1IfNeeded(unsigned size, regNumber tmpReg, GenTree* srcAddr, unsigned offset);
 void genStructPutArgRepMovs(GenTreePutArgStk* putArgStkNode);
 void genStructPutArgUnroll(GenTreePutArgStk* putArgStkNode);
-void genStoreRegToStackArg(var_types type, regNumber reg, unsigned offset);
+void genStoreRegToStackArg(var_types type, regNumber reg, int offset);
 #endif // FEATURE_PUT_STRUCT_ARG_STK
 
 void genCodeForLoadOffset(instruction ins, emitAttr size, regNumber dst, GenTree* base, unsigned offset);
@@ -202,6 +207,14 @@ void genCallInstruction(GenTreePtr call);
 
 void genJmpMethod(GenTreePtr jmp);
 
+BasicBlock* genCallFinally(BasicBlock* block, BasicBlock* lblk);
+
+#if FEATURE_EH_FUNCLETS
+void genEHCatchRet(BasicBlock* block);
+#else  // !FEATURE_EH_FUNCLETS
+void genEHFinallyOrFilterRet(BasicBlock* block);
+#endif // !FEATURE_EH_FUNCLETS
+
 void genMultiRegCallStoreToLocal(GenTreePtr treeNode);
 
 // Deals with codegen for muti-register struct returns.
@@ -228,8 +241,8 @@ bool genIsRegCandidateLocal(GenTreePtr tree)
 bool m_pushStkArg;
 #else  // !_TARGET_X86_
 unsigned m_stkArgVarNum;
-#endif // !_TARGET_X86_
 unsigned m_stkArgOffset;
+#endif // !_TARGET_X86_
 #endif // !FEATURE_PUT_STRUCT_ARG_STK
 
 #ifdef DEBUG

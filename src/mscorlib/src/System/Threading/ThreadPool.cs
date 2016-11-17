@@ -29,14 +29,15 @@
 namespace System.Threading
 {
     using System.Security;
+#if FEATURE_REMOTING
     using System.Runtime.Remoting;
+#endif
     using System.Security.Permissions;
     using System;
     using Microsoft.Win32;
     using System.Runtime.CompilerServices;
     using System.Runtime.ConstrainedExecution;
     using System.Runtime.InteropServices;
-    using System.Runtime.Versioning;
     using System.Collections.Generic;
     using System.Diagnostics.Contracts;
     using System.Diagnostics.CodeAnalysis;
@@ -46,17 +47,17 @@ namespace System.Threading
     {
         //Per-appDomain quantum (in ms) for which the thread keeps processing
         //requests in the current domain.
-        public static uint tpQuantum = 30U;
+        public const uint TP_QUANTUM = 30U;
 
-        public static int processorCount = Environment.ProcessorCount;
+        public static readonly int processorCount = Environment.ProcessorCount;
 
-        public static bool tpHosted = ThreadPool.IsThreadPoolHosted(); 
+        public static readonly bool tpHosted = ThreadPool.IsThreadPoolHosted(); 
 
         public static volatile bool vmTpInitialized;
         public static bool enableWorkerTracking;
 
         [SecurityCritical]
-        public static ThreadPoolWorkQueue workQueue = new ThreadPoolWorkQueue();
+        public static readonly ThreadPoolWorkQueue workQueue = new ThreadPoolWorkQueue();
 
         [System.Security.SecuritySafeCritical] // static constructors should be safe to call
         static ThreadPoolGlobals()
@@ -546,7 +547,7 @@ namespace System.Threading
         internal volatile QueueSegment queueTail;
         internal bool loggingEnabled;
 
-        internal static SparseArray<WorkStealingQueue> allThreadQueues = new SparseArray<WorkStealingQueue>(16);
+        internal static readonly SparseArray<WorkStealingQueue> allThreadQueues = new SparseArray<WorkStealingQueue>(16);
 
         private volatile int numOutstandingThreadRequests = 0;
       
@@ -709,7 +710,7 @@ namespace System.Threading
         {
             var workQueue = ThreadPoolGlobals.workQueue;
             //
-            // The clock is ticking!  We have ThreadPoolGlobals.tpQuantum milliseconds to get some work done, and then
+            // The clock is ticking!  We have ThreadPoolGlobals.TP_QUANTUM milliseconds to get some work done, and then
             // we need to return to the VM.
             //
             int quantumStartTime = Environment.TickCount;
@@ -743,7 +744,7 @@ namespace System.Threading
                 //
                 // Loop until our quantum expires.
                 //
-                while ((Environment.TickCount - quantumStartTime) < ThreadPoolGlobals.tpQuantum)
+                while ((Environment.TickCount - quantumStartTime) < ThreadPoolGlobals.TP_QUANTUM)
                 {
                     //
                     // Dequeue and EnsureThreadRequested must be protected from ThreadAbortException.  
@@ -1094,11 +1095,7 @@ namespace System.Threading
     }
 
 [System.Runtime.InteropServices.ComVisible(true)]
-#if FEATURE_REMOTING    
     public sealed class RegisteredWaitHandle : MarshalByRefObject {
-#else // FEATURE_REMOTING
-    public sealed class RegisteredWaitHandle {
-#endif // FEATURE_REMOTING
         private RegisteredWaitHandleSafe internalRegisteredWait;
     
         internal RegisteredWaitHandle()
@@ -1508,7 +1505,7 @@ namespace System.Threading
             }
             else
             {
-                throw new ArgumentNullException("WaitOrTimerCallback");
+                throw new ArgumentNullException(nameof(WaitOrTimerCallback));
             }
             return registeredWaitHandle;
         }
@@ -1525,7 +1522,7 @@ namespace System.Threading
              )
         {
             if (millisecondsTimeOutInterval < -1)
-                throw new ArgumentOutOfRangeException("millisecondsTimeOutInterval", Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
+                throw new ArgumentOutOfRangeException(nameof(millisecondsTimeOutInterval), Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
             Contract.EndContractBlock();
             StackCrawlMark stackMark = StackCrawlMark.LookForMyCaller;
             return RegisterWaitForSingleObject(waitObject,callBack,state,(UInt32)millisecondsTimeOutInterval,executeOnlyOnce,ref stackMark,true);
@@ -1542,7 +1539,7 @@ namespace System.Threading
              )
         {
             if (millisecondsTimeOutInterval < -1)
-                throw new ArgumentOutOfRangeException("millisecondsTimeOutInterval", Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
+                throw new ArgumentOutOfRangeException(nameof(millisecondsTimeOutInterval), Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
             Contract.EndContractBlock();
             StackCrawlMark stackMark = StackCrawlMark.LookForMyCaller;
             return RegisterWaitForSingleObject(waitObject,callBack,state,(UInt32)millisecondsTimeOutInterval,executeOnlyOnce,ref stackMark,false);
@@ -1559,7 +1556,7 @@ namespace System.Threading
         )
         {
             if (millisecondsTimeOutInterval < -1)
-                throw new ArgumentOutOfRangeException("millisecondsTimeOutInterval", Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
+                throw new ArgumentOutOfRangeException(nameof(millisecondsTimeOutInterval), Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
             Contract.EndContractBlock();
             StackCrawlMark stackMark = StackCrawlMark.LookForMyCaller;
             return RegisterWaitForSingleObject(waitObject,callBack,state,(UInt32)millisecondsTimeOutInterval,executeOnlyOnce,ref stackMark,true);
@@ -1576,7 +1573,7 @@ namespace System.Threading
         )
         {
             if (millisecondsTimeOutInterval < -1)
-                throw new ArgumentOutOfRangeException("millisecondsTimeOutInterval", Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
+                throw new ArgumentOutOfRangeException(nameof(millisecondsTimeOutInterval), Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
             Contract.EndContractBlock();
             StackCrawlMark stackMark = StackCrawlMark.LookForMyCaller;
             return RegisterWaitForSingleObject(waitObject,callBack,state,(UInt32)millisecondsTimeOutInterval,executeOnlyOnce,ref stackMark,false);
@@ -1594,9 +1591,9 @@ namespace System.Threading
         {
             long tm = (long)timeout.TotalMilliseconds;
             if (tm < -1)
-                throw new ArgumentOutOfRangeException("timeout", Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
+                throw new ArgumentOutOfRangeException(nameof(timeout), Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
             if (tm > (long) Int32.MaxValue)
-                throw new ArgumentOutOfRangeException("timeout", Environment.GetResourceString("ArgumentOutOfRange_LessEqualToIntegerMaxVal"));
+                throw new ArgumentOutOfRangeException(nameof(timeout), Environment.GetResourceString("ArgumentOutOfRange_LessEqualToIntegerMaxVal"));
             StackCrawlMark stackMark = StackCrawlMark.LookForMyCaller;
             return RegisterWaitForSingleObject(waitObject,callBack,state,(UInt32)tm,executeOnlyOnce,ref stackMark,true);
         }
@@ -1613,9 +1610,9 @@ namespace System.Threading
         {
             long tm = (long)timeout.TotalMilliseconds;
             if (tm < -1)
-                throw new ArgumentOutOfRangeException("timeout", Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
+                throw new ArgumentOutOfRangeException(nameof(timeout), Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegOrNegative1"));
             if (tm > (long) Int32.MaxValue)
-                throw new ArgumentOutOfRangeException("timeout", Environment.GetResourceString("ArgumentOutOfRange_LessEqualToIntegerMaxVal"));
+                throw new ArgumentOutOfRangeException(nameof(timeout), Environment.GetResourceString("ArgumentOutOfRange_LessEqualToIntegerMaxVal"));
             StackCrawlMark stackMark = StackCrawlMark.LookForMyCaller;
             return RegisterWaitForSingleObject(waitObject,callBack,state,(UInt32)tm,executeOnlyOnce,ref stackMark,false);
         }
@@ -1690,7 +1687,7 @@ namespace System.Threading
             }
             else
             {
-                throw new ArgumentNullException("WaitCallback");
+                throw new ArgumentNullException(nameof(WaitCallback));
             }
             return success;
         }
@@ -1907,17 +1904,18 @@ namespace System.Threading
              bool                   compressStack   
              );
 
-#if !FEATURE_CORECLR
+
         [System.Security.SecuritySafeCritical]  // auto-generated
         [Obsolete("ThreadPool.BindHandle(IntPtr) has been deprecated.  Please use ThreadPool.BindHandle(SafeHandle) instead.", false)]
+#pragma warning disable 618
         [SecurityPermissionAttribute( SecurityAction.Demand, Flags = SecurityPermissionFlag.UnmanagedCode)]
+#pragma warning restore 618
         public static bool BindHandle(
              IntPtr osHandle
              )
         {
             return BindIOCompletionCallbackNative(osHandle);
         }
-#endif
 
         #if FEATURE_CORECLR
         [System.Security.SecurityCritical] // auto-generated
@@ -1930,7 +1928,7 @@ namespace System.Threading
         public static bool BindHandle(SafeHandle osHandle)
         {
             if (osHandle == null)
-                throw new ArgumentNullException("osHandle");
+                throw new ArgumentNullException(nameof(osHandle));
             
             bool ret = false;
             bool mustReleaseSafeHandle = false;

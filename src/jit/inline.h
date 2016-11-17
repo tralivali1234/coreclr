@@ -85,11 +85,6 @@ const unsigned int MAX_INL_ARGS = 10; // does not include obj pointer
 const unsigned int MAX_INL_LCLS = 8;
 #endif // LEGACY_BACKEND
 
-// Flags lost during inlining.
-
-#define CORJIT_FLG_LOST_WHEN_INLINING                                                                                  \
-    (CORJIT_FLG_BBOPT | CORJIT_FLG_BBINSTR | CORJIT_FLG_PROF_ENTERLEAVE | CORJIT_FLG_DEBUG_EnC | CORJIT_FLG_DEBUG_INFO)
-
 // Forward declarations
 
 class InlineStrategy;
@@ -542,6 +537,7 @@ struct InlLclVarInfo
     var_types lclTypeInfo;
     typeInfo  lclVerTypeInfo;
     bool      lclHasLdlocaOp; // Is there LDLOCA(s) operation on this argument?
+    bool      lclIsPinned;
 };
 
 // InlineInfo provides detailed information about a particular inline candidate.
@@ -568,12 +564,13 @@ struct InlineInfo
     InlLclVarInfo lclVarInfo[MAX_INL_LCLS + MAX_INL_ARGS + 1]; // type information from local sig
 
     bool thisDereferencedFirst;
+    bool hasPinnedLocals;
 #ifdef FEATURE_SIMD
     bool hasSIMDTypeArgLocalOrReturn;
 #endif // FEATURE_SIMD
 
     GenTreeCall* iciCall;  // The GT_CALL node to be inlined.
-    GenTree*     iciStmt;  // The statement iciCall is in.
+    GenTreeStmt* iciStmt;  // The statement iciCall is in.
     BasicBlock*  iciBlock; // The basic block iciStmt is in.
 };
 
@@ -706,7 +703,7 @@ public:
     InlineContext* NewSuccess(InlineInfo* inlineInfo);
 
     // Create context for a failing inline.
-    InlineContext* NewFailure(GenTree* stmt, InlineResult* inlineResult);
+    InlineContext* NewFailure(GenTreeStmt* stmt, InlineResult* inlineResult);
 
     // Compiler associated with this strategy
     Compiler* GetCompiler() const
@@ -823,6 +820,9 @@ public:
         m_MethodXmlFilePosition = val;
     }
 
+    // Set up or access random state (for use by RandomPolicy)
+    CLRRandom* GetRandom();
+
 #endif // defined(DEBUG) || defined(INLINE_DATA)
 
     // Some inline limit values
@@ -887,7 +887,8 @@ private:
     bool           m_HasForceViaDiscretionary;
 
 #if defined(DEBUG) || defined(INLINE_DATA)
-    long m_MethodXmlFilePosition;
+    long       m_MethodXmlFilePosition;
+    CLRRandom* m_Random;
 #endif // defined(DEBUG) || defined(INLINE_DATA)
 };
 

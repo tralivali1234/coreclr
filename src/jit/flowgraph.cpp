@@ -4269,6 +4269,7 @@ void Compiler::fgFindJumpTargets(const BYTE* codeAddr, IL_OFFSET codeSize, BYTE*
     const bool  isForceInline          = (info.compFlags & CORINFO_FLG_FORCEINLINE) != 0;
     const bool  makeInlineObservations = (compInlineResult != nullptr);
     const bool  isInlining             = compIsForInlining();
+    unsigned    retBlocks              = 0;
 
     if (makeInlineObservations)
     {
@@ -4638,6 +4639,7 @@ void Compiler::fgFindJumpTargets(const BYTE* codeAddr, IL_OFFSET codeSize, BYTE*
             break;
 
             case CEE_JMP:
+                retBlocks++;
 
 #if !defined(_TARGET_X86_) && !defined(_TARGET_ARM_)
                 if (!isInlining)
@@ -4730,6 +4732,8 @@ void Compiler::fgFindJumpTargets(const BYTE* codeAddr, IL_OFFSET codeSize, BYTE*
                     fgObserveInlineConstants(opcode, pushedStack, isInlining);
                 }
                 break;
+            case CEE_RET:
+                retBlocks++;
 
             default:
                 break;
@@ -4757,6 +4761,27 @@ void Compiler::fgFindJumpTargets(const BYTE* codeAddr, IL_OFFSET codeSize, BYTE*
     if (makeInlineObservations)
     {
         compInlineResult->Note(InlineObservation::CALLEE_END_OPCODE_SCAN);
+
+        if (!compInlineResult->UsesLegacyPolicy())
+        {
+            // If there are no return blocks we know it does not return, however if there
+            // return blocks we don't know it returns as it may be counting unreachable code.
+            // However we will still make the CALLEE_DOES_NOT_RETURN observation.
+
+            compInlineResult->NoteBool(InlineObservation::CALLEE_DOES_NOT_RETURN, retBlocks == 0);
+
+            if (retBlocks == 0 && isInlining)
+            {
+                // Mark the call node as "no return" as it can impact caller's code quality.
+                impInlineInfo->iciCall->gtCallMoreFlags |= GTF_CALL_M_DOES_NOT_RETURN;
+            }
+        }
+
+        // Determine if call site is within a try.
+        if (isInlining && impInlineInfo->iciBlock->hasTryIndex())
+        {
+            compInlineResult->Note(InlineObservation::CALLSITE_IN_TRY_REGION);
+        }
 
         // If the inline is viable and discretionary, do the
         // profitability screening.
@@ -5062,22 +5087,23 @@ void Compiler::fgLinkBasicBlocks()
 
 /*****************************************************************************
  *
- *  Walk the instrs to create the basic blocks.
+ *  Walk the instrs to create the basic blocks. Returns the number of BBJ_RETURN in method
  */
 
-void Compiler::fgMakeBasicBlocks(const BYTE* codeAddr, IL_OFFSET codeSize, BYTE* jumpTarget)
+unsigned Compiler::fgMakeBasicBlocks(const BYTE* codeAddr, IL_OFFSET codeSize, BYTE* jumpTarget)
 {
+    unsigned    retBlocks;
     const BYTE* codeBegp = codeAddr;
     const BYTE* codeEndp = codeAddr + codeSize;
     bool        tailCall = false;
     unsigned    curBBoffs;
     BasicBlock* curBBdesc;
 
+    retBlocks = 0;
     /* Clear the beginning offset for the first BB */
 
     curBBoffs = 0;
 
-#ifdef DEBUGGING_SUPPORT
     if (opts.compDbgCode && (info.compVarScopesCount > 0))
     {
         compResetScopeLists();
@@ -5090,7 +5116,6 @@ void Compiler::fgMakeBasicBlocks(const BYTE* codeAddr, IL_OFFSET codeSize, BYTE*
         { /* do nothing */
         }
     }
-#endif
 
     BBjumpKinds jmpKind;
 
@@ -5280,7 +5305,8 @@ void Compiler::fgMakeBasicBlocks(const BYTE* codeAddr, IL_OFFSET codeSize, BYTE*
                     // TODO-CQ: We can inline some callees with explicit tail calls if we can guarantee that the calls
                     // can be dispatched as tail calls from the caller.
                     compInlineResult->NoteFatal(InlineObservation::CALLEE_EXPLICIT_TAIL_PREFIX);
-                    return;
+                    retBlocks++;
+                    return retBlocks;
                 }
 
                 __fallthrough;
@@ -5391,6 +5417,7 @@ void Compiler::fgMakeBasicBlocks(const BYTE* codeAddr, IL_OFFSET codeSize, BYTE*
                But instead of directly returning to the caller we jump and
                execute something else in between */
             case CEE_RET:
+                retBlocks++;
                 jmpKind = BBJ_RETURN;
                 break;
 
@@ -5473,8 +5500,6 @@ void Compiler::fgMakeBasicBlocks(const BYTE* codeAddr, IL_OFFSET codeSize, BYTE*
 
         nxtBBoffs = (IL_OFFSET)(codeAddr - codeBegp);
 
-#ifdef DEBUGGING_SUPPORT
-
         bool foundScope = false;
 
         if (opts.compDbgCode && (info.compVarScopesCount > 0))
@@ -5488,7 +5513,6 @@ void Compiler::fgMakeBasicBlocks(const BYTE* codeAddr, IL_OFFSET codeSize, BYTE*
                 foundScope = true;
             }
         }
-#endif
 
         /* Do we have a jump? */
 
@@ -5505,7 +5529,6 @@ void Compiler::fgMakeBasicBlocks(const BYTE* codeAddr, IL_OFFSET codeSize, BYTE*
 
             bool makeBlock = (jumpTarget[nxtBBoffs] != JT_NONE);
 
-#ifdef DEBUGGING_SUPPORT
             if (!makeBlock && foundScope)
             {
                 makeBlock = true;
@@ -5516,7 +5539,6 @@ void Compiler::fgMakeBasicBlocks(const BYTE* codeAddr, IL_OFFSET codeSize, BYTE*
                 }
 #endif // DEBUG
             }
-#endif // DEBUGGING_SUPPORT
 
             if (!makeBlock)
             {
@@ -5581,6 +5603,8 @@ void Compiler::fgMakeBasicBlocks(const BYTE* codeAddr, IL_OFFSET codeSize, BYTE*
     /* Finally link up the bbJumpDest of the blocks together */
 
     fgLinkBasicBlocks();
+
+    return retBlocks;
 }
 
 /*****************************************************************************
@@ -5726,44 +5750,23 @@ void Compiler::fgFindBasicBlocks()
 
     /* Now create the basic blocks */
 
-    fgMakeBasicBlocks(info.compCode, info.compILCodeSize, jumpTarget);
+    unsigned retBlocks = fgMakeBasicBlocks(info.compCode, info.compILCodeSize, jumpTarget);
 
     if (compIsForInlining())
     {
-        if (compInlineResult->IsFailure())
+
+#ifdef DEBUG
+        // If fgFindJumpTargets marked the call as "no return" there
+        // really should be no BBJ_RETURN blocks in the method.
+        //
+        // Note LegacyPolicy does not mark calls as no return, so if
+        // it's active, skip the check.
+        if (!compInlineResult->UsesLegacyPolicy())
         {
-            return;
+            bool markedNoReturn = (impInlineInfo->iciCall->gtCallMoreFlags & GTF_CALL_M_DOES_NOT_RETURN) != 0;
+            assert((markedNoReturn && (retBlocks == 0)) || (!markedNoReturn && (retBlocks >= 1)));
         }
-
-        bool hasReturnBlocks           = false;
-        bool hasMoreThanOneReturnBlock = false;
-
-        for (BasicBlock* block = fgFirstBB; block != nullptr; block = block->bbNext)
-        {
-            if (block->bbJumpKind == BBJ_RETURN)
-            {
-                if (hasReturnBlocks)
-                {
-                    hasMoreThanOneReturnBlock = true;
-                    break;
-                }
-
-                hasReturnBlocks = true;
-            }
-        }
-
-        if (!hasReturnBlocks && !compInlineResult->UsesLegacyPolicy())
-        {
-            //
-            // Mark the call node as "no return". The inliner might ignore CALLEE_DOES_NOT_RETURN and
-            // fail inline for a different reasons. In that case we still want to make the "no return"
-            // information available to the caller as it can impact caller's code quality.
-            //
-
-            impInlineInfo->iciCall->gtCallMoreFlags |= GTF_CALL_M_DOES_NOT_RETURN;
-        }
-
-        compInlineResult->NoteBool(InlineObservation::CALLEE_DOES_NOT_RETURN, !hasReturnBlocks);
+#endif // DEBUG
 
         if (compInlineResult->IsFailure())
         {
@@ -5777,12 +5780,14 @@ void Compiler::fgFindBasicBlocks()
         compHndBBtabCount    = impInlineInfo->InlinerCompiler->compHndBBtabCount;
         info.compXcptnsCount = impInlineInfo->InlinerCompiler->info.compXcptnsCount;
 
-        if (info.compRetNativeType != TYP_VOID && hasMoreThanOneReturnBlock)
+        // Use a spill temp for the return value if there are multiple return blocks.
+        if ((info.compRetNativeType != TYP_VOID) && (retBlocks > 1))
         {
             // The lifetime of this var might expand multiple BBs. So it is a long lifetime compiler temp.
             lvaInlineeReturnSpillTemp = lvaGrabTemp(false DEBUGARG("Inline candidate multiple BBJ_RETURN spill temp"));
             lvaTable[lvaInlineeReturnSpillTemp].lvType = info.compRetNativeType;
         }
+
         return;
     }
 
@@ -6666,7 +6671,7 @@ void Compiler::fgImport()
 
     impImport(fgFirstBB);
 
-    if (!(opts.eeFlags & CORJIT_FLG_SKIP_VERIFICATION))
+    if (!opts.jitFlags->IsSet(JitFlags::JIT_FLAG_SKIP_VERIFICATION))
     {
         CorInfoMethodRuntimeFlags verFlag;
         verFlag = tiIsVerifiableCode ? CORINFO_FLG_VERIFIABLE : CORINFO_FLG_UNVERIFIABLE;
@@ -6936,7 +6941,7 @@ GenTreePtr Compiler::fgGetSharedCCtor(CORINFO_CLASS_HANDLE cls)
     if (opts.IsReadyToRun())
     {
         CORINFO_RESOLVED_TOKEN resolvedToken;
-        ZeroMemory(&resolvedToken, sizeof(resolvedToken));
+        memset(&resolvedToken, 0, sizeof(resolvedToken));
         resolvedToken.hClass = cls;
 
         return impReadyToRunHelperToTree(&resolvedToken, CORINFO_HELP_READYTORUN_STATIC_BASE, TYP_BYREF);
@@ -8301,7 +8306,7 @@ void Compiler::fgAddInternal()
 
     CORINFO_JUST_MY_CODE_HANDLE* pDbgHandle = nullptr;
     CORINFO_JUST_MY_CODE_HANDLE  dbgHandle  = nullptr;
-    if (opts.compDbgCode && !(opts.eeFlags & CORJIT_FLG_IL_STUB))
+    if (opts.compDbgCode && !opts.jitFlags->IsSet(JitFlags::JIT_FLAG_IL_STUB))
     {
         dbgHandle = info.compCompHnd->getJustMyCodeHandle(info.compMethodHnd, &pDbgHandle);
     }
@@ -8589,17 +8594,12 @@ GenTreeStmt* Compiler::fgNewStmtFromTree(GenTreePtr tree, IL_OFFSETX offs)
 //      The first good IL offset of a statement in the block, or BAD_IL_OFFSET if such an IL offset
 //      cannot be found.
 //
-//      If we are not built with DEBUGGING_SUPPORT or DEBUG, then always report BAD_IL_OFFSET,
-//      since in that case statements don't contain an IL offset. The effect will be that split
-//      blocks will lose their IL offset information.
-
 IL_OFFSET Compiler::fgFindBlockILOffset(BasicBlock* block)
 {
     // This function searches for IL offsets in statement nodes, so it can't be used in LIR. We
     // could have a similar function for LIR that searches for GT_IL_OFFSET nodes.
     assert(!block->IsLIR());
 
-#if defined(DEBUGGING_SUPPORT) || defined(DEBUG)
     for (GenTree* stmt = block->bbTreeList; stmt != nullptr; stmt = stmt->gtNext)
     {
         assert(stmt->IsStatement());
@@ -8608,7 +8608,6 @@ IL_OFFSET Compiler::fgFindBlockILOffset(BasicBlock* block)
             return jitGetILoffs(stmt->gtStmt.gtStmtILoffsx);
         }
     }
-#endif // defined(DEBUGGING_SUPPORT) || defined(DEBUG)
 
     return BAD_IL_OFFSET;
 }
@@ -14037,7 +14036,7 @@ bool Compiler::fgOptimizeBranch(BasicBlock* bJump)
     // we are willing to have more code expansion since we
     // won't be running code from this page
     //
-    if (opts.eeFlags & CORJIT_FLG_PREJIT)
+    if (opts.jitFlags->IsSet(JitFlags::JIT_FLAG_PREJIT))
     {
         if (rareJump)
         {
@@ -14172,15 +14171,15 @@ bool Compiler::fgOptimizeBranch(BasicBlock* bJump)
     //
     gtReverseCond(condTree);
 
+    // We need to update the following flags of the bJump block if they were set in the bDest block
+    bJump->bbFlags |=
+        (bDest->bbFlags & (BBF_HAS_NEWOBJ | BBF_HAS_NEWARRAY | BBF_HAS_NULLCHECK | BBF_HAS_IDX_LEN | BBF_HAS_VTABREF));
+
     bJump->bbJumpKind = BBJ_COND;
     bJump->bbJumpDest = bDest->bbNext;
 
     /* Mark the jump dest block as being a jump target */
     bJump->bbJumpDest->bbFlags |= BBF_JMP_TARGET | BBF_HAS_LABEL;
-
-    // We need to update the following flags of the bJump block if they were set in the bbJumpDest block
-    bJump->bbFlags |= (bJump->bbJumpDest->bbFlags &
-                       (BBF_HAS_NEWOBJ | BBF_HAS_NEWARRAY | BBF_HAS_NULLCHECK | BBF_HAS_IDX_LEN | BBF_HAS_VTABREF));
 
     /* Update bbRefs and bbPreds */
 
@@ -18679,7 +18678,7 @@ FILE*              Compiler::fgOpenFlowGraphFile(bool*  wbDontClose, Phases phas
     bool           createDuplicateFgxFiles = true;
 
 #ifdef DEBUG
-    if (opts.eeFlags & CORJIT_FLG_PREJIT)
+    if (opts.jitFlags->IsSet(JitFlags::JIT_FLAG_PREJIT))
     {
         pattern = JitConfig.NgenDumpFg();
         filename = JitConfig.NgenDumpFgFile();
@@ -20910,7 +20909,7 @@ void Compiler::fgDebugCheckBlockLinks()
 unsigned     Compiler::fgCheckInlineDepthAndRecursion(InlineInfo* inlineInfo)
 {
     BYTE*          candidateCode = inlineInfo->inlineCandidateInfo->methInfo.ILCode;
-    InlineContext* inlineContext = inlineInfo->iciStmt->gtStmt.gtInlineContext;
+    InlineContext* inlineContext = inlineInfo->iciStmt->gtInlineContext;
     InlineResult*  inlineResult  = inlineInfo->inlineResult;
 
     // There should be a context for all candidates.
@@ -21099,7 +21098,7 @@ Compiler::fgWalkResult      Compiler::fgFindNonInlineCandidate(GenTreePtr* pTree
     if (tree->gtOper == GT_CALL)
     {
         Compiler*    compiler = data->compiler;
-        GenTreePtr   stmt     = (GenTreePtr) data->pCallbackData;
+        GenTreeStmt* stmt     = (GenTreeStmt*) data->pCallbackData;
         GenTreeCall* call     = tree->AsCall();
 
         compiler->fgNoteNonInlineCandidate(stmt, call);
@@ -21112,14 +21111,14 @@ Compiler::fgWalkResult      Compiler::fgFindNonInlineCandidate(GenTreePtr* pTree
 // not marked as inline candidates.
 //
 // Arguments:
-//    tree  - statement containing the call
+//    stmt  - statement containing the call
 //    call  - the call itself
 //
 // Notes:
 //    Used in debug only to try and place descriptions of inline failures
 //    into the proper context in the inline tree.
 
-void Compiler::fgNoteNonInlineCandidate(GenTreePtr   tree,
+void Compiler::fgNoteNonInlineCandidate(GenTreeStmt* stmt,
                                         GenTreeCall* call)
 {
     InlineResult inlineResult(this, call, nullptr, "fgNotInlineCandidate");
@@ -21155,7 +21154,7 @@ void Compiler::fgNoteNonInlineCandidate(GenTreePtr   tree,
     if (call->gtCallType == CT_USER_FUNC)
     {
         // Create InlineContext for the failure
-        m_inlineStrategy->NewFailure(tree, &inlineResult);
+        m_inlineStrategy->NewFailure(stmt, &inlineResult);
     }
 }
 
@@ -21522,10 +21521,17 @@ void       Compiler::fgInvokeInlineeCompiler(GenTreeCall*  call,
                          pParam->pThis->eeGetMethodFullName(pParam->fncHandle),
                          pParam->pThis->dspPtr(pParam->inlineInfo->tokenLookupContextHandle)));
 
-            CORJIT_FLAGS compileFlagsForInlinee;
-            memcpy(&compileFlagsForInlinee, pParam->pThis->opts.jitFlags, sizeof(compileFlagsForInlinee));
-            compileFlagsForInlinee.corJitFlags &= ~CORJIT_FLG_LOST_WHEN_INLINING;
-            compileFlagsForInlinee.corJitFlags |= CORJIT_FLG_SKIP_VERIFICATION;
+            JitFlags compileFlagsForInlinee = *pParam->pThis->opts.jitFlags;
+
+            // The following flags are lost when inlining.
+            // (This is checked in Compiler::compInitOptions().)
+            compileFlagsForInlinee.Clear(JitFlags::JIT_FLAG_BBOPT);
+            compileFlagsForInlinee.Clear(JitFlags::JIT_FLAG_BBINSTR);
+            compileFlagsForInlinee.Clear(JitFlags::JIT_FLAG_PROF_ENTERLEAVE);
+            compileFlagsForInlinee.Clear(JitFlags::JIT_FLAG_DEBUG_EnC);
+            compileFlagsForInlinee.Clear(JitFlags::JIT_FLAG_DEBUG_INFO);
+
+            compileFlagsForInlinee.Set(JitFlags::JIT_FLAG_SKIP_VERIFICATION);
 
 #ifdef DEBUG
             if (pParam->pThis->verbose)
@@ -21651,20 +21657,39 @@ void       Compiler::fgInvokeInlineeCompiler(GenTreeCall*  call,
     inlineResult->NoteSuccess();
 }
 
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-// The inlining attempt cannot be failed starting from this point.
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//------------------------------------------------------------------------
+// fgInsertInlineeBlocks: incorporate statements for an inline into the
+// root method.
+//
+// Arguments:
+//    inlineInfo -- info for the inline
+//
+// Notes:
+//    The inlining attempt cannot be failed once this method is called.
+//
+//    Adds all inlinee statements, plus any glue statements needed
+//    either before or after the inlined call.
+//
+//    Updates flow graph and assigns weights to inlinee
+//    blocks. Currently does not attempt to read IBC data for the
+//    inlinee.
+//
+//    Updates relevant root method status flags (eg optMethodFlags) to
+//    include information from the inlinee.
+//
+//    Marks newly added statements with an appropriate inline context.
+
 void Compiler::fgInsertInlineeBlocks(InlineInfo* pInlineInfo)
 {
-    GenTreePtr   iciCall     = pInlineInfo->iciCall;
-    GenTreePtr   iciStmt     = pInlineInfo->iciStmt;
+    GenTreeCall* iciCall     = pInlineInfo->iciCall;
+    GenTreeStmt* iciStmt     = pInlineInfo->iciStmt;
     BasicBlock*  iciBlock    = pInlineInfo->iciBlock;
     BasicBlock*  block;
 
     // We can write better assert here. For example, we can check that
     // iciBlock contains iciStmt, which in turn contains iciCall.
     noway_assert(iciBlock->bbTreeList != nullptr);
-    noway_assert(iciStmt->gtStmt.gtStmtExpr != nullptr);
+    noway_assert(iciStmt->gtStmtExpr != nullptr);
     noway_assert(iciCall->gtOper == GT_CALL);
 
 #ifdef DEBUG
@@ -21676,14 +21701,11 @@ void Compiler::fgInsertInlineeBlocks(InlineInfo* pInlineInfo)
         printf("\n\n----------- Statements (and blocks) added due to the inlining of call ");
         printTreeID(iciCall);
         printf(" -----------\n");
-        // gtDispTree(iciStmt);
     }
 
 #endif // DEBUG
 
-    //
     // Create a new inline context and mark the inlined statements with it
-    //
     InlineContext* calleeContext = m_inlineStrategy->NewSuccess(pInlineInfo);
 
     for (block = InlineeCompiler->fgFirstBB;
@@ -21698,11 +21720,8 @@ void Compiler::fgInsertInlineeBlocks(InlineInfo* pInlineInfo)
         }
     }
 
-    //
-    // Prepend statements.
-    //
-    GenTreePtr stmtAfter;
-    stmtAfter = fgInlinePrependStatements(pInlineInfo);
+    // Prepend statements
+    GenTreePtr stmtAfter = fgInlinePrependStatements(pInlineInfo);
 
 #ifdef DEBUG
     if (verbose)
@@ -21711,6 +21730,9 @@ void Compiler::fgInsertInlineeBlocks(InlineInfo* pInlineInfo)
         printf("\nInlinee method body:");
     }
 #endif // DEBUG
+
+    BasicBlock* topBlock = iciBlock;
+    BasicBlock* bottomBlock = nullptr;
 
     if (InlineeCompiler->fgBBcount == 1)
     {
@@ -21736,6 +21758,7 @@ void Compiler::fgInsertInlineeBlocks(InlineInfo* pInlineInfo)
                 noway_assert((inlineeBlockFlags & BBF_KEEP_BBJ_ALWAYS) == 0);
                 iciBlock->bbFlags |= inlineeBlockFlags;
             }
+
 #ifdef DEBUG
             if (verbose)
             {
@@ -21758,6 +21781,10 @@ void Compiler::fgInsertInlineeBlocks(InlineInfo* pInlineInfo)
                 }
             }
 #endif // DEBUG
+
+            // Append statements to unpin, if necessary.
+            fgInlineAppendStatements(pInlineInfo, iciBlock, stmtAfter);
+
             goto _Done;
         }
     }
@@ -21765,11 +21792,6 @@ void Compiler::fgInsertInlineeBlocks(InlineInfo* pInlineInfo)
     //
     // ======= Inserting inlinee's basic blocks ===============
     //
-
-    BasicBlock* topBlock;
-    BasicBlock* bottomBlock;
-
-    topBlock = iciBlock;
 
     bottomBlock = fgNewBBafter(topBlock->bbJumpKind, topBlock, true);
     bottomBlock->bbRefs = 1;
@@ -21872,9 +21894,9 @@ void Compiler::fgInsertInlineeBlocks(InlineInfo* pInlineInfo)
         block->copyEHRegion(iciBlock);
         block->bbFlags   |=  iciBlock->bbFlags & BBF_BACKWARD_JUMP;
 
-        if (iciStmt->gtStmt.gtStmtILoffsx != BAD_IL_OFFSET)
+        if (iciStmt->gtStmtILoffsx != BAD_IL_OFFSET)
         {
-            block->bbCodeOffs    = jitGetILoffs(iciStmt->gtStmt.gtStmtILoffsx);
+            block->bbCodeOffs    = jitGetILoffs(iciStmt->gtStmtILoffsx);
             block->bbCodeOffsEnd = block->bbCodeOffs + 1;  // TODO: is code size of 1 some magic number for inlining?
         }
         else
@@ -21930,6 +21952,9 @@ void Compiler::fgInsertInlineeBlocks(InlineInfo* pInlineInfo)
     // Add inlinee's block count to inliner's.
     //
     fgBBcount += InlineeCompiler->fgBBcount;
+
+    // Append statements to unpin if necessary.
+    fgInlineAppendStatements(pInlineInfo, bottomBlock, nullptr);
 
 #ifdef DEBUG
     if (verbose)
@@ -21993,24 +22018,41 @@ _Done:
     // Detach the GT_CALL node from the original statement by hanging a "nothing" node under it,
     // so that fgMorphStmts can remove the statement once we return from here.
     //
-    iciStmt->gtStmt.gtStmtExpr = gtNewNothingNode();
+    iciStmt->gtStmtExpr = gtNewNothingNode();
 }
 
-// Prepend the statements that are needed before the inlined call.
-// Return the last statement that is prepended.
+//------------------------------------------------------------------------
+// fgInlinePrependStatements: prepend statements needed to match up
+// caller and inlined callee
+//
+// Arguments:
+//    inlineInfo -- info for the inline
+//
+// Return Value:
+//    The last statement that was added, or the original call if no
+//    statements were added.
+//
+// Notes:
+//    Statements prepended may include the following:
+//    * This pointer null check
+//    * Class initialization
+//    * Zeroing of must-init locals in the callee
+//    * Passing of call arguments via temps
+//
+//    Newly added statements are placed just after the original call
+//    and are are given the same inline context as the call any calls
+//    added here will appear to have been part of the immediate caller.
 
-GenTreePtr      Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
+GenTreePtr Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
 {
     BasicBlock* block = inlineInfo->iciBlock;
-
-    GenTreePtr callStmt  = inlineInfo->iciStmt;
-    noway_assert(callStmt->gtOper == GT_STMT);
-    IL_OFFSETX callILOffset = callStmt->gtStmt.gtStmtILoffsx;
-
+    GenTreeStmt* callStmt  = inlineInfo->iciStmt;
+    IL_OFFSETX callILOffset = callStmt->gtStmtILoffsx;
+    GenTreeStmt* postStmt  = callStmt->gtNextStmt;
     GenTreePtr afterStmt = callStmt; // afterStmt is the place where the new statements should be inserted after.
-    GenTreePtr newStmt;
-
+    GenTreePtr newStmt = nullptr;
     GenTreePtr call = inlineInfo->iciCall;
+
     noway_assert(call->gtOper == GT_CALL);
 
 #ifdef DEBUG
@@ -22275,9 +22317,99 @@ GenTreePtr      Compiler::fgInlinePrependStatements(InlineInfo* inlineInfo)
         }
     }
 
+    // Update any newly added statements with the appropriate context.
+    InlineContext* context = callStmt->gtInlineContext;
+    assert(context != nullptr);
+    for (GenTreeStmt* addedStmt = callStmt->gtNextStmt; addedStmt != postStmt; addedStmt = addedStmt->gtNextStmt)
+    {
+        assert(addedStmt->gtInlineContext == nullptr);
+        addedStmt->gtInlineContext = context;
+    }
+
     return afterStmt;
 }
 
+//------------------------------------------------------------------------
+// fgInlineAppendStatements: Append statements that are needed
+// after the inlined call. 
+//
+// Arguments:
+//    inlineInfo - information about the inline
+//    block      - basic block for the new statements
+//    stmtAfter  - (optional) insertion point for mid-block cases
+
+void Compiler::fgInlineAppendStatements(InlineInfo* inlineInfo, BasicBlock* block, GenTreePtr stmtAfter)
+{
+    // Null out any inline pinned locals
+    if (!inlineInfo->hasPinnedLocals)
+    {
+        // No pins, nothing to do
+        return;
+    }
+
+    JITDUMP("Unpin inlinee locals:\n");
+
+    GenTreePtr callStmt  = inlineInfo->iciStmt;
+    IL_OFFSETX callILOffset = callStmt->gtStmt.gtStmtILoffsx;
+    CORINFO_METHOD_INFO* InlineeMethodInfo = InlineeCompiler->info.compMethodInfo;
+    unsigned lclCnt = InlineeMethodInfo->locals.numArgs;
+    InlLclVarInfo*    lclVarInfo = inlineInfo->lclVarInfo;
+
+    noway_assert(callStmt->gtOper == GT_STMT);
+
+    for (unsigned lclNum = 0; lclNum < lclCnt; lclNum++)
+    {
+        unsigned tmpNum = inlineInfo->lclTmpNum[lclNum];
+
+        // Is the local used at all?
+        if (tmpNum == BAD_VAR_NUM)
+        {
+            // Nope, nothing to unpin.
+            continue;
+        }
+
+        // Is the local pinned?
+        if (!lvaTable[tmpNum].lvPinned)
+        {
+            // Nope, nothing to unpin.
+            continue;
+        }
+
+        // Does the local we're about to unpin appear in the return
+        // expression?  If so we somehow messed up and didn't properly
+        // spill the return value. See impInlineFetchLocal.
+        GenTreePtr retExpr = inlineInfo->retExpr;
+        if (retExpr != nullptr)
+        {
+            const bool interferesWithReturn = gtHasRef(inlineInfo->retExpr, tmpNum, false);
+            noway_assert(!interferesWithReturn);
+        }
+
+        // Emit the unpin, by assigning null to the local.
+        var_types lclTyp = (var_types)lvaTable[tmpNum].lvType;
+        noway_assert(lclTyp == lclVarInfo[lclNum + inlineInfo->argCnt].lclTypeInfo);
+        noway_assert(!varTypeIsStruct(lclTyp));
+        GenTreePtr unpinExpr = gtNewTempAssign(tmpNum, gtNewZeroConNode(genActualType(lclTyp)));
+        GenTreePtr unpinStmt = gtNewStmt(unpinExpr, callILOffset);
+
+        if (stmtAfter == nullptr)
+        {
+            stmtAfter = fgInsertStmtAtBeg(block, unpinStmt);
+        }
+        else
+        {
+            stmtAfter = fgInsertStmtAfter(block, stmtAfter, unpinStmt);
+        }
+
+#ifdef DEBUG
+        if (verbose)
+        {
+            gtDispTree(unpinStmt);
+        }
+#endif // DEBUG
+
+    }
+}
 
 /*****************************************************************************/
 /*static*/

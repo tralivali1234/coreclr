@@ -42,7 +42,6 @@ namespace System.Globalization
     //
 
     [Serializable]
-    [System.Runtime.InteropServices.ComVisible(true)]
     sealed public partial class NumberFormatInfo : IFormatProvider, ICloneable
     {
         // invariantInfo is constant irrespective of your current culture.
@@ -84,6 +83,8 @@ namespace System.Globalization
         internal int percentNegativePattern = 0;
         internal int percentDecimalDigits = 2;
 
+        [OptionalField(VersionAdded = 2)]
+        internal int digitSubstitution = (int) DigitShapes.None;
 
         internal bool isReadOnly = false;
 
@@ -130,6 +131,64 @@ namespace System.Globalization
             Contract.EndContractBlock();
         }
 
+        private static void VerifyNativeDigits(string [] nativeDig, string propertyName)
+        {
+            if (nativeDig == null)
+            {
+                throw new ArgumentNullException(propertyName, SR.ArgumentNull_Array);
+            }
+
+            if (nativeDig.Length != 10)
+            {
+                throw new ArgumentException(SR.Argument_InvalidNativeDigitCount, propertyName);
+            }
+            Contract.EndContractBlock();
+
+            for (int i = 0; i < nativeDig.Length; i++)
+            {
+                if (nativeDig[i] == null)
+                {
+                    throw new ArgumentNullException(propertyName, SR.ArgumentNull_ArrayValue);
+                }
+
+                if (nativeDig[i].Length != 1)
+                {
+                    if (nativeDig[i].Length != 2)
+                    {
+                        // Not 1 or 2 UTF-16 code points
+                        throw new ArgumentException(SR.Argument_InvalidNativeDigitValue, propertyName);
+                    } 
+                    else if (!char.IsSurrogatePair(nativeDig[i][0], nativeDig[i][1]))
+                    {
+                        // 2 UTF-6 code points, but not a surrogate pair
+                        throw new ArgumentException(SR.Argument_InvalidNativeDigitValue, propertyName);
+                    }
+                }
+
+                if (CharUnicodeInfo.GetDecimalDigitValue(nativeDig[i], 0) != i &&
+                    CharUnicodeInfo.GetUnicodeCategory(nativeDig[i], 0) != UnicodeCategory.PrivateUse)
+                {
+                    // Not the appropriate digit according to the Unicode data properties
+                    // (Digit 0 must be a 0, etc.).
+                    throw new ArgumentException(SR.Argument_InvalidNativeDigitValue, propertyName);
+                }
+            }
+        }
+
+         private static void VerifyDigitSubstitution(DigitShapes digitSub, string propertyName)
+         {
+            switch (digitSub)
+            {
+                case DigitShapes.Context:
+                case DigitShapes.None:
+                case DigitShapes.NativeNational:
+                    // Success.
+                    break;
+
+                default:
+                    throw new ArgumentException(SR.Argument_InvalidDigitSubstitution, propertyName);
+            }
+        }
 
         internal NumberFormatInfo(CultureData cultureData)
         {
@@ -748,6 +807,28 @@ namespace System.Globalization
             }
         }
 
+        public string [] NativeDigits
+        {
+            get { return (String[]) nativeDigits.Clone(); }
+            set
+            {
+                VerifyWritable();
+                VerifyNativeDigits(value, "NativeDigits");
+                nativeDigits = value;
+            }
+        }
+
+        public DigitShapes DigitSubstitution
+        {
+            get { return (DigitShapes) digitSubstitution; } 
+            set
+            {
+                VerifyWritable();
+                VerifyDigitSubstitution(value, "DigitSubstitution");
+                digitSubstitution = (int) value;
+            }
+        }
+
         public Object GetFormat(Type formatType)
         {
             return formatType == typeof(NumberFormatInfo) ? this : null;
@@ -757,7 +838,7 @@ namespace System.Globalization
         {
             if (nfi == null)
             {
-                throw new ArgumentNullException("nfi");
+                throw new ArgumentNullException(nameof(nfi));
             }
             Contract.EndContractBlock();
             if (nfi.IsReadOnly)
@@ -781,7 +862,7 @@ namespace System.Globalization
             // Check for undefined flags
             if ((style & InvalidNumberStyles) != 0)
             {
-                throw new ArgumentException(SR.Argument_InvalidNumberStyles, "style");
+                throw new ArgumentException(SR.Argument_InvalidNumberStyles, nameof(style));
             }
             Contract.EndContractBlock();
             if ((style & NumberStyles.AllowHexSpecifier) != 0)
@@ -798,7 +879,7 @@ namespace System.Globalization
             // Check for undefined flags
             if ((style & InvalidNumberStyles) != 0)
             {
-                throw new ArgumentException(SR.Argument_InvalidNumberStyles, "style");
+                throw new ArgumentException(SR.Argument_InvalidNumberStyles, nameof(style));
             }
             Contract.EndContractBlock();
             if ((style & NumberStyles.AllowHexSpecifier) != 0)
