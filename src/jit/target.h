@@ -13,6 +13,13 @@
 #endif
 #endif
 
+// If the UNIX_X86_ABI is defined make sure that _TARGET_X86_ is also defined.
+#if defined(UNIX_X86_ABI)
+#if !defined(_TARGET_X86_)
+#error When UNIX_X86_ABI is defined you must define _TARGET_X86_ defined as well.
+#endif
+#endif
+
 #if (defined(FEATURE_CORECLR) && defined(PLATFORM_UNIX))
 #define FEATURE_VARARG 0
 #else // !(defined(FEATURE_CORECLR) && defined(PLATFORM_UNIX))
@@ -360,6 +367,9 @@ typedef unsigned short regPairNoSmall; // arm: need 12 bits
 
 #endif // !LEGACY_BACKEND
 
+#ifdef FEATURE_SIMD
+  #define ALIGN_SIMD_TYPES         1       // whether SIMD type locals are to be aligned
+#endif // FEATURE_SIMD
 
   #define FEATURE_WRITE_BARRIER    1       // Generate the proper WriteBarrier calls for GC
   #define FEATURE_FIXED_OUT_ARGS   0       // X86 uses push instructions to pass args
@@ -1223,6 +1233,7 @@ typedef unsigned short regPairNoSmall; // arm: need 12 bits
   #define RBM_CALLEE_SAVED        (RBM_INT_CALLEE_SAVED | RBM_FLT_CALLEE_SAVED)
   #define RBM_CALLEE_TRASH        (RBM_INT_CALLEE_TRASH | RBM_FLT_CALLEE_TRASH)
   #define RBM_CALLEE_TRASH_NOGC   (RBM_R2|RBM_R3|RBM_LR)
+  #define REG_DEFAULT_HELPER_CALL_TARGET REG_R12
 
   #define RBM_ALLINT              (RBM_INT_CALLEE_SAVED | RBM_INT_CALLEE_TRASH)
   #define RBM_ALLFLOAT            (RBM_FLT_CALLEE_SAVED | RBM_FLT_CALLEE_TRASH)
@@ -1430,6 +1441,8 @@ typedef unsigned short regPairNoSmall; // arm: need 12 bits
 
   #define REG_ARG_FIRST            REG_R0
   #define REG_ARG_LAST             REG_R3
+  #define REG_ARG_FP_FIRST         REG_F0
+  #define REG_ARG_FP_LAST          REG_F7
   #define INIT_ARG_STACK_SLOT      0                  // No outgoing reserved stack slots
 
   #define REG_ARG_0                REG_R0

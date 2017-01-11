@@ -313,13 +313,6 @@ void CodeGen::genCodeForBBlist()
 
         bool firstMapping = true;
 
-        /*---------------------------------------------------------------------
-         *
-         *  Generate code for each statement-tree in the block
-         *
-         */
-        CLANG_FORMAT_COMMENT_ANCHOR;
-
 #if FEATURE_EH_FUNCLETS
         if (block->bbFlags & BBF_FUNCLET_BEG)
         {
@@ -334,6 +327,28 @@ void CodeGen::genCodeForBBlist()
         // Traverse the block in linear order, generating code for each node as we
         // as we encounter it.
         CLANG_FORMAT_COMMENT_ANCHOR;
+
+#ifdef DEBUG
+        // Set the use-order numbers for each node.
+        {
+            int useNum = 0;
+            for (GenTree* node : LIR::AsRange(block).NonPhiNodes())
+            {
+                assert((node->gtDebugFlags & GTF_DEBUG_NODE_CG_CONSUMED) == 0);
+
+                node->gtUseNum = -1;
+                if (node->isContained() || node->IsCopyOrReload())
+                {
+                    continue;
+                }
+
+                for (GenTree* operand : node->Operands())
+                {
+                    genNumberOperandUse(operand, useNum);
+                }
+            }
+        }
+#endif // DEBUG
 
         IL_OFFSETX currentILOffset = BAD_IL_OFFSET;
         for (GenTree* node : LIR::AsRange(block).NonPhiNodes())
@@ -853,7 +868,7 @@ void CodeGen::genUnspillRegIfNeeded(GenTree* tree)
             GenTreeLclVarCommon* lcl    = unspillTree->AsLclVarCommon();
             LclVarDsc*           varDsc = &compiler->lvaTable[lcl->gtLclNum];
 
-// TODO-Cleanup: The following code could probably be further merged and cleand up.
+// TODO-Cleanup: The following code could probably be further merged and cleaned up.
 #ifdef _TARGET_XARCH_
             // Load local variable from its home location.
             // In most cases the tree type will indicate the correct type to use for the load.
@@ -888,6 +903,13 @@ void CodeGen::genUnspillRegIfNeeded(GenTree* tree)
 
             // Fixes Issue #3326
             attr = emit->emitInsAdjustLoadStoreAttr(ins, attr);
+
+            // Load local variable from its home location.
+            inst_RV_TT(ins, dstReg, unspillTree, 0, attr);
+#elif defined(_TARGET_ARM_)
+            var_types   targetType = unspillTree->gtType;
+            instruction ins        = ins_Load(targetType, compiler->isSIMDTypeLocalAligned(lcl->gtLclNum));
+            emitAttr    attr       = emitTypeSize(targetType);
 
             // Load local variable from its home location.
             inst_RV_TT(ins, dstReg, unspillTree, 0, attr);
@@ -1031,34 +1053,55 @@ void CodeGen::genConsumeRegAndCopy(GenTree* node, regNumber needReg)
 
 // Check that registers are consumed in the right order for the current node being generated.
 #ifdef DEBUG
-void CodeGen::genCheckConsumeNode(GenTree* treeNode)
+void CodeGen::genNumberOperandUse(GenTree* const operand, int& useNum) const
 {
-    // GT_PUTARG_REG is consumed out of order.
-    if (treeNode->gtSeqNum != 0 && treeNode->OperGet() != GT_PUTARG_REG)
+    assert(operand != nullptr);
+    assert(operand->gtUseNum == -1);
+
+    // Ignore argument placeholders.
+    if (operand->OperGet() == GT_ARGPLACE)
     {
-        if (lastConsumedNode != nullptr)
-        {
-            if (treeNode == lastConsumedNode)
-            {
-                if (verbose)
-                {
-                    printf("Node was consumed twice:\n    ");
-                    compiler->gtDispTree(treeNode, nullptr, nullptr, true);
-                }
-            }
-            else
-            {
-                if (verbose && (lastConsumedNode->gtSeqNum > treeNode->gtSeqNum))
-                {
-                    printf("Nodes were consumed out-of-order:\n");
-                    compiler->gtDispTree(lastConsumedNode, nullptr, nullptr, true);
-                    compiler->gtDispTree(treeNode, nullptr, nullptr, true);
-                }
-                // assert(lastConsumedNode->gtSeqNum < treeNode->gtSeqNum);
-            }
-        }
-        lastConsumedNode = treeNode;
+        return;
     }
+
+    if (!operand->isContained() && !operand->IsCopyOrReload())
+    {
+        operand->gtUseNum = useNum;
+        useNum++;
+    }
+    else
+    {
+        for (GenTree* operand : operand->Operands())
+        {
+            genNumberOperandUse(operand, useNum);
+        }
+    }
+}
+
+void CodeGen::genCheckConsumeNode(GenTree* const node)
+{
+    assert(node != nullptr);
+
+    if (verbose)
+    {
+        if ((node->gtDebugFlags & GTF_DEBUG_NODE_CG_CONSUMED) != 0)
+        {
+            printf("Node was consumed twice:\n");
+            compiler->gtDispTree(node, nullptr, nullptr, true);
+        }
+        else if ((lastConsumedNode != nullptr) && (node->gtUseNum < lastConsumedNode->gtUseNum))
+        {
+            printf("Nodes were consumed out-of-order:\n");
+            compiler->gtDispTree(lastConsumedNode, nullptr, nullptr, true);
+            compiler->gtDispTree(node, nullptr, nullptr, true);
+        }
+    }
+
+    assert((node->OperGet() == GT_CATCH_ARG) || ((node->gtDebugFlags & GTF_DEBUG_NODE_CG_CONSUMED) == 0));
+    assert((lastConsumedNode == nullptr) || (node->gtUseNum == -1) || (node->gtUseNum > lastConsumedNode->gtUseNum));
+
+    node->gtDebugFlags |= GTF_DEBUG_NODE_CG_CONSUMED;
+    lastConsumedNode = node;
 }
 #endif // DEBUG
 
@@ -1186,17 +1229,22 @@ void CodeGen::genConsumeRegs(GenTree* tree)
 #ifdef _TARGET_XARCH_
         else if (tree->OperGet() == GT_LCL_VAR)
         {
-            // A contained lcl var must be living on stack and marked as reg optional.
+            // A contained lcl var must be living on stack and marked as reg optional, or not be a
+            // register candidate.
             unsigned   varNum = tree->AsLclVarCommon()->GetLclNum();
             LclVarDsc* varDsc = compiler->lvaTable + varNum;
 
             noway_assert(varDsc->lvRegNum == REG_STK);
-            noway_assert(tree->IsRegOptional());
+            noway_assert(tree->IsRegOptional() || !varDsc->lvLRACandidate);
 
-            // Update the life of reg optional lcl var.
+            // Update the life of the lcl var.
             genUpdateLife(tree);
         }
 #endif // _TARGET_XARCH_
+        else if (tree->OperIsInitVal())
+        {
+            genConsumeReg(tree->gtGetOp1());
+        }
         else
         {
 #ifdef FEATURE_SIMD
@@ -1405,6 +1453,13 @@ void CodeGen::genConsumeBlockSrc(GenTreeBlk* blkNode)
             return;
         }
     }
+    else
+    {
+        if (src->OperIsInitVal())
+        {
+            src = src->gtGetOp1();
+        }
+    }
     genConsumeReg(src);
 }
 
@@ -1431,6 +1486,13 @@ void CodeGen::genSetBlockSrc(GenTreeBlk* blkNode, regNumber srcReg)
             // Load its address into srcReg.
             inst_RV_TT(INS_lea, srcReg, src, 0, EA_BYREF);
             return;
+        }
+    }
+    else
+    {
+        if (src->OperIsInitVal())
+        {
+            src = src->gtGetOp1();
         }
     }
     genCopyRegIfNeeded(src, srcReg);
@@ -1526,6 +1588,11 @@ void CodeGen::genConsumeBlockOp(GenTreeBlk* blkNode, regNumber dstReg, regNumber
 //     None.
 void CodeGen::genProduceReg(GenTree* tree)
 {
+#ifdef DEBUG
+    assert((tree->gtDebugFlags & GTF_DEBUG_NODE_CG_PRODUCED) == 0);
+    tree->gtDebugFlags |= GTF_DEBUG_NODE_CG_PRODUCED;
+#endif
+
     if (tree->gtFlags & GTF_SPILL)
     {
         // Code for GT_COPY node gets generated as part of consuming regs by its parent.

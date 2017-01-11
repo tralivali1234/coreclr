@@ -7,6 +7,7 @@ namespace System.Text
     using System.Runtime.Serialization;
     using System.Text;
     using System;
+    using System.Diagnostics;
     using System.Diagnostics.Contracts;
     // An Encoder is used to encode a sequence of blocks of characters into
     // a sequence of blocks of bytes. Following instantiation of an encoder,
@@ -120,7 +121,6 @@ namespace System.Text
         // We expect this to be the workhorse for NLS encodings
         // unfortunately for existing overrides, it has to call the [] version,
         // which is really slow, so avoid this method if you might be calling external encodings.
-        [System.Security.SecurityCritical]  // auto-generated
         [CLSCompliant(false)]
         [System.Runtime.InteropServices.ComVisible(false)]
         public virtual unsafe int GetByteCount(char* chars, int count, bool flush)
@@ -182,7 +182,6 @@ namespace System.Text
         // the byte[] to our byte* output buffer.  If the result count was wrong, we
         // could easily overflow our output buffer.  Therefore we do an extra test
         // when we copy the buffer so that we don't overflow byteCount either.
-        [System.Security.SecurityCritical]  // auto-generated
         [CLSCompliant(false)]
         [System.Runtime.InteropServices.ComVisible(false)]
         public virtual unsafe int GetBytes(char* chars, int charCount,
@@ -211,7 +210,7 @@ namespace System.Text
             // Do the work
             int result = GetBytes(arrChar, 0, charCount, arrByte, 0, flush);
 
-            Contract.Assert(result <= byteCount, "Returned more bytes than we have space for");
+            Debug.Assert(result <= byteCount, "Returned more bytes than we have space for");
 
             // Copy the byte array
             // WARNING: We MUST make sure that we don't copy too many bytes.  We can't
@@ -299,7 +298,6 @@ namespace System.Text
         // Note that if all of the input chars are not consumed, then we'll do a /2, which means
         // that its likely that we didn't consume as many chars as we could have.  For some
         // applications this could be slow.  (Like trying to exactly fill an output buffer from a bigger stream)
-        [System.Security.SecurityCritical]  // auto-generated
         [CLSCompliant(false)]
         [System.Runtime.InteropServices.ComVisible(false)]
         public virtual unsafe void Convert(char* chars, int charCount,

@@ -551,8 +551,48 @@ internal static class SR
         get { return Environment.GetResourceString("ArgumentException_BufferNotFromPool"); }
     }
 
+    public static string Argument_InvalidPathChars
+    {
+        get { return Environment.GetResourceString("Argument_InvalidPathChars"); }
+    }
+
+    public static string Argument_PathFormatNotSupported
+    {
+        get { return Environment.GetResourceString("Argument_PathFormatNotSupported"); }
+    }
+
+    public static string Arg_PathIllegal
+    {
+        get { return Environment.GetResourceString("Arg_PathIllegal"); }
+    }
+
+    public static string Arg_PathIllegalUNC
+    {
+        get { return Environment.GetResourceString("Arg_PathIllegalUNC"); }
+    }
+
+    public static string Arg_InvalidSearchPattern
+    {
+        get { return Environment.GetResourceString("Arg_InvalidSearchPattern"); }
+    }
+
+    public static string InvalidOperation_Cryptography
+    {
+        get { return Environment.GetResourceString("InvalidOperation_Cryptography"); }
+    }
+
     public static string Format(string formatString, params object[] args)
     {
         return string.Format(CultureInfo.CurrentCulture, formatString, args);
+    }
+
+    internal static string ArgumentException_ValueTupleIncorrectType
+    {
+        get { return Environment.GetResourceString("ArgumentException_ValueTupleIncorrectType"); }
+    }
+
+    internal static string ArgumentException_ValueTupleLastArgumentNotATuple
+    {
+        get { return Environment.GetResourceString("ArgumentException_ValueTupleLastArgumentNotATuple"); }
     }
 }

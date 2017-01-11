@@ -710,10 +710,15 @@ regMaskTP Compiler::compNoGCHelperCallKillSet(CorInfoHelpFunc helper)
             return RBM_PROFILER_TAILCALL_TRASH;
 #endif // defined(_TARGET_AMD64_) || defined(_TARGET_X86_)
 
-#if defined(_TARGET_AMD64_)
         case CORINFO_HELP_ASSIGN_BYREF:
+#if defined(_TARGET_AMD64_)
             // this helper doesn't trash RSI and RDI
             return RBM_CALLEE_TRASH_NOGC & ~(RBM_RSI | RBM_RDI);
+#elif defined(_TARGET_X86_)
+            // This helper only trashes ECX.
+            return RBM_ECX;
+#else
+            return RBM_CALLEE_TRASH_NOGC;
 #endif // defined(_TARGET_AMD64_)
 
         default:
@@ -3141,7 +3146,8 @@ void CodeGen::genGenerateCode(void** codePtr, ULONG* nativeSizeOfCode)
        We need to relax the assert as our estimation won't include code-gen
        stack changes (which we know don't affect fgAddCodeRef()) */
     noway_assert(getEmitter()->emitMaxStackDepth <=
-                 (compiler->fgPtrArgCntMax + compiler->compHndBBtabCount + // Return address for locally-called finallys
+                 (compiler->fgPtrArgCntMax +              // Max number of pointer-sized stack arguments.
+                  compiler->compHndBBtabCount +           // Return address for locally-called finallys
                   genTypeStSz(TYP_LONG) +                 // longs/doubles may be transferred via stack, etc
                   (compiler->compTailCallUsed ? 4 : 0))); // CORINFO_HELP_TAILCALL args
 #endif
@@ -3314,6 +3320,8 @@ void CodeGen::genReportEH()
     EHblkDsc* HBtab;
     EHblkDsc* HBtabEnd;
 
+    bool isCoreRTABI = compiler->IsTargetAbi(CORINFO_CORERT_ABI);
+
     unsigned EHCount = compiler->compHndBBtabCount;
 
 #if FEATURE_EH_FUNCLETS
@@ -3321,46 +3329,55 @@ void CodeGen::genReportEH()
     // VM.
     unsigned duplicateClauseCount = 0;
     unsigned enclosingTryIndex;
-    for (XTnum = 0; XTnum < compiler->compHndBBtabCount; XTnum++)
+
+    // Duplicate clauses are not used by CoreRT ABI
+    if (!isCoreRTABI)
     {
-        for (enclosingTryIndex = compiler->ehTrueEnclosingTryIndexIL(XTnum); // find the true enclosing try index,
-                                                                             // ignoring 'mutual protect' trys
-             enclosingTryIndex != EHblkDsc::NO_ENCLOSING_INDEX;
-             enclosingTryIndex = compiler->ehGetEnclosingTryIndex(enclosingTryIndex))
+        for (XTnum = 0; XTnum < compiler->compHndBBtabCount; XTnum++)
         {
-            ++duplicateClauseCount;
+            for (enclosingTryIndex = compiler->ehTrueEnclosingTryIndexIL(XTnum); // find the true enclosing try index,
+                                                                                 // ignoring 'mutual protect' trys
+                 enclosingTryIndex != EHblkDsc::NO_ENCLOSING_INDEX;
+                 enclosingTryIndex = compiler->ehGetEnclosingTryIndex(enclosingTryIndex))
+            {
+                ++duplicateClauseCount;
+            }
         }
+        EHCount += duplicateClauseCount;
     }
-    EHCount += duplicateClauseCount;
 
 #if FEATURE_EH_CALLFINALLY_THUNKS
     unsigned clonedFinallyCount = 0;
 
-    // We don't keep track of how many cloned finally there are. So, go through and count.
-    // We do a quick pass first through the EH table to see if there are any try/finally
-    // clauses. If there aren't, we don't need to look for BBJ_CALLFINALLY.
+    // Duplicate clauses are not used by CoreRT ABI
+    if (!isCoreRTABI)
+    {
+        // We don't keep track of how many cloned finally there are. So, go through and count.
+        // We do a quick pass first through the EH table to see if there are any try/finally
+        // clauses. If there aren't, we don't need to look for BBJ_CALLFINALLY.
 
-    bool anyFinallys = false;
-    for (HBtab = compiler->compHndBBtab, HBtabEnd = compiler->compHndBBtab + compiler->compHndBBtabCount;
-         HBtab < HBtabEnd; HBtab++)
-    {
-        if (HBtab->HasFinallyHandler())
+        bool anyFinallys = false;
+        for (HBtab = compiler->compHndBBtab, HBtabEnd = compiler->compHndBBtab + compiler->compHndBBtabCount;
+             HBtab < HBtabEnd; HBtab++)
         {
-            anyFinallys = true;
-            break;
-        }
-    }
-    if (anyFinallys)
-    {
-        for (BasicBlock* block = compiler->fgFirstBB; block != nullptr; block = block->bbNext)
-        {
-            if (block->bbJumpKind == BBJ_CALLFINALLY)
+            if (HBtab->HasFinallyHandler())
             {
-                ++clonedFinallyCount;
+                anyFinallys = true;
+                break;
             }
         }
+        if (anyFinallys)
+        {
+            for (BasicBlock* block = compiler->fgFirstBB; block != nullptr; block = block->bbNext)
+            {
+                if (block->bbJumpKind == BBJ_CALLFINALLY)
+                {
+                    ++clonedFinallyCount;
+                }
+            }
 
-        EHCount += clonedFinallyCount;
+            EHCount += clonedFinallyCount;
+        }
     }
 #endif // FEATURE_EH_CALLFINALLY_THUNKS
 
@@ -3414,6 +3431,23 @@ void CodeGen::genReportEH()
         }
 
         CORINFO_EH_CLAUSE_FLAGS flags = ToCORINFO_EH_CLAUSE_FLAGS(HBtab->ebdHandlerType);
+
+        if (isCoreRTABI && (XTnum > 0))
+        {
+            // For CoreRT, CORINFO_EH_CLAUSE_SAMETRY flag means that the current clause covers same
+            // try block as the previous one. The runtime cannot reliably infer this information from
+            // native code offsets because of different try blocks can have same offsets. Alternative
+            // solution to this problem would be inserting extra nops to ensure that different try
+            // blocks have different offsets.
+            if (EHblkDsc::ebdIsSameTry(HBtab, HBtab - 1))
+            {
+                // The SAMETRY bit should only be set on catch clauses. This is ensured in IL, where only 'catch' is
+                // allowed to be mutually-protect. E.g., the C# "try {} catch {} catch {} finally {}" actually exists in
+                // IL as "try { try {} catch {} catch {} } finally {}".
+                assert(HBtab->HasCatchHandler());
+                flags = (CORINFO_EH_CLAUSE_FLAGS)(flags | CORINFO_EH_CLAUSE_SAMETRY);
+            }
+        }
 
         // Note that we reuse the CORINFO_EH_CLAUSE type, even though the names of
         // the fields aren't accurate.
@@ -3620,9 +3654,7 @@ void CodeGen::genReportEH()
                 CORINFO_EH_CLAUSE_FLAGS flags = ToCORINFO_EH_CLAUSE_FLAGS(encTab->ebdHandlerType);
 
                 // Tell the VM this is an extra clause caused by moving funclets out of line.
-                // It seems weird this is from the CorExceptionFlag enum in corhdr.h,
-                // not the CORINFO_EH_CLAUSE_FLAGS enum in corinfo.h.
-                flags = (CORINFO_EH_CLAUSE_FLAGS)(flags | COR_ILEXCEPTION_CLAUSE_DUPLICATED);
+                flags = (CORINFO_EH_CLAUSE_FLAGS)(flags | CORINFO_EH_CLAUSE_DUPLICATE);
 
                 // Note that the JIT-EE interface reuses the CORINFO_EH_CLAUSE type, even though the names of
                 // the fields aren't really accurate. For example, we set "TryLength" to the offset of the
@@ -3659,7 +3691,7 @@ void CodeGen::genReportEH()
     } // if (duplicateClauseCount > 0)
 
 #if FEATURE_EH_CALLFINALLY_THUNKS
-    if (anyFinallys)
+    if (clonedFinallyCount > 0)
     {
         unsigned reportedClonedFinallyCount = 0;
         for (BasicBlock* block = compiler->fgFirstBB; block != nullptr; block = block->bbNext)
@@ -3689,9 +3721,9 @@ void CodeGen::genReportEH()
 
                 CORINFO_EH_CLAUSE clause;
                 clause.ClassToken = 0; // unused
-                clause.Flags = (CORINFO_EH_CLAUSE_FLAGS)(CORINFO_EH_CLAUSE_FINALLY | COR_ILEXCEPTION_CLAUSE_DUPLICATED);
-                clause.TryOffset     = hndBeg;
-                clause.TryLength     = hndBeg;
+                clause.Flags      = (CORINFO_EH_CLAUSE_FLAGS)(CORINFO_EH_CLAUSE_FINALLY | CORINFO_EH_CLAUSE_DUPLICATE);
+                clause.TryOffset  = hndBeg;
+                clause.TryLength  = hndBeg;
                 clause.HandlerOffset = hndBeg;
                 clause.HandlerLength = hndEnd;
 
@@ -3713,7 +3745,7 @@ void CodeGen::genReportEH()
         }     // for each block
 
         assert(clonedFinallyCount == reportedClonedFinallyCount);
-    }  // if (anyFinallys)
+    }  // if (clonedFinallyCount > 0)
 #endif // FEATURE_EH_CALLFINALLY_THUNKS
 
 #endif // FEATURE_EH_FUNCLETS
@@ -8736,12 +8768,6 @@ void CodeGen::genFnProlog()
     // when compInitMem is true the genZeroInitFrame will zero out the shadow SP slots
     if (compiler->ehNeedsShadowSPslots() && !compiler->info.compInitMem)
     {
-        /*
-        // size/speed option?
-        getEmitter()->emitIns_I_ARR(INS_mov, EA_PTRSIZE, 0,
-                                REG_EBP, REG_NA, -compiler->lvaShadowSPfirstOffs);
-        */
-
         // The last slot is reserved for ICodeManager::FixContext(ppEndRegion)
         unsigned filterEndOffsetSlotOffs = compiler->lvaLclSize(compiler->lvaShadowSPslotsVar) - (sizeof(void*));
 
@@ -8779,9 +8805,8 @@ void CodeGen::genFnProlog()
 
     // Initialize any "hidden" slots/locals
 
-    if (compiler->compLocallocUsed)
+    if (compiler->lvaLocAllocSPvar != BAD_VAR_NUM)
     {
-        noway_assert(compiler->lvaLocAllocSPvar != BAD_VAR_NUM);
 #ifdef _TARGET_ARM64_
         getEmitter()->emitIns_S_R(ins_Store(TYP_I_IMPL), EA_PTRSIZE, REG_FPBASE, compiler->lvaLocAllocSPvar, 0);
 #else
@@ -9707,7 +9732,7 @@ void CodeGen::genFnEpilog(BasicBlock* block)
  *      |Pre-spill regs space   |   // This is only necessary to keep the PSP slot at the same offset
  *      |                       |   // in function and funclet
  *      |-----------------------|
- *      |        PSP slot       |
+ *      |        PSP slot       |   // Omitted in CoreRT ABI
  *      |-----------------------|
  *      ~  possible 4 byte pad  ~
  *      ~     for alignment     ~
@@ -10006,7 +10031,7 @@ void CodeGen::genCaptureFuncletPrologEpilogInfo()
  *      ~  possible 8 byte pad  ~
  *      ~     for alignment     ~
  *      |-----------------------|
- *      |        PSP slot       |
+ *      |        PSP slot       | // Omitted in CoreRT ABI
  *      |-----------------------|
  *      |   Outgoing arg space  | // this only exists if the function makes a call
  *      |-----------------------| <---- Initial SP
@@ -10076,6 +10101,12 @@ void CodeGen::genFuncletProlog(BasicBlock* block)
 
     // This is the end of the OS-reported prolog for purposes of unwinding
     compiler->unwindEndProlog();
+
+    // If there is no PSPSym (CoreRT ABI), we are done.
+    if (compiler->lvaPSPSym == BAD_VAR_NUM)
+    {
+        return;
+    }
 
     getEmitter()->emitIns_R_AR(INS_mov, EA_PTRSIZE, REG_FPBASE, REG_ARG_0, genFuncletInfo.fiPSP_slot_InitialSP_offset);
 
@@ -10170,10 +10201,12 @@ void CodeGen::genCaptureFuncletPrologEpilogInfo()
     unsigned calleeFPRegsSavedSize = genCountBits(compiler->compCalleeFPRegsSavedMask) * XMM_REGSIZE_BYTES;
     unsigned FPRegsPad             = (calleeFPRegsSavedSize > 0) ? AlignmentPad(totalFrameSize, XMM_REGSIZE_BYTES) : 0;
 
+    unsigned PSPSymSize = (compiler->lvaPSPSym != BAD_VAR_NUM) ? REGSIZE_BYTES : 0;
+
     totalFrameSize += FPRegsPad               // Padding before pushing entire xmm regs
                       + calleeFPRegsSavedSize // pushed callee-saved float regs
                       // below calculated 'pad' will go here
-                      + REGSIZE_BYTES                     // PSPSym
+                      + PSPSymSize                        // PSPSym
                       + compiler->lvaOutgoingArgSpaceSize // outgoing arg space
         ;
 
@@ -10181,7 +10214,7 @@ void CodeGen::genCaptureFuncletPrologEpilogInfo()
 
     genFuncletInfo.fiSpDelta = FPRegsPad                           // Padding to align SP on XMM_REGSIZE_BYTES boundary
                                + calleeFPRegsSavedSize             // Callee saved xmm regs
-                               + pad + REGSIZE_BYTES               // PSPSym
+                               + pad + PSPSymSize                  // PSPSym
                                + compiler->lvaOutgoingArgSpaceSize // outgoing arg space
         ;
 
@@ -10194,12 +10227,14 @@ void CodeGen::genCaptureFuncletPrologEpilogInfo()
         printf("                         SP delta: %d\n", genFuncletInfo.fiSpDelta);
         printf("       PSP slot Initial SP offset: %d\n", genFuncletInfo.fiPSP_slot_InitialSP_offset);
     }
-#endif // DEBUG
 
-    assert(compiler->lvaPSPSym != BAD_VAR_NUM);
-    assert(genFuncletInfo.fiPSP_slot_InitialSP_offset ==
-           compiler->lvaGetInitialSPRelativeOffset(compiler->lvaPSPSym)); // same offset used in main function and
-                                                                          // funclet!
+    if (compiler->lvaPSPSym != BAD_VAR_NUM)
+    {
+        assert(genFuncletInfo.fiPSP_slot_InitialSP_offset ==
+               compiler->lvaGetInitialSPRelativeOffset(compiler->lvaPSPSym)); // same offset used in main function and
+                                                                              // funclet!
+    }
+#endif // DEBUG
 }
 
 #elif defined(_TARGET_ARM64_)
@@ -10319,13 +10354,12 @@ void CodeGen::genSetPSPSym(regNumber initReg, bool* pInitRegZeroed)
 {
     assert(compiler->compGeneratingProlog);
 
-    if (!compiler->ehNeedsPSPSym())
+    if (compiler->lvaPSPSym == BAD_VAR_NUM)
     {
         return;
     }
 
-    noway_assert(isFramePointerUsed());         // We need an explicit frame pointer
-    assert(compiler->lvaPSPSym != BAD_VAR_NUM); // We should have created the PSPSym variable
+    noway_assert(isFramePointerUsed()); // We need an explicit frame pointer
 
 #if defined(_TARGET_ARM_)
 

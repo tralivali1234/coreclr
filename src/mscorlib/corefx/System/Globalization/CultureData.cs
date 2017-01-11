@@ -2,14 +2,10 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text;
 using System.Threading;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Diagnostics.Contracts;
 
 namespace System.Globalization
 {
@@ -470,21 +466,21 @@ namespace System.Globalization
 
                     // Language
                     invariant._sISO639Language = "iv";                   // ISO 639 Language Name
-		            invariant._sISO639Language2 = "ivl";                  // 3 char ISO 639 lang name 2
+                    invariant._sISO639Language2 = "ivl";                  // 3 char ISO 639 lang name 2
                     invariant._sLocalizedLanguage = "Invariant Language";   // Display name for this Language
                     invariant._sEnglishLanguage = "Invariant Language";   // English name for this language
                     invariant._sNativeLanguage = "Invariant Language";   // Native name of this language
-		            invariant._sAbbrevLang = "IVL";                  // abbreviated language name (Windows Language Name)
-		            invariant._sConsoleFallbackName = "";            // The culture name for the console fallback UI culture
-		            invariant._iInputLanguageHandle = 0x07F;         // input language handle
+                    invariant._sAbbrevLang = "IVL";                  // abbreviated language name (Windows Language Name)
+                    invariant._sConsoleFallbackName = "";            // The culture name for the console fallback UI culture
+                    invariant._iInputLanguageHandle = 0x07F;         // input language handle
 
                     // Region
                     invariant._sRegionName = "IV";                    // (RegionInfo)
                     invariant._sEnglishCountry = "Invariant Country"; // english country name (RegionInfo)
                     invariant._sNativeCountry = "Invariant Country";  // native country name (Windows Only)
                     invariant._sISO3166CountryName = "IV";            // (RegionInfo), ie: US
-		            invariant._sISO3166CountryName2 = "ivc";          // 3 char ISO 3166 country name 2 2(RegionInfo)
-		            invariant._iGeoId = 244;                          // GeoId (Windows Only)
+                    invariant._sISO3166CountryName2 = "ivc";          // 3 char ISO 3166 country name 2 2(RegionInfo)
+                    invariant._iGeoId = 244;                          // GeoId (Windows Only)
 
                     // Numbers
                     invariant._sPositiveSign = "+";                    // positive sign
@@ -708,7 +704,7 @@ namespace System.Globalization
         {
             get
             {
-                Contract.Assert(_sRealName != null, "[CultureData.CultureName] Expected _sRealName to be populated by already");
+                Debug.Assert(_sRealName != null, "[CultureData.CultureName] Expected _sRealName to be populated by already");
                 // since windows doesn't know about zh-CHS and zh-CHT,
                 // we leave sRealName == zh-Hanx but we still need to
                 // pretend that it was zh-CHX.
@@ -926,7 +922,7 @@ namespace System.Globalization
             get
             {
                 // This got populated during the culture initialization
-                Contract.Assert(_sSpecificCulture != null, "[CultureData.SSPECIFICCULTURE] Expected this.sSpecificCulture to be populated by culture data initialization already");
+                Debug.Assert(_sSpecificCulture != null, "[CultureData.SSPECIFICCULTURE] Expected this.sSpecificCulture to be populated by culture data initialization already");
                 return _sSpecificCulture;
             }
         }
@@ -973,7 +969,6 @@ namespace System.Globalization
                 return _sAbbrevLang;
             }
         }
-
 
         // Localized name for this language (Windows Only) ie: Inglis
         // This is only valid for Windows 8 and higher neutrals:
@@ -1717,7 +1712,7 @@ namespace System.Globalization
                     // We then have to copy that list to a new array of the right size.
                     // Default calendar should be first
                     CalendarId[] calendars = new CalendarId[23];
-                    Contract.Assert(_sWindowsName != null, "[CultureData.CalendarIds] Expected _sWindowsName to be populated by already");
+                    Debug.Assert(_sWindowsName != null, "[CultureData.CalendarIds] Expected _sWindowsName to be populated by already");
                     int count = CalendarData.GetCalendars(_sWindowsName, _bUseOverrides, calendars);
 
                     // See if we had a calendar to add.
@@ -1789,7 +1784,7 @@ namespace System.Globalization
 
         internal CalendarData GetCalendar(CalendarId calendarId)
         {
-            Contract.Assert(calendarId > 0 && calendarId <= CalendarId.LAST_CALENDAR,
+            Debug.Assert(calendarId > 0 && calendarId <= CalendarId.LAST_CALENDAR,
                 "[CultureData.GetCalendar] Expect calendarId to be in a valid range");
 
             // arrays are 0 based, calendarIds are 1 based
@@ -1808,7 +1803,7 @@ namespace System.Globalization
             // Make sure that calendar has data
             if (calendarData == null)
             {
-                Contract.Assert(_sWindowsName != null, "[CultureData.GetCalendar] Expected _sWindowsName to be populated by already");
+                Debug.Assert(_sWindowsName != null, "[CultureData.GetCalendar] Expected _sWindowsName to be populated by already");
                 calendarData = new CalendarData(_sWindowsName, calendarId, this.UseUserOverride);
                 _calendars[calendarIndex] = calendarData;
             }
@@ -1848,7 +1843,7 @@ namespace System.Globalization
             {
                 if (_iReadingLayout == undef)
                 {
-                    Contract.Assert(_sRealName != null, "[CultureData.IsRightToLeft] Expected _sRealName to be populated by already");
+                    Debug.Assert(_sRealName != null, "[CultureData.IsRightToLeft] Expected _sRealName to be populated by already");
                     _iReadingLayout = GetLocaleInfo(LocaleNumberData.ReadingLayout);
                 }
 
@@ -1869,7 +1864,7 @@ namespace System.Globalization
             {
                 // Note: Custom cultures might point at another culture's textinfo, however windows knows how
                 // to redirect it to the desired textinfo culture, so this is OK.
-                Contract.Assert(_sRealName != null, "[CultureData.STEXTINFO] Expected _sRealName to be populated by already");
+                Debug.Assert(_sRealName != null, "[CultureData.STEXTINFO] Expected _sRealName to be populated by already");
                 return (_sRealName);
             }
         }
@@ -1879,7 +1874,7 @@ namespace System.Globalization
         {
             get
             {
-                Contract.Assert(_sRealName != null, "[CultureData.SCOMPAREINFO] Expected _sRealName to be populated by already");
+                Debug.Assert(_sRealName != null, "[CultureData.SCOMPAREINFO] Expected _sRealName to be populated by already");
                 return (_sRealName);
             }
         }
@@ -1946,7 +1941,7 @@ namespace System.Globalization
             {
                 if (_iLanguage == 0)
                 {
-                    Contract.Assert(_sRealName != null, "[CultureData.ILANGUAGE] Expected this.sRealName to be populated by COMNlsInfo::nativeInitCultureData already");
+                    Debug.Assert(_sRealName != null, "[CultureData.ILANGUAGE] Expected this.sRealName to be populated by COMNlsInfo::nativeInitCultureData already");
                     _iLanguage = LocaleNameToLCID(_sRealName);
                 }
                 return _iLanguage;
@@ -1989,21 +1984,21 @@ namespace System.Globalization
         // All of our era names
         internal String[] EraNames(CalendarId calendarId)
         {
-            Contract.Assert(calendarId > 0, "[CultureData.saEraNames] Expected Calendar.ID > 0");
+            Debug.Assert(calendarId > 0, "[CultureData.saEraNames] Expected Calendar.ID > 0");
 
             return this.GetCalendar(calendarId).saEraNames;
         }
 
         internal String[] AbbrevEraNames(CalendarId calendarId)
         {
-            Contract.Assert(calendarId > 0, "[CultureData.saAbbrevEraNames] Expected Calendar.ID > 0");
+            Debug.Assert(calendarId > 0, "[CultureData.saAbbrevEraNames] Expected Calendar.ID > 0");
 
             return this.GetCalendar(calendarId).saAbbrevEraNames;
         }
 
         internal String[] AbbreviatedEnglishEraNames(CalendarId calendarId)
         {
-            Contract.Assert(calendarId > 0, "[CultureData.saAbbrevEraNames] Expected Calendar.ID > 0");
+            Debug.Assert(calendarId > 0, "[CultureData.saAbbrevEraNames] Expected Calendar.ID > 0");
 
             return this.GetCalendar(calendarId).saAbbrevEnglishEraNames;
         }
@@ -2063,9 +2058,9 @@ namespace System.Globalization
         ////////////////////////////////////////////////////////////////////////////
         private static String UnescapeNlsString(String str, int start, int end)
         {
-            Contract.Requires(str != null);
-            Contract.Requires(start >= 0);
-            Contract.Requires(end >= 0);
+            Debug.Assert(str != null);
+            Debug.Assert(start >= 0);
+            Debug.Assert(end >= 0);
             StringBuilder result = null;
 
             for (int i = start; i < str.Length && i <= end; i++)
@@ -2163,8 +2158,8 @@ namespace System.Globalization
 
         private static int IndexOfTimePart(string format, int startIndex, string timeParts)
         {
-            Contract.Assert(startIndex >= 0, "startIndex cannot be negative");
-            Contract.Assert(timeParts.IndexOfAny(new char[] { '\'', '\\' }) == -1, "timeParts cannot include quote characters");
+            Debug.Assert(startIndex >= 0, "startIndex cannot be negative");
+            Debug.Assert(timeParts.IndexOfAny(new char[] { '\'', '\\' }) == -1, "timeParts cannot include quote characters");
             bool inQuote = false;
             for (int i = startIndex; i < format.Length; ++i)
             {
@@ -2226,7 +2221,7 @@ namespace System.Globalization
             }
             else
             {
-                Contract.Assert(_sWindowsName != null, "[CultureData.GetNFIValues] Expected _sWindowsName to be populated by already");
+                Debug.Assert(_sWindowsName != null, "[CultureData.GetNFIValues] Expected _sWindowsName to be populated by already");
                 // String values
                 nfi.positiveSign = GetLocaleInfo(LocaleStringData.PositiveSign);
                 nfi.negativeSign = GetLocaleInfo(LocaleStringData.NegativeSign);
@@ -2251,7 +2246,7 @@ namespace System.Globalization
                 {
                     nfi.nativeDigits[i] = new string(digits[i], 1);
                 }
-                
+
                 nfi.digitSubstitution = GetDigitSubstitution(_sRealName);
             }
 
@@ -2345,10 +2340,14 @@ namespace System.Globalization
             EnglishLanguageName = 0x00001001,
             /// <summary>native name of language, eg "Deutsch" (coresponds to LOCALE_SNATIVELANGUAGENAME)</summary>
             NativeLanguageName = 0x00000004,
+            /// <summary>localized name of country, eg "Germany" in UI language (coresponds to LOCALE_SLOCALIZEDCOUNTRYNAME)</summary>
+            LocalizedCountryName = 0x00000006,
             /// <summary>English name of country, eg "Germany" (coresponds to LOCALE_SENGLISHCOUNTRYNAME)</summary>
             EnglishCountryName = 0x00001002,
             /// <summary>native name of country, eg "Deutschland" (coresponds to LOCALE_SNATIVECOUNTRYNAME)</summary>
             NativeCountryName = 0x00000008,
+            /// <summary>abbreviated language name (coresponds to LOCALE_SABBREVLANGNAME)</summary>
+            AbbreviatedWindowsLanguageName = 0x00000003,
             /// <summary>list item separator (coresponds to LOCALE_SLIST)</summary>
             ListSeparator = 0x0000000C,
             /// <summary>decimal separator (coresponds to LOCALE_SDECIMAL)</summary>
@@ -2381,6 +2380,8 @@ namespace System.Globalization
             Iso639LanguageTwoLetterName = 0x00000059,
             /// <summary>ISO abbreviated country name (coresponds to LOCALE_SISO639LANGNAME2)</summary>
             Iso639LanguageThreeLetterName = 0x00000067,
+            /// <summary>ISO abbreviated language name (coresponds to LOCALE_SISO639LANGNAME)</summary>
+            Iso639LanguageName = 0x00000059,
             /// <summary>ISO abbreviated country name (coresponds to LOCALE_SISO3166CTRYNAME)</summary>
             Iso3166CountryName = 0x0000005A,
             /// <summary>3 letter ISO country code (coresponds to LOCALE_SISO3166CTRYNAME2)</summary>
@@ -2393,6 +2394,8 @@ namespace System.Globalization
             NegativeInfinitySymbol = 0x0000006b,
             /// <summary>Fallback name for resources (coresponds to LOCALE_SPARENT)</summary>
             ParentName = 0x0000006d,
+            /// <summary>Fallback name for within the console (coresponds to LOCALE_SCONSOLEFALLBACKNAME)</summary>
+            ConsoleFallbackName = 0x0000006e,
             /// <summary>Returns the percent symbol (coresponds to LOCALE_SPERCENT)</summary>
             PercentSymbol = 0x00000076,
             /// <summary>Returns the permille (U+2030) symbol (coresponds to LOCALE_SPERMILLE)</summary>
@@ -2419,6 +2422,10 @@ namespace System.Globalization
         {
             /// <summary>language id (coresponds to LOCALE_ILANGUAGE)</summary>
             LanguageId = 0x00000001,
+            /// <summary>geographical location id, (coresponds to LOCALE_IGEOID)</summary>
+            GeoId = 0x00000008,
+            /// <summary>0 = context, 1 = none, 2 = national (coresponds to LOCALE_IDIGITSUBSTITUTION)</summary>
+            DigitSubstitution = 0x00001014,
             /// <summary>0 = metric, 1 = US (coresponds to LOCALE_IMEASURE)</summary>
             MeasurementSystem = 0x0000000D,
             /// <summary>number of fractional digits (coresponds to LOCALE_IDIGITS)</summary>
@@ -2449,7 +2456,15 @@ namespace System.Globalization
             /// <summary>Returns 0-11 for the negative percent format (coresponds to LOCALE_INEGATIVEPERCENT)</summary>
             NegativePercentFormat = 0x00000074,
             /// <summary>Returns 0-3 for the positive percent format (coresponds to LOCALE_IPOSITIVEPERCENT)</summary>
-            PositivePercentFormat = 0x00000075
+            PositivePercentFormat = 0x00000075,
+            /// <summary>default ansi code page (coresponds to LOCALE_IDEFAULTCODEPAGE)</summary>
+            OemCodePage = 0x0000000B,
+            /// <summary>default ansi code page (coresponds to LOCALE_IDEFAULTANSICODEPAGE)</summary>
+            AnsiCodePage = 0x00001004,
+            /// <summary>default mac code page (coresponds to LOCALE_IDEFAULTMACCODEPAGE)</summary>
+            MacCodePage = 0x00001011,
+            /// <summary>default ebcdic code page (coresponds to LOCALE_IDEFAULTEBCDICCODEPAGE)</summary>
+            EbcdicCodePage = 0x00001012,
         }
     }
 }

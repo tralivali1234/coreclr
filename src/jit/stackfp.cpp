@@ -2824,7 +2824,7 @@ void CodeGen::genCondJumpFltStackFP(GenTreePtr cond, BasicBlock* jumpTrue, Basic
 BasicBlock* CodeGen::genTransitionBlockStackFP(FlatFPStateX87* pState, BasicBlock* pFrom, BasicBlock* pTarget)
 {
     // Fast paths where a transition block is not necessary
-    if (pTarget->bbFPStateX87 && FlatFPStateX87::AreEqual(pState, pTarget->bbFPStateX87) || pState->IsEmpty())
+    if ((pTarget->bbFPStateX87 && FlatFPStateX87::AreEqual(pState, pTarget->bbFPStateX87)) || pState->IsEmpty())
     {
         return pTarget;
     }
@@ -4140,8 +4140,26 @@ void Compiler::raEnregisterVarsPostPassStackFP()
                 {
                     raSetRegLclBirthDeath(tree, lastlife, false);
                 }
+
+                // Model implicit use (& hence last use) of frame list root at pinvokes.
+                if (tree->gtOper == GT_CALL)
+                {
+                    GenTreeCall* call = tree->AsCall();
+                    if (call->IsUnmanaged() && !opts.ShouldUsePInvokeHelpers())
+                    {
+                        LclVarDsc* frameVarDsc = &lvaTable[info.compLvFrameListRoot];
+
+                        if (frameVarDsc->lvTracked && ((call->gtCallMoreFlags & GTF_CALL_M_FRAME_VAR_DEATH) != 0))
+                        {
+                            // Frame var dies here
+                            unsigned varIndex = frameVarDsc->lvVarIndex;
+                            VarSetOps::RemoveElemD(this, lastlife, varIndex);
+                        }
+                    }
+                }
             }
         }
+
         assert(VarSetOps::Equal(this, lastlife, block->bbLiveOut));
     }
     compCurBB = NULL;

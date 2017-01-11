@@ -11,6 +11,7 @@ namespace System.Text
     using System.Runtime.CompilerServices;
     using System.Runtime.InteropServices;
     using System.Runtime.Versioning;
+    using System.Diagnostics;
     using System.Diagnostics.Contracts;
 
     // This internal class wraps up our normalization behavior
@@ -43,7 +44,6 @@ namespace System.Text
         private const int ERROR_INSUFFICIENT_BUFFER = 122;
         private const int ERROR_NO_UNICODE_TRANSLATION = 1113;
 
-        [System.Security.SecurityCritical]  // auto-generated
         static private unsafe void InitializeForm(NormalizationForm form, String strDataFile)
         {
             byte* pTables = null;
@@ -73,7 +73,6 @@ namespace System.Text
             nativeNormalizationInitNormalization(form, pTables);
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         static private void EnsureInitialized(NormalizationForm form)
         {
             switch ((ExtendedNormalizationForms)form)
@@ -150,7 +149,6 @@ namespace System.Text
             }
         }
 
-        [System.Security.SecurityCritical]
         internal static bool IsNormalized(String strInput, NormalizationForm normForm)
         {
             Contract.Requires(strInput != null);
@@ -187,7 +185,6 @@ namespace System.Text
             return result;
         }
 
-        [System.Security.SecurityCritical]
         internal static String Normalize(String strInput, NormalizationForm normForm)
         {
             Contract.Requires(strInput != null);
@@ -246,7 +243,7 @@ namespace System.Text
                 {
                     // Do appropriate stuff for the individual errors:
                     case ERROR_INSUFFICIENT_BUFFER:
-                        Contract.Assert(iLength > cBuffer.Length, "Buffer overflow should have iLength > cBuffer.Length");
+                        Debug.Assert(iLength > cBuffer.Length, "Buffer overflow should have iLength > cBuffer.Length");
                         continue;
 
                     case ERROR_INVALID_PARAMETER:
@@ -270,20 +267,17 @@ namespace System.Text
             return new String(cBuffer, 0, iLength);
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         unsafe private static extern int nativeNormalizationNormalizeString(
             NormalizationForm normForm, ref int iError,
             String lpSrcString, int cwSrcLength,
             char[] lpDstString, int cwDstLength);
 
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         unsafe private static extern bool nativeNormalizationIsNormalizedString(
             NormalizationForm normForm, ref int iError,
             String lpString, int cwLength);
 
-        [System.Security.SecurityCritical]  // auto-generated
         [SuppressUnmanagedCodeSecurity]
         [DllImport(JitHelpers.QCall, CharSet = CharSet.Unicode)]
         unsafe private static extern void nativeNormalizationInitNormalization(

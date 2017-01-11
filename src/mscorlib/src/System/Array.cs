@@ -19,6 +19,7 @@ namespace System {
     using System.Runtime.ConstrainedExecution;
     using System.Runtime.Versioning;
     using System.Security;
+    using System.Diagnostics;
     using System.Security.Permissions;
     using System.Diagnostics.Contracts;
 
@@ -64,7 +65,6 @@ namespace System {
         }
 
         // Create instance will create an array
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe static Array CreateInstance(Type elementType, int length)
         {
             if ((object)elementType == null)
@@ -82,7 +82,6 @@ namespace System {
             return InternalCreate((void*)t.TypeHandle.Value,1,&length,null);
         }
         
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe static Array CreateInstance(Type elementType, int length1, int length2)
         {
             if ((object)elementType == null)
@@ -105,7 +104,6 @@ namespace System {
             return InternalCreate((void*)t.TypeHandle.Value,2,pLengths,null);
         }
         
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe static Array CreateInstance(Type elementType, int length1, int length2, int length3)
         {
             if ((object)elementType == null)
@@ -132,7 +130,6 @@ namespace System {
             return InternalCreate((void*)t.TypeHandle.Value,3,pLengths,null);
         }
         
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe static Array CreateInstance(Type elementType, params int[] lengths)
         {
             if ((object)elementType == null)
@@ -186,7 +183,6 @@ namespace System {
         }
 
         
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe static Array CreateInstance(Type elementType, int[] lengths,int[] lowerBounds)
         {
             if (elementType == null)
@@ -219,41 +215,25 @@ namespace System {
                 fixed(int* pLowerBounds = lowerBounds)
                     return InternalCreate((void*)t.TypeHandle.Value,lengths.Length,pLengths,pLowerBounds);
         }
-        [System.Security.SecurityCritical]  // auto-generated
+
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         private unsafe static extern Array InternalCreate(void* elementType,int rank,int *pLengths,int *pLowerBounds);
 
-        [SecurityCritical]
-#if !FEATURE_CORECLR
-        [PermissionSet(SecurityAction.Assert, Unrestricted = true)]
-#endif
         internal static Array UnsafeCreateInstance(Type elementType, int length)
         {
             return CreateInstance(elementType, length);
         }
 
-        [SecurityCritical]
-#if !FEATURE_CORECLR
-        [PermissionSet(SecurityAction.Assert, Unrestricted = true)]
-#endif
         internal static Array UnsafeCreateInstance(Type elementType, int length1, int length2)
         {
             return CreateInstance(elementType, length1, length2);
         }
 
-        [SecurityCritical]
-#if !FEATURE_CORECLR
-        [PermissionSet(SecurityAction.Assert, Unrestricted = true)]
-#endif
         internal static Array UnsafeCreateInstance(Type elementType, params int[] lengths)
         {
             return CreateInstance(elementType, lengths);
         }
 
-        [SecurityCritical]
-#if !FEATURE_CORECLR
-        [PermissionSet(SecurityAction.Assert, Unrestricted = true)]
-#endif
         internal static Array UnsafeCreateInstance(Type elementType, int[] lengths, int[] lowerBounds)
         {
             return CreateInstance(elementType, lengths, lowerBounds);
@@ -262,7 +242,6 @@ namespace System {
         // Copies length elements from sourceArray, starting at index 0, to
         // destinationArray, starting at index 0.
         //
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [ReliabilityContract(Consistency.MayCorruptInstance, Cer.MayFail)]
         public static void Copy(Array sourceArray, Array destinationArray, int length)
         {
@@ -284,7 +263,6 @@ namespace System {
         // Copies length elements from sourceArray, starting at sourceIndex, to
         // destinationArray, starting at destinationIndex.
         //
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [ReliabilityContract(Consistency.MayCorruptInstance, Cer.MayFail)]
         public static void Copy(Array sourceArray, int sourceIndex, Array destinationArray, int destinationIndex, int length) 
         {
@@ -295,7 +273,6 @@ namespace System {
         // instance & might fail when called from within a CER, or if the
         // reliable flag is true, it will either always succeed or always
         // throw an exception with no side effects.
-        [System.Security.SecurityCritical]  // auto-generated
         [ReliabilityContract(Consistency.MayCorruptInstance, Cer.MayFail)]
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         internal static extern void Copy(Array sourceArray, int sourceIndex, Array destinationArray, int destinationIndex, int length, bool reliable);
@@ -305,7 +282,6 @@ namespace System {
         // compatible array types based on the array element type - this 
         // method does not support casting, boxing, or primitive widening.
         // It will up-cast, assuming the array types are correct.
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [ReliabilityContract(Consistency.WillNotCorruptState, Cer.Success)]
         public static void ConstrainedCopy(Array sourceArray, int sourceIndex, Array destinationArray, int destinationIndex, int length)
         {
@@ -338,13 +314,11 @@ namespace System {
         // Sets length elements in array to 0 (or null for Object arrays), starting
         // at index.
         //
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         [ReliabilityContract(Consistency.WillNotCorruptState, Cer.Success)]
         public static extern void Clear(Array array, int index, int length);
         
         // The various Get values...
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe Object GetValue(params int[] indices)
         {
             if (indices == null)
@@ -359,7 +333,6 @@ namespace System {
             return TypedReference.InternalToObject(&elemref);
         }
     
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe Object GetValue(int index)
         {
             if (Rank != 1)
@@ -371,7 +344,6 @@ namespace System {
             return TypedReference.InternalToObject(&elemref);
         }
     
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe Object GetValue(int index1, int index2)
         {
             if (Rank != 2)
@@ -387,7 +359,6 @@ namespace System {
             return TypedReference.InternalToObject(&elemref);
         }
     
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe Object GetValue(int index1, int index2, int index3)
         {
             if (Rank != 3)
@@ -463,7 +434,6 @@ namespace System {
         }
 
         
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe void SetValue(Object value,int index)
         {
             if (Rank != 1)
@@ -475,7 +445,6 @@ namespace System {
             InternalSetValue(&elemref,value);
         }
     
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe void SetValue(Object value,int index1, int index2)
         {
             if (Rank != 2)
@@ -491,7 +460,6 @@ namespace System {
             InternalSetValue(&elemref,value);
         }
     
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe void SetValue(Object value,int index1, int index2, int index3)
         {
             if (Rank != 3)
@@ -508,7 +476,6 @@ namespace System {
             InternalSetValue(&elemref,value);
         }
         
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe void SetValue(Object value,params int[] indices)
         {
             if (indices == null)
@@ -581,20 +548,17 @@ namespace System {
             this.SetValue(value, intIndices);
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         // reference to TypedReference is banned, so have to pass result as pointer
         private unsafe extern void InternalGetReference(void * elemRef, int rank, int * pIndices);
 
         // Ideally, we would like to use TypedReference.SetValue instead. Unfortunately, TypedReference.SetValue
         // always throws not-supported exception
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         private unsafe extern static void InternalSetValue(void * target, Object value);
 
         public extern int Length {
             [Pure]
-            [System.Security.SecuritySafeCritical]  // auto-generated
             [ReliabilityContract(Consistency.WillNotCorruptState, Cer.Success)]
             [MethodImpl(MethodImplOptions.InternalCall)]
             get;
@@ -604,7 +568,7 @@ namespace System {
         private static int GetMedian(int low, int hi) {
             // Note both may be negative, if we are dealing with arrays w/ negative lower bounds.
             Contract.Requires(low <= hi);
-            Contract.Assert( hi - low >= 0, "Length overflow!");
+            Debug.Assert( hi - low >= 0, "Length overflow!");
             return low + ((hi - low) >> 1);
         }
 
@@ -619,14 +583,12 @@ namespace System {
         [ComVisible(false)]
         public extern long LongLength {
             [Pure]
-            [System.Security.SecuritySafeCritical]  // auto-generated
             [ReliabilityContract(Consistency.WillNotCorruptState, Cer.Success)]
             [MethodImpl(MethodImplOptions.InternalCall)]
             get;
         }
 
         [Pure]
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         public extern int GetLength(int dimension);
 
@@ -639,25 +601,21 @@ namespace System {
 
         public extern int Rank {
             [Pure]
-            [System.Security.SecuritySafeCritical]  // auto-generated
             [ReliabilityContract(Consistency.WillNotCorruptState, Cer.Success)]
             [MethodImplAttribute(MethodImplOptions.InternalCall)]
             get;
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [Pure]
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         [ReliabilityContract(Consistency.WillNotCorruptState, Cer.Success)]
         public extern int GetUpperBound(int dimension);
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [Pure]
         [ReliabilityContract(Consistency.WillNotCorruptState, Cer.Success)]
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         public extern int GetLowerBound(int dimension);
 
-        [System.Security.SecurityCritical]  // auto-generated
         [ReliabilityContract(Consistency.WillNotCorruptState, Cer.Success)]
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         internal extern int GetDataPtrOffsetInternal();
@@ -894,7 +852,6 @@ namespace System {
         // is larger than the given search value.
         // 
         [Pure]
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [ReliabilityContract(Consistency.WillNotCorruptState, Cer.MayFail)]
         public static int BinarySearch(Array array, int index, int length, Object value, IComparer comparer) {
             if (array==null) 
@@ -965,7 +922,6 @@ namespace System {
             return ~lo;
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         [ReliabilityContract(Consistency.WillNotCorruptState, Cer.MayFail)]
         private static extern bool TrySZBinarySearch(Array sourceArray, int sourceIndex, int count, Object value, out int retVal);
@@ -1071,6 +1027,42 @@ namespace System {
 
         public static bool Exists<T>(T[] array, Predicate<T> match) {
             return Array.FindIndex(array, match) != -1;
+        }
+
+        public static void Fill<T>(T[] array, T value)
+        {
+            if (array == null)
+            {
+                ThrowHelper.ThrowArgumentNullException(ExceptionArgument.array);
+            }
+
+            for (int i = 0; i < array.Length; i++)
+            {
+                array[i] = value;
+            }
+        }
+
+        public static void Fill<T>(T[] array, T value, int startIndex, int count)
+        {
+            if (array == null)
+            {
+                ThrowHelper.ThrowArgumentNullException(ExceptionArgument.array);
+            }
+
+            if (startIndex < 0 || startIndex > array.Length)
+            {
+                ThrowHelper.ThrowStartIndexArgumentOutOfRange_ArgumentOutOfRange_Index();
+            }
+
+            if (count < 0 || startIndex > array.Length - count)
+            {
+                ThrowHelper.ThrowCountArgumentOutOfRange_ArgumentOutOfRange_Count();
+            }
+
+            for (int i = startIndex; i < startIndex + count; i++)
+            {
+                array[i] = value;
+            }
         }
 
         public static T Find<T>(T[] array, Predicate<T> match) {
@@ -1293,7 +1285,6 @@ namespace System {
         // elements of the array are compared to the given value using the
         // Object.Equals method.
         // 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [ReliabilityContract(Consistency.WillNotCorruptState, Cer.MayFail)]
         public static int IndexOf(Array array, Object value, int startIndex, int count) {
             if (array==null)
@@ -1388,7 +1379,6 @@ namespace System {
             return EqualityComparer<T>.Default.IndexOf(array, value, startIndex, count);
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         [ReliabilityContract(Consistency.WillNotCorruptState, Cer.MayFail)]
         private static extern bool TrySZIndexOf(Array sourceArray, int sourceIndex, int count, Object value, out int retVal);
@@ -1429,7 +1419,6 @@ namespace System {
         // the array are compared to the given value using the Object.Equals
         // method.
         // 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [ReliabilityContract(Consistency.WillNotCorruptState, Cer.MayFail)]
         public static int LastIndexOf(Array array, Object value, int startIndex, int count) {
             if (array==null)
@@ -1541,7 +1530,6 @@ namespace System {
             return EqualityComparer<T>.Default.LastIndexOf(array, value, startIndex, count);            
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         [ReliabilityContract(Consistency.WillNotCorruptState, Cer.MayFail)]
         private static extern bool TrySZLastIndexOf(Array sourceArray, int sourceIndex, int count, Object value, out int retVal);
@@ -1566,7 +1554,6 @@ namespace System {
         // index index + (index + count - i - 1).
         // Reliability note: This may fail because it may have to box objects.
         // 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [ReliabilityContract(Consistency.MayCorruptInstance, Cer.MayFail)]
         public static void Reverse(Array array, int index, int length) {
             if (array==null) 
@@ -1610,7 +1597,6 @@ namespace System {
             }
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         [ReliabilityContract(Consistency.MayCorruptInstance, Cer.MayFail)]
         private static extern bool TrySZReverse(Array array, int index, int count);
@@ -1744,7 +1730,6 @@ namespace System {
         // the IComparable interface, which in that case must be implemented
         // by all elements of the given section of the keys array.
         // 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [ReliabilityContract(Consistency.MayCorruptInstance, Cer.MayFail)]
         public static void Sort(Array keys, Array items, int index, int length, IComparer comparer) {
             if (keys==null)
@@ -1786,7 +1771,6 @@ namespace System {
             }
         }
         
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         [ReliabilityContract(Consistency.MayCorruptInstance, Cer.MayFail)]
         private static extern bool TrySZSort(Array keys, Array items, int left, int right);
@@ -1833,7 +1817,6 @@ namespace System {
             Sort<TKey, TValue>(keys, items, 0, keys.Length, comparer);
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [ReliabilityContract(Consistency.MayCorruptInstance, Cer.MayFail)]
         public static void Sort<T>(T[] array, int index, int length, System.Collections.Generic.IComparer<T> comparer) {
             if (array==null)
@@ -1857,7 +1840,6 @@ namespace System {
             }
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [ReliabilityContract(Consistency.MayCorruptInstance, Cer.MayFail)]
         public static void Sort<TKey, TValue>(TKey[] keys, TValue[] items, int index, int length, System.Collections.Generic.IComparer<TKey> comparer) {
             if (keys==null)
@@ -1897,8 +1879,7 @@ namespace System {
             }
             Contract.EndContractBlock();
 
-            IComparer<T> comparer = Comparer<T>.Create(comparison);
-            Array.Sort(array, comparer);
+            ArraySortHelper<T>.Sort(array, 0, array.Length, comparison);
         }
 
         public static bool TrueForAll<T>(T[] array, Predicate<T> match) {
@@ -1969,123 +1950,8 @@ namespace System {
 
             internal void Sort(int left, int length)
             {
-#if FEATURE_CORECLR
-                // Since QuickSort and IntrospectiveSort produce different sorting sequence for equal keys the upgrade 
-                // to IntrospectiveSort was quirked. However since the phone builds always shipped with the new sort aka 
-                // IntrospectiveSort and we would want to continue using this sort moving forward CoreCLR always uses the new sort.
-
                 IntrospectiveSort(left, length);
-#else
-                if (BinaryCompatibility.TargetsAtLeast_Desktop_V4_5)
-                {
-                    IntrospectiveSort(left, length);
-                }
-                else
-                {
-                    DepthLimitedQuickSort(left, length + left - 1, IntrospectiveSortUtilities.QuickSortDepthThreshold);
-                }
-#endif
             }
-
-#if !FEATURE_CORECLR
-            private void DepthLimitedQuickSort(int left, int right, int depthLimit)
-            {
-                // Can use the much faster jit helpers for array access.
-                do
-                {
-                    if (depthLimit == 0)
-                    {
-                        // Add a try block here to detect IComparers (or their
-                        // underlying IComparables, etc) that are bogus.
-                        try
-                        {
-                            Heapsort(left, right);
-                            return;
-                        }
-                        catch (IndexOutOfRangeException)
-                        {
-                            ThrowHelper.ThrowArgumentException(ExceptionResource.Arg_BogusIComparer, ExceptionArgument.comparer);
-                        }
-                        catch (Exception e)
-                        {
-                            ThrowHelper.ThrowInvalidOperationException(ExceptionResource.InvalidOperation_IComparerFailed, e);
-                        }
-                    }
-
-                    int i = left;
-                    int j = right;
-
-                    // pre-sort the low, middle (pivot), and high values in place.
-                    // this improves performance in the face of already sorted data, or 
-                    // data that is made up of multiple sorted runs appended together.
-                    int middle = GetMedian(i, j);
-
-                    // Add a try block here to detect IComparers (or their
-                    // underlying IComparables, etc) that are bogus.
-                    try
-                    {
-                        SwapIfGreaterWithItems(i, middle); // swap the low with the mid point
-                        SwapIfGreaterWithItems(i, j);      // swap the low with the high
-                        SwapIfGreaterWithItems(middle, j); // swap the middle with the high
-                    }
-                    catch (Exception e)
-                    {
-                        ThrowHelper.ThrowInvalidOperationException(ExceptionResource.InvalidOperation_IComparerFailed, e);
-                    }
-                    Object x = keys[middle];
-                    do
-                    {
-                        // Add a try block here to detect IComparers (or their
-                        // underlying IComparables, etc) that are bogus.
-                        try
-                        {
-                            while (comparer.Compare(keys[i], x) < 0) i++;
-                            while (comparer.Compare(x, keys[j]) < 0) j--;
-                        }
-                        catch (IndexOutOfRangeException)
-                        {
-                            ThrowHelper.ThrowArgumentException(ExceptionResource.Arg_BogusIComparer, ExceptionArgument.comparer);
-                        }
-                        catch (Exception e)
-                        {
-                            ThrowHelper.ThrowInvalidOperationException(ExceptionResource.InvalidOperation_IComparerFailed, e);
-                        }
-                        Contract.Assert(i >= left && j <= right, "(i>=left && j<=right)  Sort failed - Is your IComparer bogus?");
-                        if (i > j) break;
-                        if (i < j)
-                        {
-                            Object key = keys[i];
-                            keys[i] = keys[j];
-                            keys[j] = key;
-                            if (items != null)
-                            {
-                                Object item = items[i];
-                                items[i] = items[j];
-                                items[j] = item;
-                            }
-                        }
-                        i++;
-                        j--;
-                    } while (i <= j);
-
-                    // The next iteration of the while loop is to "recursively" sort the larger half of the array and the
-                    // following calls recursively sort the smaller half.  So we subtract one from depthLimit here so
-                    // both sorts see the new value.
-                    depthLimit--;
-
-                    if (j - left <= right - i)
-                    {
-                        if (left < j) DepthLimitedQuickSort(left, j, depthLimit);
-                        left = i;
-                    }
-                    else
-                    {
-                        if (i < right) DepthLimitedQuickSort(i, right, depthLimit);
-                        right = j;
-                    }
-                } while (left < right);
-            }
-#endif
 
             private void IntrospectiveSort(int left, int length)
             {
@@ -2290,121 +2156,8 @@ namespace System {
 
             internal void Sort(int left, int length)
             {
-#if FEATURE_CORECLR
-                // Since QuickSort and IntrospectiveSort produce different sorting sequence for equal keys the upgrade 
-                // to IntrospectiveSort was quirked. However since the phone builds always shipped with the new sort aka 
-                // IntrospectiveSort and we would want to continue using this sort moving forward CoreCLR always uses the new sort.
-
                 IntrospectiveSort(left, length);
-#else
-                if (BinaryCompatibility.TargetsAtLeast_Desktop_V4_5)
-                {
-                    IntrospectiveSort(left, length);
-                }
-                else
-                {
-                    DepthLimitedQuickSort(left, length + left - 1, IntrospectiveSortUtilities.QuickSortDepthThreshold);
-                }
-#endif
             }
-
-#if !FEATURE_CORECLR
-            private void DepthLimitedQuickSort(int left, int right, int depthLimit)
-            {
-                // Must use slow Array accessors (GetValue & SetValue)
-                do
-                {
-                    if (depthLimit == 0)
-                    {
-                        // Add a try block here to detect IComparers (or their
-                        // underlying IComparables, etc) that are bogus.
-                        try
-                        {
-                            Heapsort(left, right);
-                            return;
-                        }
-                        catch (IndexOutOfRangeException)
-                        {
-                            ThrowHelper.ThrowArgumentException(ExceptionResource.Arg_BogusIComparer, ExceptionArgument.comparer);
-                        }
-                        catch (Exception e)
-                        {
-                            ThrowHelper.ThrowInvalidOperationException(ExceptionResource.InvalidOperation_IComparerFailed, e);
-                        }
-                    }
-
-                    int i = left;
-                    int j = right;
-
-                    // pre-sort the low, middle (pivot), and high values in place.
-                    // this improves performance in the face of already sorted data, or 
-                    // data that is made up of multiple sorted runs appended together.
-                    int middle = GetMedian(i, j);
-                    try
-                    {
-                        SwapIfGreaterWithItems(i, middle); // swap the low with the mid point
-                        SwapIfGreaterWithItems(i, j);      // swap the low with the high
-                        SwapIfGreaterWithItems(middle, j); // swap the middle with the high
-                    }
-                    catch (Exception e)
-                    {
-                        ThrowHelper.ThrowInvalidOperationException(ExceptionResource.InvalidOperation_IComparerFailed, e);
-                    }
-
-                    Object x = keys.GetValue(middle);
-                    do
-                    {
-                        // Add a try block here to detect IComparers (or their
-                        // underlying IComparables, etc) that are bogus.
-                        try
-                        {
-                            while (comparer.Compare(keys.GetValue(i), x) < 0) i++;
-                            while (comparer.Compare(x, keys.GetValue(j)) < 0) j--;
-                        }
-                        catch (IndexOutOfRangeException)
-                        {
-                            ThrowHelper.ThrowArgumentException(ExceptionResource.Arg_BogusIComparer, ExceptionArgument.comparer);
-                        }
-                        catch (Exception e)
-                        {
-                            ThrowHelper.ThrowInvalidOperationException(ExceptionResource.InvalidOperation_IComparerFailed, e);
-                        }
-                        Contract.Assert(i >= left && j <= right, "(i>=left && j<=right)  Sort failed - Is your IComparer bogus?");
-                        if (i > j) break;
-                        if (i < j)
-                        {
-                            Object key = keys.GetValue(i);
-                            keys.SetValue(keys.GetValue(j), i);
-                            keys.SetValue(key, j);
-                            if (items != null)
-                            {
-                                Object item = items.GetValue(i);
-                                items.SetValue(items.GetValue(j), i);
-                                items.SetValue(item, j);
-                            }
-                        }
-                        if (i != Int32.MaxValue) ++i;
-                        if (j != Int32.MinValue) --j;
-                    } while (i <= j);
-
-                    // The next iteration of the while loop is to "recursively" sort the larger half of the array and the
-                    // following calls recursively sort the smaller half.  So we subtract one from depthLimit here so
-                    // both sorts see the new value.
-                    depthLimit--;
-
-                    if (j - left <= right - i)
-                    {
-                        if (left < j) DepthLimitedQuickSort(left, j, depthLimit);
-                        left = i;
-                    }
-                    else
-                    {
-                        if (i < right) DepthLimitedQuickSort(i, right, depthLimit);
-                        right = j;
-                    }
-                } while (left < right);
-            }
-#endif
 
             private void IntrospectiveSort(int left, int length)
             {
@@ -2568,7 +2321,7 @@ namespace System {
             private int _endIndex; // cache array length, since it's a little slow.
 
             internal SZArrayEnumerator(Array array) {
-                Contract.Assert(array.Rank == 1 && array.GetLowerBound(0) == 0, "SZArrayEnumerator only works on single dimension arrays w/ a lower bound of zero.");
+                Debug.Assert(array.Rank == 1 && array.GetLowerBound(0) == 0, "SZArrayEnumerator only works on single dimension arrays w/ a lower bound of zero.");
                 _array = array;
                 _index = -1;
                 _endIndex = array.Length;
@@ -2690,7 +2443,6 @@ namespace System {
         // if this is an array of value classes and that value class has a default constructor 
         // then this calls this default constructor on every element in the value class array.
         // otherwise this is a no-op.  Generally this method is called automatically by the compiler
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         public extern void Initialize();
     }
@@ -2727,13 +2479,12 @@ namespace System {
     sealed class SZArrayHelper {
         // It is never legal to instantiate this class.
         private SZArrayHelper() {
-            Contract.Assert(false, "Hey! How'd I get here?");
+            Debug.Assert(false, "Hey! How'd I get here?");
         }
 
         // -----------------------------------------------------------
         // ------- Implement IEnumerable<T> interface methods --------
         // -----------------------------------------------------------
-        [SecuritySafeCritical]
         internal IEnumerator<T> GetEnumerator<T>() {
             //! Warning: "this" is an array, not an SZArrayHelper. See comments above
             //! or you may introduce a security hole!
@@ -2745,7 +2496,6 @@ namespace System {
         // -----------------------------------------------------------
         // ------- Implement ICollection<T> interface methods --------
         // -----------------------------------------------------------
-        [SecuritySafeCritical]
         void CopyTo<T>(T[] array, int index) {
             //! Warning: "this" is an array, not an SZArrayHelper. See comments above
             //! or you may introduce a security hole!
@@ -2754,7 +2504,6 @@ namespace System {
             Array.Copy(_this, 0, array, index, _this.Length);
         }
 
-        [SecuritySafeCritical]
         internal int get_Count<T>() {
             //! Warning: "this" is an array, not an SZArrayHelper. See comments above
             //! or you may introduce a security hole!
@@ -2765,7 +2514,6 @@ namespace System {
         // -----------------------------------------------------------
         // ---------- Implement IList<T> interface methods -----------
         // -----------------------------------------------------------
-        [SecuritySafeCritical]
         internal T get_Item<T>(int index) {
             //! Warning: "this" is an array, not an SZArrayHelper. See comments above
             //! or you may introduce a security hole!
@@ -2777,7 +2525,6 @@ namespace System {
             return _this[index];
         }
 
-        [SecuritySafeCritical]
         internal void set_Item<T>(int index, T value) {
             //! Warning: "this" is an array, not an SZArrayHelper. See comments above
             //! or you may introduce a security hole!
@@ -2794,7 +2541,6 @@ namespace System {
             ThrowHelper.ThrowNotSupportedException(ExceptionResource.NotSupported_FixedSizeCollection);
         }
 
-        [SecuritySafeCritical]
         bool Contains<T>(T value) {
             //! Warning: "this" is an array, not an SZArrayHelper. See comments above
             //! or you may introduce a security hole!
@@ -2813,7 +2559,6 @@ namespace System {
             ThrowHelper.ThrowNotSupportedException(ExceptionResource.NotSupported_ReadOnlyCollection);                     
         }
 
-        [SecuritySafeCritical]
         int IndexOf<T>(T value) {
             //! Warning: "this" is an array, not an SZArrayHelper. See comments above
             //! or you may introduce a security hole!
@@ -2850,7 +2595,7 @@ namespace System {
 
             internal SZGenericArrayEnumerator(T[] array, int endIndex) {
                 // We allow passing null array in case of empty enumerator. 
-                Contract.Assert(array != null || endIndex == -1, "endIndex should be -1 in the case of a null array (for the empty enumerator).");
+                Debug.Assert(array != null || endIndex == -1, "endIndex should be -1 in the case of a null array (for the empty enumerator).");
                 _array = array;
                 _index = -1;
                 _endIndex = endIndex;

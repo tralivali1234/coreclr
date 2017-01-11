@@ -177,7 +177,7 @@
 #include "ipcfunccall.h"
 #include "perflog.h"
 #include "../dlls/mscorrc/resource.h"
-#if defined(FEATURE_LEGACYSURFACE) || defined(FEATURE_USE_LCID)
+#ifdef FEATURE_USE_LCID
 #include "nlsinfo.h"
 #endif 
 #include "util.hpp"
@@ -306,7 +306,6 @@ extern "C" HRESULT __cdecl CorDBGetInterface(DebugInterface** rcInterface);
 
 
 #if !defined(FEATURE_CORECLR) && !defined(CROSSGEN_COMPILE)
-void* __stdcall GetCLRFunction(LPCSTR FunctionName);
 
 // Pointer to the activated CLR interface provided by the shim.
 ICLRRuntimeInfo *g_pCLRRuntime = NULL;
@@ -1933,15 +1932,17 @@ void STDMETHODCALLTYPE EEShutDownHelper(BOOL fIsDllUnloading)
 #endif
 
 #ifdef FEATURE_PREJIT
-        // If we're doing basic block profiling, we need to write the log files to disk.
-
-        static BOOL fIBCLoggingDone = FALSE;
-        if (!fIBCLoggingDone)
         {
-            if (g_IBCLogger.InstrEnabled())
-                Module::WriteAllModuleProfileData(true);
+            // If we're doing basic block profiling, we need to write the log files to disk.
 
-            fIBCLoggingDone = TRUE;
+            static BOOL fIBCLoggingDone = FALSE;
+            if (!fIBCLoggingDone)
+            {
+                if (g_IBCLogger.InstrEnabled())
+                    Module::WriteAllModuleProfileData(true);
+
+                fIBCLoggingDone = TRUE;
+            }
         }
 
 #endif // FEATURE_PREJIT

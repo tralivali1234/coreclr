@@ -6,11 +6,9 @@ add_definitions(-DSELF_NO_HOST)
 add_definitions(-DFEATURE_READYTORUN_COMPILER)
 remove_definitions(-DFEATURE_MERGE_JIT_AND_ENGINE)
 
-# Enable SIMD support for RyuJIT/x86.
-if (CLR_CMAKE_TARGET_ARCH_I386)
-  add_definitions(-DFEATURE_SIMD)
-  add_definitions(-DFEATURE_AVX_SUPPORT)
-endif (CLR_CMAKE_TARGET_ARCH_I386)
+if(WIN32)
+  add_definitions(-DFX_VER_INTERNALNAME_STR=protojit.dll)
+endif(WIN32)
 
 add_library_clr(protojit
    SHARED
@@ -35,7 +33,8 @@ if(CLR_CMAKE_PLATFORM_UNIX)
     )
 else()
     list(APPEND RYUJIT_LINK_LIBRARIES
-       msvcrt.lib
+       ${STATIC_MT_CRT_LIB}
+       ${STATIC_MT_VCRT_LIB}
        kernel32.lib
        advapi32.lib
        ole32.lib

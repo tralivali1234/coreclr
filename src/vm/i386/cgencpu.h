@@ -43,6 +43,10 @@ EXTERN_C void STDCALL PInvokeStackImbalanceHelper(void);
 EXTERN_C void STDCALL CopyCtorCallStub(void);
 #endif // !FEATURE_CORECLR
 
+#ifdef FEATURE_STUBS_AS_IL
+EXTERN_C void SinglecastDelegateInvokeStub();
+#endif // FEATURE_STUBS_AS_IL
+
 BOOL Runtime_Test_For_SSE2();
 
 #ifdef CROSSGEN_COMPILE
@@ -81,6 +85,10 @@ BOOL Runtime_Test_For_SSE2();
 
 #define JUMP_ALLOCATE_SIZE                      8   // # bytes to allocate for a jump instruction
 #define BACK_TO_BACK_JUMP_ALLOCATE_SIZE         8   // # bytes to allocate for a back to back jump instruction
+
+#ifdef WIN64EXCEPTIONS
+#define USE_INDIRECT_CODEHEADER
+#endif // WIN64EXCEPTIONS
 
 #define HAS_COMPACT_ENTRYPOINTS                 1
 
@@ -476,7 +484,7 @@ inline BOOL IsUnmanagedValueTypeReturnedByRef(UINT sizeofvaluetype)
 }
 
 #include <pshpack1.h>
-DECLSPEC_ALIGN(4) struct UMEntryThunkCode
+struct DECLSPEC_ALIGN(4) UMEntryThunkCode
 {
     BYTE            m_alignpad[2];  // used to guarantee alignment of backpactched portion
     BYTE            m_movEAX;   //MOV EAX,imm32
@@ -562,6 +570,7 @@ inline BOOL ClrFlushInstructionCache(LPCVOID pCodeAddr, size_t sizeOfCode)
 // #define JIT_GetSharedGCStaticBaseNoCtor
 // #define JIT_GetSharedNonGCStaticBaseNoCtor
 
+#ifndef FEATURE_PAL
 #define JIT_ChkCastClass            JIT_ChkCastClass
 #define JIT_ChkCastClassSpecial     JIT_ChkCastClassSpecial
 #define JIT_IsInstanceOfClass       JIT_IsInstanceOfClass
@@ -569,5 +578,5 @@ inline BOOL ClrFlushInstructionCache(LPCVOID pCodeAddr, size_t sizeOfCode)
 #define JIT_IsInstanceOfInterface   JIT_IsInstanceOfInterface
 #define JIT_NewCrossContext         JIT_NewCrossContext
 #define JIT_Stelem_Ref              JIT_Stelem_Ref
-
+#endif // FEATURE_PAL
 #endif // __cgenx86_h__

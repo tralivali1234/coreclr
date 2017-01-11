@@ -14,6 +14,7 @@ namespace System.Security
     using System.Globalization;
     using System.IO;
     using System.Security.Permissions;
+    using System.Diagnostics;
     using System.Diagnostics.Contracts;
 
     internal enum SecurityElementType
@@ -93,19 +94,6 @@ namespace System.Security
             return ((SecurityElement)this).Attribute( attributeName );
         }
 
-//////////////
-
-#if FEATURE_CAS_POLICY
-        public static SecurityElement FromString( String xml )
-        {
-            if (xml == null)
-                throw new ArgumentNullException( nameof(xml) );
-            Contract.EndContractBlock();
-
-            return new Parser( xml ).GetTopElement();
-        }
-#endif // FEATURE_CAS_POLICY
-    
         public SecurityElement( String tag )
         {
             if (tag == null)
@@ -171,7 +159,7 @@ namespace System.Security
                     Hashtable hashtable = new Hashtable( m_lAttributes.Count/2 );
                                         
                     int iMax = m_lAttributes.Count;
-                    Contract.Assert( iMax % 2 == 0, "Odd number of strings means the attr/value pairs were not added correctly" );
+                    Debug.Assert( iMax % 2 == 0, "Odd number of strings means the attr/value pairs were not added correctly" );
                           
                     for (int i = 0; i < iMax; i += 2)
                     {
@@ -296,7 +284,7 @@ namespace System.Security
             else
             {
                 int iMax = m_lAttributes.Count;
-                Contract.Assert( iMax % 2 == 0, "Odd number of strings means the attr/value pairs were not added correctly" );
+                Debug.Assert( iMax % 2 == 0, "Odd number of strings means the attr/value pairs were not added correctly" );
                           
                 for (int i = 0; i < iMax; i += 2)
                 {
@@ -400,7 +388,7 @@ namespace System.Security
             else 
             {                
                 int iMax = m_lAttributes.Count;
-                Contract.Assert( iMax % 2 == 0, "Odd number of strings means the attr/value pairs were not added correctly" );
+                Debug.Assert( iMax % 2 == 0, "Odd number of strings means the attr/value pairs were not added correctly" );
 
                 if (iMax != other.m_lAttributes.Count)
                     return false;
@@ -495,7 +483,7 @@ namespace System.Security
         private static String GetEscapeSequence( char c )
         {
             int iMax = s_escapeStringPairs.Length;
-            Contract.Assert( iMax % 2 == 0, "Odd number of strings means the attr/value pairs were not added correctly" );
+            Debug.Assert( iMax % 2 == 0, "Odd number of strings means the attr/value pairs were not added correctly" );
                           
             for (int i = 0; i < iMax; i += 2)
             {
@@ -506,7 +494,7 @@ namespace System.Security
                     return strEscValue;
             }
 
-            Contract.Assert( false, "Unable to find escape sequence for this character" );
+            Debug.Assert( false, "Unable to find escape sequence for this character" );
             return c.ToString();
         }
 
@@ -557,7 +545,7 @@ namespace System.Security
             int maxCompareLength = str.Length - index;
 
             int iMax = s_escapeStringPairs.Length;
-            Contract.Assert( iMax % 2 == 0, "Odd number of strings means the attr/value pairs were not added correctly" );
+            Debug.Assert( iMax % 2 == 0, "Odd number of strings means the attr/value pairs were not added correctly" );
                           
             for (int i = 0; i < iMax; i += 2)
             {
@@ -616,7 +604,7 @@ namespace System.Security
             while (true);
 
             // C# reports a warning if I leave this in, but I still kinda want to just in case.
-            // Contract.Assert( false, "If you got here, the execution engine or compiler is really confused" );
+            // Debug.Assert( false, "If you got here, the execution engine or compiler is really confused" );
             // return str;
         }
 
@@ -636,23 +624,11 @@ namespace System.Security
             return sb.ToString();
         }
 
-#if !FEATURE_CORECLR
-        private static void ToStringHelperStreamWriter(Object obj, String str)
-        {
-            ((StreamWriter)obj).Write(str);
-        }
-
-        internal void ToWriter( StreamWriter writer )
-        {
-            ToString( "", writer, new ToStringHelperFunc( ToStringHelperStreamWriter ) );
-        }
-#endif
-
         private void ToString( String indent, Object obj, ToStringHelperFunc func )
         {
             // First add the indent
             
-            // func( obj, indent );                       
+            // func( obj, indent );
             
             // Add in the opening bracket and the tag.
             
@@ -681,7 +657,7 @@ namespace System.Security
                 func( obj, " " );
 
                 int iMax = m_lAttributes.Count;
-                Contract.Assert( iMax % 2 == 0, "Odd number of strings means the attr/value pairs were not added correctly" );
+                Debug.Assert( iMax % 2 == 0, "Odd number of strings means the attr/value pairs were not added correctly" );
                           
                 for (int i = 0; i < iMax; i += 2)
                 {
@@ -785,7 +761,7 @@ namespace System.Security
             // the one we are asked for
 
             int iMax = m_lAttributes.Count;
-            Contract.Assert( iMax % 2 == 0, "Odd number of strings means the attr/value pairs were not added correctly" );
+            Debug.Assert( iMax % 2 == 0, "Odd number of strings means the attr/value pairs were not added correctly" );
                           
             for (int i = 0; i < iMax; i += 2)
             {
@@ -830,38 +806,6 @@ namespace System.Security
             }
             return null;
         }
-
-#if FEATURE_CAS_POLICY
-        internal IPermission ToPermission(bool ignoreTypeLoadFailures)
-        {
-            IPermission ip = XMLUtil.CreatePermission( this, PermissionState.None, ignoreTypeLoadFailures );
-            if (ip == null)
-                return null;
-            ip.FromXml(this);
-
-            // Get the permission token here to ensure that the token
-            // type is updated appropriately now that we've loaded the type.
-            PermissionToken token = PermissionToken.GetToken( ip );
-            Contract.Assert((token.m_type & PermissionTokenType.DontKnow) == 0, "Token type not properly assigned");
-
-            return ip;            
-        }
-
-        [System.Security.SecurityCritical]  // auto-generated
-        internal Object ToSecurityObject()
-        {
-            switch (m_strTag)
-            {
-                case "PermissionSet":
-                    PermissionSet pset = new PermissionSet(PermissionState.None);
-                    pset.FromXml(this);
-                    return pset;
-
-                default:
-                    return ToPermission(false);
-            }
-        }
-#endif // FEATURE_CAS_POLICY
 
         internal String SearchForTextOfLocalName(String strLocalName) 
         {

@@ -11,6 +11,7 @@ namespace System.Security.Permissions {
 #endif
     using System.Security.Util;
     using System.Globalization;
+    using System.Diagnostics;
     using System.Diagnostics.Contracts;
 
 [Serializable]
@@ -525,61 +526,6 @@ namespace System.Security.Permissions {
             return cp;
         }
 
-#if FEATURE_CAS_POLICY
-        public override SecurityElement ToXml () {
-            SecurityElement securityElement = CodeAccessPermission.CreatePermissionElement(this, "System.Security.Permissions.KeyContainerPermission");
-            if (!IsUnrestricted()) {
-                securityElement.AddAttribute("Flags", m_flags.ToString());
-                if (AccessEntries.Count > 0) {
-                    SecurityElement al = new SecurityElement("AccessList");
-                    foreach (KeyContainerPermissionAccessEntry accessEntry in AccessEntries) {
-                        SecurityElement entryElem = new SecurityElement("AccessEntry");
-                        entryElem.AddAttribute("KeyStore", accessEntry.KeyStore);
-                        entryElem.AddAttribute("ProviderName", accessEntry.ProviderName);
-                        entryElem.AddAttribute("ProviderType", accessEntry.ProviderType.ToString(null, null));
-                        entryElem.AddAttribute("KeyContainerName", accessEntry.KeyContainerName);
-                        entryElem.AddAttribute("KeySpec", accessEntry.KeySpec.ToString(null, null));
-                        entryElem.AddAttribute("Flags", accessEntry.Flags.ToString());
-                        al.AddChild(entryElem);
-                    }
-                    securityElement.AddChild(al);
-                }
-            } else 
-                securityElement.AddAttribute("Unrestricted", "true");
-
-            return securityElement;
-        }
-
-        public override void FromXml (SecurityElement securityElement) {
-            CodeAccessPermission.ValidateElement(securityElement, this);
-            if (XMLUtil.IsUnrestricted(securityElement)) {
-                m_flags = KeyContainerPermissionFlags.AllFlags;
-                m_accessEntries = new KeyContainerPermissionAccessEntryCollection(m_flags);
-                return;
-            }
-
-            m_flags = KeyContainerPermissionFlags.NoFlags;
-            string strFlags = securityElement.Attribute("Flags");
-            if (strFlags != null) {
-                KeyContainerPermissionFlags flags = (KeyContainerPermissionFlags) Enum.Parse(typeof(KeyContainerPermissionFlags), strFlags);
-                VerifyFlags(flags);
-                m_flags = flags;
-            }
-            m_accessEntries = new KeyContainerPermissionAccessEntryCollection(m_flags);
-
-            if (securityElement.InternalChildren != null && securityElement.InternalChildren.Count != 0) { 
-                IEnumerator enumerator = securityElement.Children.GetEnumerator();
-                while (enumerator.MoveNext()) {
-                    SecurityElement current = (SecurityElement) enumerator.Current;
-                    if (current != null) {
-                        if (String.Equals(current.Tag, "AccessList"))
-                            AddAccessEntries(current);
-                    }
-                }
-            }
-        }
-#endif // FEATURE_CAS_POLICY
-
         /// <internalonly/>
         int IBuiltInPermission.GetTokenIndex () {
             return KeyContainerPermission.GetTokenIndex();
@@ -597,7 +543,7 @@ namespace System.Security.Permissions {
                     if (current != null) {
                         if (String.Equals(current.Tag, "AccessEntry")) {
                             int iMax = current.m_lAttributes.Count;
-                            Contract.Assert(iMax % 2 == 0, "Odd number of strings means the attr/value pairs were not added correctly");
+                            Debug.Assert(iMax % 2 == 0, "Odd number of strings means the attr/value pairs were not added correctly");
                             string keyStore = null;
                             string providerName = null;
                             int providerType = -1;

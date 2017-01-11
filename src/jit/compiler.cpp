@@ -1635,8 +1635,6 @@ void Compiler::compDisplayStaticSizes(FILE* fout)
             sizeof(bbDummy->bbVarUse));
     fprintf(fout, "Offset / size of bbVarDef              = %3u / %3u\n", offsetof(BasicBlock, bbVarDef),
             sizeof(bbDummy->bbVarDef));
-    fprintf(fout, "Offset / size of bbVarTmp              = %3u / %3u\n", offsetof(BasicBlock, bbVarTmp),
-            sizeof(bbDummy->bbVarTmp));
     fprintf(fout, "Offset / size of bbLiveIn              = %3u / %3u\n", offsetof(BasicBlock, bbLiveIn),
             sizeof(bbDummy->bbLiveIn));
     fprintf(fout, "Offset / size of bbLiveOut             = %3u / %3u\n", offsetof(BasicBlock, bbLiveOut),
@@ -2270,7 +2268,7 @@ void Compiler::compSetProcessor()
 #if defined(_TARGET_ARM_)
     info.genCPU = CPU_ARM;
 #elif defined(_TARGET_AMD64_)
-    info.genCPU         = CPU_X64;
+    info.genCPU       = CPU_X64;
 #elif defined(_TARGET_X86_)
     if (jitFlags.IsSet(JitFlags::JIT_FLAG_TARGET_P4))
         info.genCPU = CPU_X86_PENTIUM_4;
@@ -2284,6 +2282,15 @@ void Compiler::compSetProcessor()
     CLANG_FORMAT_COMMENT_ANCHOR;
 
 #ifdef _TARGET_XARCH_
+    opts.compCanUseSSE3_4 = false;
+    if (!jitFlags.IsSet(JitFlags::JIT_FLAG_PREJIT) && jitFlags.IsSet(JitFlags::JIT_FLAG_USE_SSE3_4))
+    {
+        if (JitConfig.EnableSSE3_4() != 0)
+        {
+            opts.compCanUseSSE3_4 = true;
+        }
+    }
+
 #ifdef FEATURE_AVX_SUPPORT
     // COMPlus_EnableAVX can be used to disable using AVX if available on a target machine.
     // Note that FEATURE_AVX_SUPPORT is not enabled for ctpjit
@@ -2293,13 +2300,24 @@ void Compiler::compSetProcessor()
         if (JitConfig.EnableAVX() != 0)
         {
             opts.compCanUseAVX = true;
-            if (!compIsForInlining())
-            {
-                codeGen->getEmitter()->SetUseAVX(true);
-            }
         }
     }
 #endif // FEATURE_AVX_SUPPORT
+
+    if (!compIsForInlining())
+    {
+#ifdef FEATURE_AVX_SUPPORT
+        if (opts.compCanUseAVX)
+        {
+            codeGen->getEmitter()->SetUseAVX(true);
+        }
+        else
+#endif // FEATURE_AVX_SUPPORT
+            if (opts.compCanUseSSE3_4)
+        {
+            codeGen->getEmitter()->SetUseSSE3_4(true);
+        }
+    }
 #endif // _TARGET_XARCH_
 
 #ifdef _TARGET_AMD64_
@@ -2307,9 +2325,22 @@ void Compiler::compSetProcessor()
     opts.compUseCMOV    = true;
     opts.compCanUseSSE2 = true;
 #elif defined(_TARGET_X86_)
-    opts.compUseFCOMI   = jitFlags.IsSet(JitFlags::JIT_FLAG_USE_FCOMI);
-    opts.compUseCMOV    = jitFlags.IsSet(JitFlags::JIT_FLAG_USE_CMOV);
+    opts.compUseFCOMI = jitFlags.IsSet(JitFlags::JIT_FLAG_USE_FCOMI);
+    opts.compUseCMOV  = jitFlags.IsSet(JitFlags::JIT_FLAG_USE_CMOV);
     opts.compCanUseSSE2 = jitFlags.IsSet(JitFlags::JIT_FLAG_USE_SSE2);
+
+#if !defined(LEGACY_BACKEND) && !defined(FEATURE_CORECLR)
+    // RyuJIT/x86 requires SSE2 to be available: there is no support for generating floating-point
+    // code with x87 instructions. On .NET Core, the VM always tells us that SSE2 is available.
+    // However, on desktop, under ngen, (and presumably in the unlikely case you're actually
+    // running on a machine without SSE2), the VM does not set the SSE2 flag. We ignore this and
+    // go ahead and generate SSE2 code anyway.
+    if (!opts.compCanUseSSE2)
+    {
+        JITDUMP("VM didn't set CORJIT_FLG_USE_SSE2! Ignoring, and generating SSE2 code anyway.\n");
+        opts.compCanUseSSE2 = true;
+    }
+#endif // !defined(LEGACY_BACKEND) && !defined(FEATURE_CORECLR)
 
 #ifdef DEBUG
     if (opts.compUseFCOMI)
@@ -2317,10 +2348,9 @@ void Compiler::compSetProcessor()
     if (opts.compUseCMOV)
         opts.compUseCMOV = !compStressCompile(STRESS_USE_CMOV, 50);
 
-// X86 RyuJIT requires SSE2 to be available and hence
-// don't turn off compCanUseSSE2 under stress.
 #ifdef LEGACY_BACKEND
-    // Should we override the SSE2 setting
+
+    // Should we override the SSE2 setting?
     enum
     {
         SSE2_FORCE_DISABLE = 0,
@@ -2334,9 +2364,14 @@ void Compiler::compSetProcessor()
         opts.compCanUseSSE2 = true;
     else if (opts.compCanUseSSE2)
         opts.compCanUseSSE2 = !compStressCompile(STRESS_GENERIC_VARN, 50);
-#else  // !LEGACY_JITBACKEND
+
+#else // !LEGACY_BACKEND
+
+    // RyuJIT/x86 requires SSE2 to be available and hence
+    // don't turn off compCanUseSSE2 under stress.
     assert(opts.compCanUseSSE2);
-#endif // !LEGACY_JITBACKEND
+
+#endif // !LEGACY_BACKEND
 
 #endif // DEBUG
 
@@ -3259,8 +3294,6 @@ void Compiler::compInitOptions(JitFlags* jitFlags)
     }
 #endif
 
-    opts.compMustInlinePInvokeCalli = jitFlags->IsSet(JitFlags::JIT_FLAG_IL_STUB);
-
     opts.compScopeInfo = opts.compDbgInfo;
 
 #ifdef LATE_DISASM
@@ -3779,6 +3812,33 @@ void Compiler::compSetOptimizationLevel()
             theMinOptsValue = true;
         }
     }
+
+#if 0
+    // The code in this #if can be used to debug optimization issues according to method hash.
+	// To use, uncomment, rebuild and set environment variables minoptshashlo and minoptshashhi.
+#ifdef DEBUG
+    unsigned methHash = info.compMethodHash();
+    char* lostr = getenv("minoptshashlo");
+    unsigned methHashLo = 0;
+	if (lostr != nullptr)
+	{
+		sscanf_s(lostr, "%x", &methHashLo);
+		char* histr = getenv("minoptshashhi");
+		unsigned methHashHi = UINT32_MAX;
+		if (histr != nullptr)
+		{
+			sscanf_s(histr, "%x", &methHashHi);
+			if (methHash >= methHashLo && methHash <= methHashHi)
+			{
+				printf("MinOpts for method %s, hash = 0x%x.\n",
+					info.compFullName, info.compMethodHash());
+				printf("");         // in our logic this causes a flush
+				theMinOptsValue = true;
+			}
+		}
+	}
+#endif
+#endif
 
     if (compStressCompile(STRESS_MIN_OPTS, 5))
     {
@@ -4534,6 +4594,10 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, JitFlags
         codeGen->regSet.rsMaskResvd |= RBM_OPT_RSVD;
         assert(REG_OPT_RSVD != REG_FP);
     }
+    // compRsvdRegCheck() has read out the FramePointerUsed property, but doLinearScan()
+    // tries to overwrite it later. This violates the PhasedVar rule and triggers an assertion.
+    // TODO-ARM-Bug?: What is the proper way to handle this situation?
+    codeGen->resetFramePointerUsedWritePhase();
 
 #ifdef DEBUG
     //
@@ -4654,21 +4718,6 @@ void Compiler::ResetOptAnnotations()
                 tree->ClearVN();
                 tree->ClearAssertion();
                 tree->gtCSEnum = NO_CSE;
-
-                // Clear any *_ASG_LHS flags -- these are set during SSA construction,
-                // and the heap live-in calculation depends on them being unset coming
-                // into SSA construction (without clearing them, a block that has a
-                // heap def via one of these before any heap use is treated as not having
-                // an upwards-exposed heap use, even though subsequent heap uses may not
-                // be killed by the store; this seems to be a bug, worked around here).
-                if (tree->OperIsIndir())
-                {
-                    tree->gtFlags &= ~GTF_IND_ASG_LHS;
-                }
-                else if (tree->OperGet() == GT_CLS_VAR)
-                {
-                    tree->gtFlags &= ~GTF_CLS_VAR_ASG_LHS;
-                }
             }
         }
     }

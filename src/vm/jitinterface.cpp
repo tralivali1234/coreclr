@@ -2303,13 +2303,9 @@ unsigned CEEInfo::getClassGClayout (CORINFO_CLASS_HANDLE clsHnd, BYTE* gcPtrs)
 
     MethodTable* pMT = VMClsHnd.GetMethodTable();
 
-    if (pMT == g_TypedReferenceMT) // if (pMT->IsByRefLike()) // TODO-SPAN: Proper GC reporting
+    if (pMT->IsByRefLike())
     {
-        if (pMT == g_TypedReferenceMT
-#ifdef FEATURE_SPAN_OF_T
-            || pMT->HasSameTypeDefAs(g_pSpanClass) || pMT->HasSameTypeDefAs(g_pReadOnlySpanClass)
-#endif
-            )
+        if (pMT == g_TypedReferenceMT)
         {
             gcPtrs[0] = TYPE_GC_BYREF;
             gcPtrs[1] = TYPE_GC_NONE;
@@ -2317,6 +2313,9 @@ unsigned CEEInfo::getClassGClayout (CORINFO_CLASS_HANDLE clsHnd, BYTE* gcPtrs)
         }
         else
         {
+            // TODO-SPAN: Proper GC reporting
+            memset(gcPtrs, TYPE_GC_NONE,
+                   (VMClsHnd.GetSize() + sizeof(void*) -1)/ sizeof(void*));
             result = 0;
         }
     }
@@ -5038,6 +5037,7 @@ void CEEInfo::getCallInfo(
     }
 
 
+#ifdef FEATURE_CER
     if (pMD == g_pPrepareConstrainedRegionsMethod && !isVerifyOnly())
     {
         MethodDesc * methodFromContext = GetMethodFromContext(pResolvedToken->tokenContext);
@@ -5059,6 +5059,7 @@ void CEEInfo::getCallInfo(
             }
         }
     }
+#endif // FEATURE_CER
 
     TypeHandle exactType = TypeHandle(pResolvedToken->hClass);
 
@@ -8378,6 +8379,7 @@ bool CEEInfo::canTailCall (CORINFO_METHOD_HANDLE hCaller,
         }
     }
 
+#ifdef FEATURE_CER
     // We cannot tail call from a root CER method, the thread abort algorithm to
     // detect CERs depends on seeing such methods on the stack.
     if (IsCerRootMethod(pCaller))
@@ -8386,6 +8388,7 @@ bool CEEInfo::canTailCall (CORINFO_METHOD_HANDLE hCaller,
         szFailReason = "Caller is a CER root";
         goto exit;
     }
+#endif // FEATURE_CER
 
     result = true;
 
@@ -11079,7 +11082,7 @@ void CEEJitInfo::allocUnwindInfo (
 
     RUNTIME_FUNCTION__SetBeginAddress(pRuntimeFunction, currentCodeOffset + startOffset);
 
-#if defined(_TARGET_X86_) || defined(_TARGET_AMD64_)
+#if defined(_TARGET_AMD64_)
     pRuntimeFunction->EndAddress        = currentCodeOffset + endOffset;
 #endif
 

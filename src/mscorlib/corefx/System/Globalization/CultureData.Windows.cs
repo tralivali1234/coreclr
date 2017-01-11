@@ -3,10 +3,13 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Collections.Generic;
-using System.Diagnostics.Contracts;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+
+#if ENABLE_WINRT
 using Internal.Runtime.Augments;
+#endif
 
 namespace System.Globalization
 {
@@ -158,7 +161,7 @@ namespace System.Globalization
 
         private string GetLocaleInfo(LocaleStringData type)
         {
-            Contract.Assert(_sWindowsName != null, "[CultureData.DoGetLocaleInfo] Expected _sWindowsName to be populated by already");
+            Debug.Assert(_sWindowsName != null, "[CultureData.DoGetLocaleInfo] Expected _sWindowsName to be populated by already");
             return GetLocaleInfo(_sWindowsName, type);
         }
 
@@ -183,7 +186,7 @@ namespace System.Globalization
 
             // Ask OS for data, note that we presume it returns success, so we have to know that
             // sWindowsName is valid before calling.
-            Contract.Assert(_sWindowsName != null, "[CultureData.DoGetLocaleInfoInt] Expected _sWindowsName to be populated by already");
+            Debug.Assert(_sWindowsName != null, "[CultureData.DoGetLocaleInfoInt] Expected _sWindowsName to be populated by already");
             int result = Interop.mincore.GetLocaleInfoExInt(_sWindowsName, lctype);
 
             return result;
@@ -203,7 +206,7 @@ namespace System.Globalization
 
         private int GetFirstDayOfWeek()
         {
-            Contract.Assert(_sWindowsName != null, "[CultureData.DoGetLocaleInfoInt] Expected _sWindowsName to be populated by already");
+            Debug.Assert(_sWindowsName != null, "[CultureData.DoGetLocaleInfoInt] Expected _sWindowsName to be populated by already");
 
             const uint LOCALE_IFIRSTDAYOFWEEK = 0x0000100C;
 
@@ -216,7 +219,7 @@ namespace System.Globalization
         private String[] GetTimeFormats()
         {
             // Note that this gets overrides for us all the time
-            Contract.Assert(_sWindowsName != null, "[CultureData.DoEnumTimeFormats] Expected _sWindowsName to be populated by already");
+            Debug.Assert(_sWindowsName != null, "[CultureData.DoEnumTimeFormats] Expected _sWindowsName to be populated by already");
             String[] result = ReescapeWin32Strings(nativeEnumTimeFormats(_sWindowsName, 0, UseUserOverride));
 
             return result;
@@ -225,7 +228,7 @@ namespace System.Globalization
         private String[] GetShortTimeFormats()
         {
             // Note that this gets overrides for us all the time
-            Contract.Assert(_sWindowsName != null, "[CultureData.DoEnumShortTimeFormats] Expected _sWindowsName to be populated by already");
+            Debug.Assert(_sWindowsName != null, "[CultureData.DoEnumShortTimeFormats] Expected _sWindowsName to be populated by already");
             String[] result = ReescapeWin32Strings(nativeEnumTimeFormats(_sWindowsName, TIME_NOSECONDS, UseUserOverride));
 
             return result;
@@ -235,7 +238,7 @@ namespace System.Globalization
         // region name match the requested region name
         private static CultureData GetCultureDataFromRegionName(String regionName)
         {
-            Contract.Assert(regionName != null);
+            Debug.Assert(regionName != null);
 
             const uint LOCALE_SUPPLEMENTAL = 0x00000002;
             const uint LOCALE_SPECIFICDATA = 0x00000020;
@@ -264,26 +267,64 @@ namespace System.Globalization
             return null;
         }
 
-        private static string GetLanguageDisplayName(string cultureName)
+        private string GetLanguageDisplayName(string cultureName)
         {
+#if ENABLE_WINRT
             return WinRTInterop.Callbacks.GetLanguageDisplayName(cultureName);
+#else
+            // Usually the UI culture shouldn't be different than what we got from WinRT except
+            // if DefaultThreadCurrentUICulture was set
+            CultureInfo ci;
+
+            if (CultureInfo.DefaultThreadCurrentUICulture != null &&
+                ((ci = GetUserDefaultCulture()) != null) &&
+                !CultureInfo.DefaultThreadCurrentUICulture.Name.Equals(ci.Name))
+            {
+                return SNATIVEDISPLAYNAME;
+            }
+            else
+            {
+                return GetLocaleInfo(cultureName, LocaleStringData.LocalizedDisplayName);
+            }
+#endif // ENABLE_WINRT
         }
 
-        private static string GetRegionDisplayName(string isoCountryCode)
+        private string GetRegionDisplayName(string isoCountryCode)
         {
+#if ENABLE_WINRT
             return WinRTInterop.Callbacks.GetRegionDisplayName(isoCountryCode);
+#else
+            // Usually the UI culture shouldn't be different than what we got from WinRT except
+            // if DefaultThreadCurrentUICulture was set
+            CultureInfo ci;
+
+            if (CultureInfo.DefaultThreadCurrentUICulture != null &&
+                ((ci = GetUserDefaultCulture()) != null) &&
+                !CultureInfo.DefaultThreadCurrentUICulture.Name.Equals(ci.Name))
+            {
+                return SNATIVECOUNTRY;
+            }
+            else
+            {
+                return GetLocaleInfo(LocaleStringData.LocalizedCountryName);
+            }
+#endif // ENABLE_WINRT
         }
 
         private static CultureInfo GetUserDefaultCulture()
         {
+#if ENABLE_WINRT
             return (CultureInfo)WinRTInterop.Callbacks.GetUserDefaultCulture();
+#else
+            return CultureInfo.GetUserDefaultCulture();
+#endif // ENABLE_WINRT
         }
 
         // PAL methods end here.
 
         private static string GetLocaleInfoFromLCType(string localeName, uint lctype, bool useUserOveride)
         {
-            Contract.Assert(localeName != null, "[CultureData.GetLocaleInfoFromLCType] Expected localeName to be not be null");
+            Debug.Assert(localeName != null, "[CultureData.GetLocaleInfoFromLCType] Expected localeName to be not be null");
 
             // Fix lctype if we don't want overrides
             if (!useUserOveride)
@@ -557,50 +598,50 @@ namespace System.Globalization
 
             return null;
         }
-        
-        private static int LocaleNameToLCID(string cultureName)
+
+        private int LocaleNameToLCID(string cultureName)
         {
-            throw new NotImplementedException();
+            return GetLocaleInfo(LocaleNumberData.LanguageId);
         }
-        
+
         private static string LCIDToLocaleName(int culture)
         {
             throw new NotImplementedException();
         }
-        
-        private static int GetAnsiCodePage(string cultureName)
+
+        private int GetAnsiCodePage(string cultureName)
         {
-            throw new NotImplementedException();
+            return GetLocaleInfo(LocaleNumberData.AnsiCodePage);
         }
 
-        private static int GetOemCodePage(string cultureName)
+        private int GetOemCodePage(string cultureName)
         {
-            throw new NotImplementedException();
+            return GetLocaleInfo(LocaleNumberData.OemCodePage);
         }
 
-        private static int GetMacCodePage(string cultureName)
+        private int GetMacCodePage(string cultureName)
         {
-            throw new NotImplementedException();
+            return GetLocaleInfo(LocaleNumberData.MacCodePage);
         }
 
-        private static int GetEbcdicCodePage(string cultureName)
+        private int GetEbcdicCodePage(string cultureName)
         {
-            throw new NotImplementedException();
+            return GetLocaleInfo(LocaleNumberData.EbcdicCodePage);
         }
 
-        private static int GetGeoId(string cultureName)
+        private int GetGeoId(string cultureName)
         {
-            throw new NotImplementedException();
+            return GetLocaleInfo(LocaleNumberData.GeoId);
         }
-        
-        private static int GetDigitSubstitution(string cultureName)
+
+        private int GetDigitSubstitution(string cultureName)
         {
-            throw new NotImplementedException();
+            return GetLocaleInfo(LocaleNumberData.DigitSubstitution);
         }
-        
-        private static string GetThreeLetterWindowsLanguageName(string cultureName)
+
+        private string GetThreeLetterWindowsLanguageName(string cultureName)
         {
-            throw new NotImplementedException();
+            return GetLocaleInfo(cultureName, LocaleStringData.AbbreviatedWindowsLanguageName);
         }
 
         private static CultureInfo[] EnumCultures(CultureTypes types)
@@ -608,22 +649,22 @@ namespace System.Globalization
             throw new NotImplementedException();
         }
 
-        private static string GetConsoleFallbackName(string cultureName)
+        private string GetConsoleFallbackName(string cultureName)
         {
-            throw new NotImplementedException();
+            return GetLocaleInfo(cultureName, LocaleStringData.ConsoleFallbackName);
         }
 
-        private bool IsSupplementalCustomCulture
+        internal bool IsFramework
+        {
+            get { throw new NotImplementedException(); }
+        }
+
+        internal bool IsWin32Installed
         {
             get { throw new NotImplementedException(); }
         }
         
-        private bool IsWin32Installed
-        {
-            get { throw new NotImplementedException(); }
-        }
-        
-        private bool IsReplacementCulture
+        internal bool IsReplacementCulture
         {
             get { throw new NotImplementedException(); }
         }

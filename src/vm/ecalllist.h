@@ -108,6 +108,8 @@ FCFuncStart(gDependentHandleFuncs)
     FCFuncElement("nGetPrimary",             DependentHandle::nGetPrimary)
     FCFuncElement("nGetPrimaryAndSecondary", DependentHandle::nGetPrimaryAndSecondary)
     FCFuncElement("nFree",                   DependentHandle::nFree)
+    FCFuncElement("nSetPrimary",             DependentHandle::nSetPrimary)
+    FCFuncElement("nSetSecondary",           DependentHandle::nSetSecondary)
 FCFuncEnd()
 
 #ifndef FEATURE_CORECLR
@@ -288,6 +290,7 @@ FCFuncStart(gEnvironmentFuncs)
     FCFuncElement("GetResourceFromDefault", GetResourceFromDefault)
 #endif // !FEATURE_CORECLR
     FCFuncElement("GetCommandLineArgsNative", SystemNative::GetCommandLineArgs)
+    FCFuncElement("get_CurrentProcessorNumber", SystemNative::GetCurrentProcessorNumber)
 
 #if defined(FEATURE_COMINTEROP) && !defined(FEATURE_CORESYSTEM)
     QCFuncElement("WinRTSupported", SystemNative::WinRTSupported)
@@ -1321,9 +1324,6 @@ FCFuncStart(gThreadFuncs)
     FCFuncElement("BeginThreadAffinity", ThreadNative::BeginThreadAffinity)
     FCFuncElement("EndThreadAffinity", ThreadNative::EndThreadAffinity)
 #endif // FEATURE_CORECLR
-#ifdef FEATURE_LEGACYSURFACE
-    FCFuncElement("AbortInternal", ThreadNative::Abort)
-#endif // FEATURE_LEGACYSURFACE
 #ifndef FEATURE_CORECLR
     FCFuncElement("ResetAbortNative", ThreadNative::ResetAbort)
 #endif // FEATURE_CORECLR
@@ -1637,7 +1637,9 @@ FCFuncStart(gInteropMarshalFuncs)
 
     FCFuncElement("GetNativeActivationFactory", MarshalNative::GetNativeActivationFactory)
     FCFuncElement("GetIUnknownForObjectNative", MarshalNative::GetIUnknownForObjectNative)
+#ifndef FEATURE_CORECLR
     FCFuncElement("GetIDispatchForObjectNative", MarshalNative::GetIDispatchForObjectNative)
+#endif // FEATURE_CORECLR
     FCFuncElement("GetComInterfaceForObjectNative", MarshalNative::GetComInterfaceForObjectNative)
     FCFuncElement("InternalReleaseComObject", MarshalNative::ReleaseComObject)
     FCFuncElement("Release", MarshalNative::Release)

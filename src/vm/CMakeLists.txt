@@ -155,7 +155,6 @@ set(VM_SOURCES_WKS
     comthreadpool.cpp
     comutilnative.cpp
     comwaithandle.cpp
-    constrainedexecutionregion.cpp
     coverage.cpp
     customattribute.cpp
     custommarshalerinfo.cpp
@@ -241,6 +240,12 @@ set(VM_SOURCES_WKS
     weakreferencenative.cpp
     ${VM_SOURCES_GDBJIT}
 )
+
+if(FEATURE_CER)
+    list(APPEND VM_SOURCES_WKS
+        constrainedexecutionregion.cpp
+        )
+endif(FEATURE_CER)
 
 if(FEATURE_EVENT_TRACE)
     list(APPEND VM_SOURCES_WKS
@@ -370,6 +375,13 @@ else(WIN32)
             ${ARCH_SOURCES_DIR}/umthunkstub.S
             ${ARCH_SOURCES_DIR}/virtualcallstubamd64.S
         )
+    elseif(CLR_CMAKE_TARGET_ARCH_I386)
+        set(VM_SOURCES_WKS_ARCH_ASM
+            ${ARCH_SOURCES_DIR}/asmhelpers.S
+            ${ARCH_SOURCES_DIR}/jithelp.S
+            ${ARCH_SOURCES_DIR}/gmsasm.S
+            ${ARCH_SOURCES_DIR}/umthunkstub.S
+        )
     elseif(CLR_CMAKE_TARGET_ARCH_ARM)
         set(VM_SOURCES_WKS_ARCH_ASM
             ${ARCH_SOURCES_DIR}/asmhelpers.S
@@ -418,9 +430,10 @@ elseif(CLR_CMAKE_TARGET_ARCH_I386)
     )
     
     set(VM_SOURCES_WKS_ARCH
-        ${ARCH_SOURCES_DIR}/jithelp.asm
         ${ARCH_SOURCES_DIR}/jitinterfacex86.cpp
         ${ARCH_SOURCES_DIR}/profiler.cpp
+        exceptionhandling.cpp
+        gcinfodecoder.cpp
     )
 elseif(CLR_CMAKE_TARGET_ARCH_ARM)
     set(VM_SOURCES_DAC_AND_WKS_ARCH

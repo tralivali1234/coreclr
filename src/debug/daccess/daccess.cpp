@@ -5888,14 +5888,15 @@ ClrDataAccess::RawGetMethodName(
         LPCWSTR wszStubManagerName = pStubManager->GetStubManagerName(TO_TADDR(address));
         _ASSERTE(wszStubManagerName != NULL);
 
-        HRESULT hr = StringCchPrintfW(
+        int result = _snwprintf_s(
             symbolBuf, 
             bufLen, 
+            _TRUNCATE,
             s_wszFormatNameWithStubManager,
             wszStubManagerName,                                         // Arg 1 = stub name
             TO_TADDR(address));                                         // Arg 2 = stub hex address
 
-        if (hr == S_OK)
+        if (result != -1)
         {
             // Printf succeeded, so we have an exact char count to return
             if (symbolLen)
@@ -5951,13 +5952,14 @@ NameFromMethodDesc:
         // XXX Microsoft - Should this case have a more specific name?
         static WCHAR s_wszFormatNameAddressOnly[] = W("CLRStub@%I64x");
 
-        HRESULT hr = StringCchPrintfW(
+        int result = _snwprintf_s(
             symbolBuf, 
             bufLen,
+            _TRUNCATE,
             s_wszFormatNameAddressOnly,
             TO_TADDR(address));
 
-        if (hr == S_OK)
+        if (result != -1)
         {
             // Printf succeeded, so we have an exact char count to return
             if (symbolLen)
@@ -7352,7 +7354,7 @@ Exit:
 
 //----------------------------------------------------------------------------
 // 
-// IsExceptionFromManagedCode - report if pExceptionRecord points to a exception belonging to the current runtime
+// IsExceptionFromManagedCode - report if pExceptionRecord points to an exception belonging to the current runtime
 // 
 // Arguments:
 //    pExceptionRecord - the exception record

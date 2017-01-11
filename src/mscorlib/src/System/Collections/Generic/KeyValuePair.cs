@@ -16,6 +16,7 @@
 namespace System.Collections.Generic {
     
     using System;
+    using System.ComponentModel;
     using System.Text;
 
     // Provides the Create factory method for KeyValuePair<TKey, TValue>.
@@ -61,6 +62,13 @@ namespace System.Collections.Generic {
             }
             s.Append(']');
             return StringBuilderCache.GetStringAndRelease(s);
+        }
+
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public void Deconstruct(out TKey key, out TValue value)
+        {
+            key = Key;
+            value = Value;
         }
     }
 }

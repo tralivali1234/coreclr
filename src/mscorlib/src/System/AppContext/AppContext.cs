@@ -19,11 +19,18 @@ namespace System
         }
         private static readonly Dictionary<string, SwitchValueState> s_switchMap = new Dictionary<string, SwitchValueState>();
 
+        static AppContext()
+        {
+            // Unloading event must happen before ProcessExit event
+            AppDomain.CurrentDomain.ProcessExit += OnUnloading;
+            AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
+
+            // populate the AppContext with the default set of values
+            AppContextDefaultValues.PopulateDefaultValues();
+        }
+
         public static string BaseDirectory
         {
-#if FEATURE_CORECLR
-            [System.Security.SecuritySafeCritical]
-#endif
             get
             {
                 // The value of APP_CONTEXT_BASE_DIRECTORY key has to be a string and it is not allowed to be any other type. 
@@ -41,15 +48,11 @@ namespace System
             }
         }
 
-#if FEATURE_CORECLR
-        [System.Security.SecuritySafeCritical]
-#endif
         public static object GetData(string name)
         {
             return AppDomain.CurrentDomain.GetData(name);
         }
 
-        [System.Security.SecuritySafeCritical]
         public static void SetData(string name, object data)
         {
             AppDomain.CurrentDomain.SetData(name, data);
@@ -57,13 +60,11 @@ namespace System
 
         public static event UnhandledExceptionEventHandler UnhandledException
         {
-            [System.Security.SecurityCritical]
             add
             {
                 AppDomain.CurrentDomain.UnhandledException += value;
             }
 
-            [System.Security.SecurityCritical]
             remove
             {
                 AppDomain.CurrentDomain.UnhandledException -= value;
@@ -72,39 +73,38 @@ namespace System
 
         public static event System.EventHandler<System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs> FirstChanceException
         {  
-            [System.Security.SecurityCritical]
             add  
             {  
                 AppDomain.CurrentDomain.FirstChanceException += value;  
             }  
-            [System.Security.SecurityCritical]
             remove  
             {  
                 AppDomain.CurrentDomain.FirstChanceException -= value;  
             }  
         }  
 
-        public static event System.EventHandler ProcessExit
-        {  
-            [System.Security.SecurityCritical]
-            add  
-            {  
-                AppDomain.CurrentDomain.ProcessExit += value;  
-            }  
-            [System.Security.SecurityCritical]  
-            remove  
-            {  
-                AppDomain.CurrentDomain.ProcessExit -= value;  
-            }  
+        public static event System.EventHandler ProcessExit;
+        public static event System.EventHandler Unloading;
+
+        private static void OnProcessExit(object sender, EventArgs e)
+        {
+            var processExit = ProcessExit;
+            if (processExit != null)
+            {
+                processExit(null, EventArgs.Empty);
+            }
+        }
+
+        private static void OnUnloading(object sender, EventArgs e)
+        {
+            var unloading = Unloading;
+            if (unloading != null)
+            {
+                unloading(null, EventArgs.Empty);
+            }
         }
 
         #region Switch APIs
-        static AppContext()
-        {
-            // populate the AppContext with the default set of values
-            AppContextDefaultValues.PopulateDefaultValues();
-        }
-
         /// <summary>
         /// Try to get the value of the switch.
         /// </summary>

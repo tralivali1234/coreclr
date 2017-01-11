@@ -485,9 +485,10 @@ void CodeGen::genIncRegBy(regNumber reg, ssize_t ival, GenTreePtr tree, var_type
         }
     }
 #endif
-
-    insFlags flags = setFlags ? INS_FLAGS_SET : INS_FLAGS_DONT_CARE;
-    inst_RV_IV(INS_add, reg, ival, emitActualTypeSize(dstType), flags);
+    {
+        insFlags flags = setFlags ? INS_FLAGS_SET : INS_FLAGS_DONT_CARE;
+        inst_RV_IV(INS_add, reg, ival, emitActualTypeSize(dstType), flags);
+    }
 
 #ifdef _TARGET_XARCH_
 UPDATE_LIVENESS:
@@ -7071,84 +7072,87 @@ void CodeGen::genCodeForTreeSmpBinArithLogOp(GenTreePtr tree, regMaskTP destReg,
 
     regTracker.rsTrackRegTrash(reg);
 
-    bool op2Released = false;
+    {
+        bool op2Released = false;
 
-    // For overflow instructions, tree->gtType is the accurate type,
-    // and gives us the size for the operands.
+        // For overflow instructions, tree->gtType is the accurate type,
+        // and gives us the size for the operands.
 
-    emitAttr opSize = emitTypeSize(treeType);
+        emitAttr opSize = emitTypeSize(treeType);
 
-    /* Compute the new value */
+        /* Compute the new value */
 
-    if (isArith && !op2->InReg() && (op2->OperKind() & GTK_CONST)
+        if (isArith && !op2->InReg() && (op2->OperKind() & GTK_CONST)
 #if !CPU_HAS_FP_SUPPORT
-        && (treeType == TYP_INT || treeType == TYP_I_IMPL)
+            && (treeType == TYP_INT || treeType == TYP_I_IMPL)
 #endif
-            )
-    {
-        ssize_t ival = op2->gtIntCon.gtIconVal;
-
-        if (oper == GT_ADD)
-        {
-            genIncRegBy(reg, ival, tree, treeType, ovfl);
-        }
-        else if (oper == GT_SUB)
-        {
-            if (ovfl && ((tree->gtFlags & GTF_UNSIGNED) ||
-                         (ival == ((treeType == TYP_INT) ? INT32_MIN : SSIZE_T_MIN))) // -0x80000000 == 0x80000000.
-                                                                                      // Therefore we can't use -ival.
                 )
-            {
-                /* For unsigned overflow, we have to use INS_sub to set
-                   the flags correctly */
+        {
+            ssize_t ival = op2->gtIntCon.gtIconVal;
 
-                genDecRegBy(reg, ival, tree);
+            if (oper == GT_ADD)
+            {
+                genIncRegBy(reg, ival, tree, treeType, ovfl);
             }
-            else
+            else if (oper == GT_SUB)
             {
-                /* Else, we simply add the negative of the value */
+                if (ovfl && ((tree->gtFlags & GTF_UNSIGNED) ||
+                             (ival == ((treeType == TYP_INT) ? INT32_MIN : SSIZE_T_MIN))) // -0x80000000 == 0x80000000.
+                    // Therefore we can't use -ival.
+                    )
+                {
+                    /* For unsigned overflow, we have to use INS_sub to set
+                    the flags correctly */
 
-                genIncRegBy(reg, -ival, tree, treeType, ovfl);
+                    genDecRegBy(reg, ival, tree);
+                }
+                else
+                {
+                    /* Else, we simply add the negative of the value */
+
+                    genIncRegBy(reg, -ival, tree, treeType, ovfl);
+                }
+            }
+            else if (oper == GT_MUL)
+            {
+                genMulRegBy(reg, ival, tree, treeType, ovfl);
             }
         }
-        else if (oper == GT_MUL)
+        else
         {
-            genMulRegBy(reg, ival, tree, treeType, ovfl);
+            // op2 could be a GT_COMMA (i.e. an assignment for a CSE def)
+            op2 = op2->gtEffectiveVal();
+            if (varTypeIsByte(treeType) && op2->InReg())
+            {
+                noway_assert(genRegMask(reg) & RBM_BYTE_REGS);
+
+                regNumber op2reg     = op2->gtRegNum;
+                regMaskTP op2regMask = genRegMask(op2reg);
+
+                if (!(op2regMask & RBM_BYTE_REGS))
+                {
+                    regNumber byteReg = regSet.rsGrabReg(RBM_BYTE_REGS);
+
+                    inst_RV_RV(INS_mov, byteReg, op2reg);
+                    regTracker.rsTrackRegTrash(byteReg);
+
+                    genDoneAddressable(op2, addrReg, RegSet::KEEP_REG);
+                    op2Released = true;
+
+                    op2->gtRegNum = byteReg;
+                }
+            }
+
+            inst_RV_TT(ins, reg, op2, 0, opSize, flags);
+        }
+
+        /* Free up anything that was tied up by the operand */
+
+        if (!op2Released)
+        {
+            genDoneAddressable(op2, addrReg, RegSet::KEEP_REG);
         }
     }
-    else
-    {
-        // op2 could be a GT_COMMA (i.e. an assignment for a CSE def)
-        op2 = op2->gtEffectiveVal();
-        if (varTypeIsByte(treeType) && op2->InReg())
-        {
-            noway_assert(genRegMask(reg) & RBM_BYTE_REGS);
-
-            regNumber op2reg     = op2->gtRegNum;
-            regMaskTP op2regMask = genRegMask(op2reg);
-
-            if (!(op2regMask & RBM_BYTE_REGS))
-            {
-                regNumber byteReg = regSet.rsGrabReg(RBM_BYTE_REGS);
-
-                inst_RV_RV(INS_mov, byteReg, op2reg);
-                regTracker.rsTrackRegTrash(byteReg);
-
-                genDoneAddressable(op2, addrReg, RegSet::KEEP_REG);
-                op2Released = true;
-
-                op2->gtRegNum = byteReg;
-            }
-        }
-
-        inst_RV_TT(ins, reg, op2, 0, opSize, flags);
-    }
-
-    /* Free up anything that was tied up by the operand */
-
-    if (!op2Released)
-        genDoneAddressable(op2, addrReg, RegSet::KEEP_REG);
-
     /* The result will be where the first operand is sitting */
 
     /* We must use RegSet::KEEP_REG since op1 can have a GC pointer here */
@@ -10168,6 +10172,9 @@ void CodeGen::genCodeForTreeSmpOp(GenTreePtr tree, regMaskTP destReg, regMaskTP 
             if (op1 == NULL)
                 return;
 #endif
+            __fallthrough;
+
+        case GT_INIT_VAL:
 
             /* Generate the operand into some register */
 
@@ -20585,9 +20592,11 @@ DONE:
     }
 #endif
 
-    /* Write the lvaShadowSPfirst stack frame slot */
-    noway_assert(compiler->lvaLocAllocSPvar != BAD_VAR_NUM);
-    getEmitter()->emitIns_S_R(ins_Store(TYP_I_IMPL), EA_PTRSIZE, REG_SPBASE, compiler->lvaLocAllocSPvar, 0);
+    /* Write the lvaLocAllocSPvar stack frame slot */
+    if (compiler->lvaLocAllocSPvar != BAD_VAR_NUM)
+    {
+        getEmitter()->emitIns_S_R(ins_Store(TYP_I_IMPL), EA_PTRSIZE, REG_SPBASE, compiler->lvaLocAllocSPvar, 0);
+    }
 
 #if STACK_PROBES
     // Don't think it is worth it the codegen complexity to embed this
@@ -20716,10 +20725,9 @@ bool CodeGen::genRegTrashable(regNumber reg, GenTreePtr tree)
 */
 
 GenTreePtr Compiler::fgLegacyPerStatementLocalVarLiveness(GenTreePtr startNode, // The node to start walking with.
-                                                          GenTreePtr relopNode, // The node before the startNode.
+                                                          GenTreePtr relopNode) // The node before the startNode.
                                                                                 // (It should either be NULL or
                                                                                 // a GTF_RELOP_QMARK node.)
-                                                          GenTreePtr asgdLclVar)
 {
     GenTreePtr tree;
 
@@ -20801,7 +20809,7 @@ GenTreePtr Compiler::fgLegacyPerStatementLocalVarLiveness(GenTreePtr startNode, 
             case GT_LCL_FLD_ADDR:
             case GT_STORE_LCL_VAR:
             case GT_STORE_LCL_FLD:
-                fgMarkUseDef(tree->AsLclVarCommon(), asgdLclVar);
+                fgMarkUseDef(tree->AsLclVarCommon());
                 break;
 
             case GT_CLS_VAR:
@@ -20855,7 +20863,7 @@ GenTreePtr Compiler::fgLegacyPerStatementLocalVarLiveness(GenTreePtr startNode, 
                     {
                         // Defines a local addr
                         assert(dummyLclVarTree != nullptr);
-                        fgMarkUseDef(dummyLclVarTree->AsLclVarCommon(), asgdLclVar);
+                        fgMarkUseDef(dummyLclVarTree->AsLclVarCommon());
                     }
                 }
                 break;
@@ -20958,7 +20966,7 @@ GenTreePtr Compiler::fgLegacyPerStatementLocalVarLiveness(GenTreePtr startNode, 
                     // fgCurDefSet and fgCurUseSet into local variables defSet_BeforeSplit and useSet_BeforeSplit.
                     // The cached values will be used to restore fgCurDefSet and fgCurUseSet once we see the GT_COLON
                     // node.
-                    tree = fgLegacyPerStatementLocalVarLiveness(tree->gtNext, tree, asgdLclVar);
+                    tree = fgLegacyPerStatementLocalVarLiveness(tree->gtNext, tree);
 
                     // We must have been returned here after seeing a GT_QMARK node.
                     noway_assert(tree->gtOper == GT_QMARK);

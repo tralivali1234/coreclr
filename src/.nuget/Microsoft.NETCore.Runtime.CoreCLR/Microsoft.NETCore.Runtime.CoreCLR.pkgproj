@@ -9,11 +9,6 @@
     <IncludeRuntimeJson>true</IncludeRuntimeJson>
   </PropertyGroup>
   <ItemGroup>
-    <!-- ApiSets are only applicable for Windows. 
-         Despite the unconditioned package dependency it is constrained by runtime IDs within it's own package -->
-    <Dependency Include="Microsoft.NETCore.Windows.ApiSets">
-      <Version>$(WindowsAPISetPackageVersion)</Version>
-    </Dependency>
     <ProjectReference Include="..\Microsoft.NETCore.Jit\Microsoft.NETCore.Jit.pkgproj" />
     <ProjectReference Include="win\Microsoft.NETCore.Runtime.CoreCLR.pkgproj">
       <Platform>amd64</Platform>
@@ -26,6 +21,9 @@
     </ProjectReference>
     <ProjectReference Include="win\Microsoft.NETCore.Runtime.CoreCLR.pkgproj">
       <Platform>arm</Platform>
+    </ProjectReference>
+    <ProjectReference Include="linux\Microsoft.NETCore.Runtime.CoreCLR.pkgproj">
+      <Platform>amd64</Platform>
     </ProjectReference>
     <ProjectReference Include="debian\Microsoft.NETCore.Runtime.CoreCLR.pkgproj">
       <Platform>amd64</Platform>
@@ -48,8 +46,14 @@
     <ProjectReference Include="ubuntu\14.04\Microsoft.NETCore.Runtime.CoreCLR.pkgproj">
       <Platform>amd64</Platform>
     </ProjectReference>
+    <ProjectReference Include="ubuntu\14.04\Microsoft.NETCore.Runtime.CoreCLR.pkgproj">
+      <Platform>arm</Platform>
+    </ProjectReference>
     <ProjectReference Include="ubuntu\16.04\Microsoft.NETCore.Runtime.CoreCLR.pkgproj">
       <Platform>amd64</Platform>
+    </ProjectReference>
+    <ProjectReference Include="ubuntu\16.04\Microsoft.NETCore.Runtime.CoreCLR.pkgproj">
+      <Platform>arm</Platform>
     </ProjectReference>
     <ProjectReference Include="ubuntu\16.10\Microsoft.NETCore.Runtime.CoreCLR.pkgproj">
       <Platform>amd64</Platform>

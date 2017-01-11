@@ -331,7 +331,7 @@ typedef char * va_list;
 PALIMPORT
 BOOL
 PALAPI
-PAL_IsDebuggerPresent();
+PAL_IsDebuggerPresent(VOID);
  
 #define MAXIMUM_SUSPEND_COUNT  MAXCHAR
 
@@ -507,7 +507,7 @@ PAL_Initialize(
 PALIMPORT
 int
 PALAPI
-PAL_InitializeDLL();
+PAL_InitializeDLL(VOID);
 
 PALIMPORT
 DWORD
@@ -581,7 +581,7 @@ PAL_UnregisterForRuntimeStartup(
 PALIMPORT
 BOOL
 PALAPI
-PAL_NotifyRuntimeStarted();
+PAL_NotifyRuntimeStarted(VOID);
 
 static const int MAX_DEBUGGER_TRANSPORT_PIPE_NAME_LENGTH = 64;
 
@@ -648,6 +648,13 @@ PAL_DeleteExecWatchpoint(
 
 #endif
 
+PALIMPORT
+BOOL
+PALAPI
+PAL_ProbeMemory(
+    PVOID pBuffer,
+    DWORD cbBuffer,
+    BOOL fWriteAccess);
 
 /******************* winuser.h Entrypoints *******************************/
 
@@ -1831,6 +1838,13 @@ QueueUserAPC(
 
 #define MAXIMUM_SUPPORTED_EXTENSION     512
 
+#define CONTEXT_XSTATE (CONTEXT_i386 | 0x40L)
+
+#define CONTEXT_EXCEPTION_ACTIVE 0x8000000L
+#define CONTEXT_SERVICE_ACTIVE 0x10000000L
+#define CONTEXT_EXCEPTION_REQUEST 0x40000000L
+#define CONTEXT_EXCEPTION_REPORTING 0x80000000L
+
 typedef struct _FLOATING_SAVE_AREA {
     DWORD   ControlWord;
     DWORD   StatusWord;
@@ -1888,6 +1902,16 @@ typedef struct _CONTEXT {
 // be either (as long as we're consistent across GetThreadContext() and SetThreadContext() and we don't
 // support any other values in the ExtendedRegisters) but we might as well be as accurate as we can.
 #define CONTEXT_EXREG_XMM_OFFSET 160
+
+typedef struct _KNONVOLATILE_CONTEXT_POINTERS {
+
+    // TODO WIP x86/Linux, need to fix this.
+    PDWORD Ebx;
+    PDWORD Esi;
+    PDWORD Edi;
+    PDWORD Ebp;
+
+} KNONVOLATILE_CONTEXT_POINTERS, *PKNONVOLATILE_CONTEXT_POINTERS;
 
 #elif defined(_PPC_)
 
@@ -3234,22 +3258,22 @@ TlsFree(
 PALIMPORT
 void *
 PALAPI
-PAL_GetStackBase();
+PAL_GetStackBase(VOID);
 
 PALIMPORT
 void *
 PALAPI
-PAL_GetStackLimit();
+PAL_GetStackLimit(VOID);
 
 PALIMPORT
 DWORD
 PALAPI
-PAL_GetLogicalCpuCountFromOS();
+PAL_GetLogicalCpuCountFromOS(VOID);
 
 PALIMPORT
 size_t
 PALAPI
-PAL_GetLogicalProcessorCacheSizeFromOS();
+PAL_GetLogicalProcessorCacheSizeFromOS(VOID);
 
 typedef BOOL (*ReadMemoryWordCallback)(SIZE_T address, SIZE_T *value);
 
@@ -3282,6 +3306,8 @@ PALIMPORT BOOL PALAPI PAL_VirtualUnwindOutOfProc(CONTEXT *context,
 #define PAL_CS_NATIVE_DATA_SIZE 80
 #elif defined(__linux__) && defined(_ARM64_)
 #define PAL_CS_NATIVE_DATA_SIZE 116
+#elif defined(__linux__) && defined(__i386__)
+#define PAL_CS_NATIVE_DATA_SIZE 76
 #elif defined(__linux__) && defined(__x86_64__)
 #define PAL_CS_NATIVE_DATA_SIZE 96
 #elif defined(__NetBSD__) && defined(__amd64__)
@@ -3632,16 +3658,6 @@ VirtualQuery(
          IN LPCVOID lpAddress,
          OUT PMEMORY_BASIC_INFORMATION lpBuffer,
          IN SIZE_T dwLength);
-
-PALIMPORT
-BOOL
-PALAPI
-ReadProcessMemory(
-          IN HANDLE hProcess,
-          IN LPCVOID lpBaseAddress,
-          OUT LPVOID lpBuffer,
-          IN SIZE_T nSize,
-          OUT SIZE_T * lpNumberOfBytesRead);
 
 PALIMPORT
 VOID
@@ -4538,33 +4554,6 @@ PAL_GetCalendar(
 
 #define GEOID_NOT_AVAILABLE -1
 
-// "a number", might represent different types
-typedef struct PALNUMBER__* PALNUMBER;
-
-// return NULL on OOM
-PALIMPORT PALNUMBER PALAPI PAL_DoubleToNumber(double);
-PALIMPORT PALNUMBER PALAPI PAL_Int64ToNumber(INT64);
-PALIMPORT PALNUMBER PALAPI PAL_UInt64ToNumber(UINT64);
-PALIMPORT PALNUMBER PALAPI PAL_IntToNumber(int);
-PALIMPORT PALNUMBER PALAPI PAL_UIntToNumber(unsigned int);
-
-PALIMPORT void PALAPI PAL_ReleaseNumber(PALNUMBER);
-
-
-// return string length if Buffer is NULL or the result fits in cchBuffer, otherwise -1
-PALIMPORT int PALAPI PAL_FormatScientific(LPCWSTR sLocale, LPWSTR pBuffer, SIZE_T cchBuffer, PALNUMBER number, int nMinDigits, int nMaxDigits,
-                                                                      LPCWSTR sExponent, LPCWSTR sNumberDecimal, LPCWSTR sPositive, LPCWSTR sNegative, LPCWSTR sZero);
-
-PALIMPORT int PALAPI  PAL_FormatCurrency(LPCWSTR sLocale, LPWSTR pBuffer, SIZE_T cchBuffer, PALNUMBER number, int nMinDigits, int nMaxDigits, int iNegativeFormat, int iPositiveFormat,
-                      int iPrimaryGroup, int iSecondaryGroup, LPCWSTR sCurrencyDecimal, LPCWSTR sCurrencyGroup, LPCWSTR sNegative, LPCWSTR sCurrency, LPCWSTR sZero);
-
-PALIMPORT int PALAPI  PAL_FormatPercent(LPCWSTR sLocale, LPWSTR pBuffer, SIZE_T cchBuffer, PALNUMBER number,  int nMinDigits, int nMaxDigits,int iNegativeFormat, int iPositiveFormat, 
-                      int iPrimaryGroup, int iSecondaryGroup, LPCWSTR sPercentDecimal, LPCWSTR sPercentGroup, LPCWSTR sNegative, LPCWSTR sPercent, LPCWSTR sZero);
-
-PALIMPORT int PALAPI  PAL_FormatDecimal(LPCWSTR sLocale, LPWSTR pBuffer, SIZE_T cchBuffer, PALNUMBER number, int nMinDigits, int nMaxDigits, int iNegativeFormat,
-                                    int iPrimaryGroup, int iSecondaryGroup,  LPCWSTR sDecimal, LPCWSTR sGroup, LPCWSTR sNegative, LPCWSTR sZero);
-
-
 #define DATE_USE_ALT_CALENDAR 0x00000004
 
 #if ENABLE_DOWNLEVEL_FOR_NLS
@@ -4690,18 +4679,11 @@ enum {
 //
 typedef struct _RUNTIME_FUNCTION {
     DWORD BeginAddress;
+#ifdef _AMD64_
     DWORD EndAddress;
+#endif
     DWORD UnwindData;
 } RUNTIME_FUNCTION, *PRUNTIME_FUNCTION;
-
-PALIMPORT
-BOOL
-PALAPI
-WriteProcessMemory(IN HANDLE hProcess,
-                   IN LPVOID lpBaseAddress,
-                   IN LPCVOID lpBuffer,
-                   IN SIZE_T nSize,
-                   OUT SIZE_T * lpNumberOfBytesWritten);
 
 #define STANDARD_RIGHTS_REQUIRED  (0x000F0000L)
 #define SYNCHRONIZE               (0x00100000L)
@@ -4880,7 +4862,7 @@ GetTickCount(
 PALIMPORT
 ULONGLONG
 PALAPI
-GetTickCount64();
+GetTickCount64(VOID);
 
 PALIMPORT
 BOOL
@@ -5320,7 +5302,7 @@ YieldProcessor(
 PALIMPORT
 DWORD
 PALAPI
-GetCurrentProcessorNumber();
+GetCurrentProcessorNumber(VOID);
 
 /*++
 Function:
@@ -5332,7 +5314,7 @@ Checks if GetCurrentProcessorNumber is available in the current environment
 PALIMPORT
 BOOL
 PALAPI
-PAL_HasGetCurrentProcessorNumber();
+PAL_HasGetCurrentProcessorNumber(VOID);
     
 #define FORMAT_MESSAGE_ALLOCATE_BUFFER 0x00000100
 #define FORMAT_MESSAGE_IGNORE_INSERTS  0x00000200
@@ -5418,7 +5400,7 @@ ResetWriteWatch(
 PALIMPORT
 VOID 
 PALAPI 
-FlushProcessWriteBuffers();
+FlushProcessWriteBuffers(VOID);
 
 typedef void (*PAL_ActivationFunction)(CONTEXT *context);
 typedef BOOL (*PAL_SafeActivationCheckFunction)(SIZE_T ip, BOOL checkingCurrentThread);
@@ -5658,9 +5640,6 @@ CoCreateGuid(OUT GUID * pguid);
 #define printf        PAL_printf
 #define vprintf       PAL_vprintf
 #define wprintf       PAL_wprintf
-#define sprintf       PAL_sprintf
-#define swprintf      PAL_swprintf
-#define sscanf        PAL_sscanf
 #define wcsspn        PAL_wcsspn
 #define wcstod        PAL_wcstod
 #define wcstol        PAL_wcstol
@@ -5687,8 +5666,6 @@ CoCreateGuid(OUT GUID * pguid);
 #define iswxdigit     PAL_iswxdigit
 #define towlower      PAL_towlower
 #define towupper      PAL_towupper
-#define vsprintf      PAL_vsprintf
-#define vswprintf     PAL_vswprintf
 #define realloc       PAL_realloc
 #define fopen         PAL_fopen
 #define strtok        PAL_strtok
@@ -5751,7 +5728,6 @@ CoCreateGuid(OUT GUID * pguid);
 #define _close        PAL__close
 #define _wcstoui64    PAL__wcstoui64
 #define _flushall     PAL__flushall
-#define _vsnprintf    PAL__vsnprintf
 #define strnlen       PAL_strnlen
 
 #ifdef _AMD64_ 
@@ -5829,9 +5805,6 @@ PALIMPORT char * __cdecl strstr(const char *, const char *);
 PALIMPORT char * __cdecl strtok(char *, const char *);
 PALIMPORT size_t __cdecl strspn(const char *, const char *);
 PALIMPORT size_t  __cdecl strcspn(const char *, const char *);
-PALIMPORT int __cdecl sprintf(char *, const char *, ...);
-PALIMPORT int __cdecl vsprintf(char *, const char *, va_list);
-PALIMPORT int __cdecl sscanf(const char *, const char *, ...);
 PALIMPORT int __cdecl atoi(const char *);
 PALIMPORT LONG __cdecl atol(const char *);
 PALIMPORT ULONG __cdecl strtoul(const char *, char **, int);
@@ -5850,11 +5823,16 @@ PALIMPORT int __cdecl toupper(int);
 
 #endif // PAL_STDCPP_COMPAT
 
+/* _TRUNCATE */
+#if !defined(_TRUNCATE)
+#define _TRUNCATE ((size_t)-1)
+#endif
+
 PALIMPORT errno_t __cdecl memcpy_s(void *, size_t, const void *, size_t);
 PALIMPORT errno_t __cdecl memmove_s(void *, size_t, const void *, size_t);
 PALIMPORT char * __cdecl _strlwr(char *);
 PALIMPORT int __cdecl _stricmp(const char *, const char *);
-PALIMPORT int __cdecl _snprintf(char *, size_t, const char *, ...);
+PALIMPORT int __cdecl vsprintf_s(char *, size_t, const char *, va_list);
 PALIMPORT char * __cdecl _gcvt_s(char *, int, double, int);
 PALIMPORT char * __cdecl _ecvt(double, int, int *, int *);
 PALIMPORT int __cdecl __iscsym(int);
@@ -5864,7 +5842,15 @@ PALIMPORT unsigned char * __cdecl _mbsdec(const unsigned char *, const unsigned 
 PALIMPORT int __cdecl _wcsicmp(const WCHAR *, const WCHAR*);
 PALIMPORT int __cdecl _wcsnicmp(const WCHAR *, const WCHAR *, size_t);
 PALIMPORT int __cdecl _vsnprintf(char *, size_t, const char *, va_list);
-PALIMPORT int __cdecl _vsnwprintf(WCHAR *, size_t, const WCHAR *, va_list);
+PALIMPORT int __cdecl _vsnprintf_s(char *, size_t, size_t, const char *, va_list);
+PALIMPORT int __cdecl _vsnwprintf_s(WCHAR *, size_t, size_t, const WCHAR *, va_list);
+PALIMPORT int __cdecl _snwprintf_s(WCHAR *, size_t, size_t, const WCHAR *, ...);
+PALIMPORT int __cdecl _snprintf_s(char *, size_t, size_t, const char *, ...);
+PALIMPORT int __cdecl sprintf_s(char *, size_t, const char *, ... );
+PALIMPORT int __cdecl swprintf_s(WCHAR *, size_t, const WCHAR *, ... );
+PALIMPORT int __cdecl _snwprintf_s(WCHAR *, size_t, size_t, const WCHAR *, ...);
+PALIMPORT int __cdecl vswprintf_s( WCHAR *, size_t, const WCHAR *, va_list);
+PALIMPORT int __cdecl sscanf_s(const char *, const char *, ...);
 PALIMPORT errno_t __cdecl _itow_s(int, WCHAR *, size_t, int);
 
 PALIMPORT size_t __cdecl PAL_wcslen(const WCHAR *);
@@ -5882,8 +5868,6 @@ PALIMPORT WCHAR * __cdecl PAL_wcstok(WCHAR *, const WCHAR *);
 PALIMPORT size_t __cdecl PAL_wcscspn(const WCHAR *, const WCHAR *);
 PALIMPORT int __cdecl PAL_swprintf(WCHAR *, const WCHAR *, ...);
 PALIMPORT int __cdecl PAL_vswprintf(WCHAR *, const WCHAR *, va_list);
-PALIMPORT int __cdecl PAL__vsnprintf(LPSTR Buffer, size_t Count, LPCSTR Format, va_list ap);
-PALIMPORT int __cdecl _snwprintf(WCHAR *, size_t, const WCHAR *, ...);
 PALIMPORT int __cdecl PAL_swscanf(const WCHAR *, const WCHAR *, ...);
 PALIMPORT LONG __cdecl PAL_wcstol(const WCHAR *, WCHAR **, int);
 PALIMPORT ULONG __cdecl PAL_wcstoul(const WCHAR *, WCHAR **, int);
@@ -6270,14 +6254,14 @@ PAL_Enter(PAL_Boundary boundary);
 PALIMPORT
 BOOL
 PALAPI
-PAL_HasEntered();
+PAL_HasEntered(VOID);
 
 // Equivalent to PAL_Enter(PAL_BoundaryTop) and is for stub
 // code generation use.
 PALIMPORT
 DWORD
 PALAPI
-PAL_EnterTop();
+PAL_EnterTop(VOID);
 
 // This function needs to be called on a thread when it enters
 // a region of code that depends on this instance of the PAL
@@ -6312,14 +6296,14 @@ PAL_Leave(PAL_Boundary boundary);
 PALIMPORT
 VOID
 PALAPI
-PAL_LeaveBottom();
+PAL_LeaveBottom(VOID);
 
 // This function is equivalent to PAL_Leave(PAL_BoundaryTop)
 // and is available to limit the creation of stub code.
 PALIMPORT
 VOID
 PALAPI
-PAL_LeaveTop();
+PAL_LeaveTop(VOID);
 
 #ifdef  __cplusplus
 //
@@ -6512,8 +6496,8 @@ public:
 
 typedef BOOL (PALAPI *PHARDWARE_EXCEPTION_HANDLER)(PAL_SEHException* ex);
 typedef BOOL (PALAPI *PHARDWARE_EXCEPTION_SAFETY_CHECK_FUNCTION)(PCONTEXT contextRecord, PEXCEPTION_RECORD exceptionRecord);
-typedef VOID (PALAPI *PTERMINATION_REQUEST_HANDLER)();
-typedef DWORD (PALAPI *PGET_GCMARKER_EXCEPTION_CODE)(LPVOID ip);
+typedef VOID (*PTERMINATION_REQUEST_HANDLER)();
+typedef DWORD (*PGET_GCMARKER_EXCEPTION_CODE)(LPVOID ip);
 
 PALIMPORT
 VOID

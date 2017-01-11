@@ -17,6 +17,7 @@ using System;
 using System.Runtime;
 using System.Runtime.Serialization;
 using System.Text;
+using System.Diagnostics;
 using System.Diagnostics.Contracts;
 
 namespace System.IO {
@@ -25,7 +26,7 @@ namespace System.IO {
     // give unique encodings.
     //
     [Serializable]
-[System.Runtime.InteropServices.ComVisible(true)]
+    [System.Runtime.InteropServices.ComVisible(true)]
     public class BinaryWriter : IDisposable
     {
         public static readonly BinaryWriter Null = new BinaryWriter();
@@ -37,16 +38,6 @@ namespace System.IO {
 
         [OptionalField]  // New in .NET FX 4.5.  False is the right default value.
         private bool _leaveOpen;
-
-#if !FEATURE_CORECLR
-        // This field should never have been serialized and has not been used since before v2.0.
-        // However, this type is serializable, and we need to keep the field name around when deserializing.
-        // Also, we'll make .NET FX 4.5 not break if it's missing.
-#pragma warning disable 169
-        [OptionalField]
-        private char[] _tmpOneCharBuffer;
-#pragma warning restore 169
-#endif
 
         // Perf optimization stuff
         private byte[] _largeByteBuffer;  // temp space for writing chars.
@@ -187,13 +178,12 @@ namespace System.IO {
         // advanced by two.
         // Note this method cannot handle surrogates properly in UTF-8.
         // 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe virtual void Write(char ch) {
             if (Char.IsSurrogate(ch))
                 throw new ArgumentException(Environment.GetResourceString("Arg_SurrogatesNotAllowedAsSingleChar"));
             Contract.EndContractBlock();
 
-            Contract.Assert(_encoding.GetMaxByteCount(1) <= 16, "_encoding.GetMaxByteCount(1) <= 16)");
+            Debug.Assert(_encoding.GetMaxByteCount(1) <= 16, "_encoding.GetMaxByteCount(1) <= 16)");
             int numBytes = 0;
             fixed(byte * pBytes = _buffer) {
                 numBytes = _encoder.GetBytes(&ch, 1, pBytes, _buffer.Length, flush: true);
@@ -231,7 +221,6 @@ namespace System.IO {
         // Writes a double to this stream. The current position of the stream is
         // advanced by eight.
         // 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe virtual void Write(double value)
         {
             ulong TmpValue = *(ulong *)&value;
@@ -334,7 +323,6 @@ namespace System.IO {
         // Writes a float to this stream. The current position of the stream is
         // advanced by four.
         // 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe virtual void Write(float value)
         {
             uint TmpValue = *(uint *)&value;
@@ -351,7 +339,6 @@ namespace System.IO {
         // a four-byte unsigned integer, and then writes that many characters 
         // to the stream.
         // 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe virtual void Write(String value) 
         {
             if (value==null)
@@ -368,7 +355,7 @@ namespace System.IO {
 
             if (len <= _largeByteBuffer.Length)
             {
-                //Contract.Assert(len == _encoding.GetBytes(chars, 0, chars.Length, _largeByteBuffer, 0), "encoding's GetByteCount & GetBytes gave different answers!  encoding type: "+_encoding.GetType().Name);
+                //Debug.Assert(len == _encoding.GetBytes(chars, 0, chars.Length, _largeByteBuffer, 0), "encoding's GetByteCount & GetBytes gave different answers!  encoding type: "+_encoding.GetType().Name);
                 _encoding.GetBytes(value, 0, value.Length, _largeByteBuffer, 0);
                 OutStream.Write(_largeByteBuffer, 0, len);
             }
@@ -403,14 +390,14 @@ namespace System.IO {
                     }
 #if _DEBUG
                     totalBytes += byteLen;
-                    Contract.Assert (totalBytes <= len && byteLen <= _largeByteBuffer.Length, "BinaryWriter::Write(String) - More bytes encoded than expected!");
+                    Debug.Assert (totalBytes <= len && byteLen <= _largeByteBuffer.Length, "BinaryWriter::Write(String) - More bytes encoded than expected!");
 #endif
                     OutStream.Write(_largeByteBuffer, 0, byteLen);
                     charStart += charCount;
                     numLeft -= charCount;
                 }
 #if _DEBUG
-                Contract.Assert(totalBytes == len, "BinaryWriter::Write(String) - Didn't write out all the bytes!");
+                Debug.Assert(totalBytes == len, "BinaryWriter::Write(String) - Didn't write out all the bytes!");
 #endif
             }
         }

@@ -19,6 +19,7 @@ namespace System.IO {
     using System.Runtime;
     using System.Text;
     using System.Globalization;
+    using System.Diagnostics;
     using System.Diagnostics.Contracts;
     using System.Security;
 
@@ -73,7 +74,7 @@ namespace System.IO {
             m_isMemoryStream = (m_stream.GetType() == typeof(MemoryStream));
             m_leaveOpen = leaveOpen;
 
-            Contract.Assert(m_decoder!=null, "[BinaryReader.ctor]m_decoder!=null");
+            Debug.Assert(m_decoder!=null, "[BinaryReader.ctor]m_decoder!=null");
         }
 
         public virtual Stream BaseStream {
@@ -173,7 +174,7 @@ namespace System.IO {
                 if (m_stream==null) __Error.FileNotOpen();
                 // read directly from MemoryStream buffer
                 MemoryStream mStream = m_stream as MemoryStream;
-                Contract.Assert(mStream != null, "m_stream as MemoryStream != null");
+                Debug.Assert(mStream != null, "m_stream as MemoryStream != null");
 
                 return mStream.InternalReadInt32();
             }
@@ -209,14 +210,12 @@ namespace System.IO {
             return ((ulong)hi) << 32 | lo;
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public virtual unsafe float ReadSingle() {
             FillBuffer(4);
             uint tmpBuffer = (uint)(m_buffer[0] | m_buffer[1] << 8 | m_buffer[2] << 16 | m_buffer[3] << 24);
             return *((float*)&tmpBuffer);
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public virtual unsafe double ReadDouble() {
             FillBuffer(8);
             uint lo = (uint)(m_buffer[0] | m_buffer[1] << 8 |
@@ -294,7 +293,6 @@ namespace System.IO {
             return StringBuilderCache.GetStringAndRelease(sb);
         }
 
-        [SecuritySafeCritical]
         public virtual int Read(char[] buffer, int index, int count) {
             if (buffer==null) {
                 throw new ArgumentNullException(nameof(buffer), Environment.GetResourceString("ArgumentNull_Buffer"));
@@ -319,11 +317,10 @@ namespace System.IO {
             return InternalReadChars(buffer, index, count);
         }
 
-        [SecurityCritical]
         private int InternalReadChars(char[] buffer, int index, int count) {
             Contract.Requires(buffer != null);
             Contract.Requires(index >= 0 && count >= 0);
-            Contract.Assert(m_stream != null);
+            Debug.Assert(m_stream != null);
 
             int numBytes = 0;
             int charsRemaining = count;
@@ -355,7 +352,7 @@ namespace System.IO {
                 if (m_isMemoryStream)
                 {
                     MemoryStream mStream = m_stream as MemoryStream;
-                    Contract.Assert(mStream != null, "m_stream as MemoryStream != null");
+                    Debug.Assert(mStream != null, "m_stream as MemoryStream != null");
 
                     position = mStream.InternalGetPosition();
                     numBytes = mStream.InternalEmulateRead(numBytes);
@@ -371,7 +368,7 @@ namespace System.IO {
                     return (count - charsRemaining);
                 }
 
-                Contract.Assert(byteBuffer != null, "expected byteBuffer to be non-null");
+                Debug.Assert(byteBuffer != null, "expected byteBuffer to be non-null");
 
                 checked
                 {
@@ -398,7 +395,7 @@ namespace System.IO {
             }
 
             // this should never fail
-            Contract.Assert(charsRemaining >= 0, "We read too many characters.");
+            Debug.Assert(charsRemaining >= 0, "We read too many characters.");
 
             // we may have read fewer than the number of characters requested if end of stream reached 
             // or if the encoding makes the char count too big for the buffer (e.g. fallback sequence)
@@ -447,7 +444,7 @@ namespace System.IO {
                     return -1;
                 }
 
-                Contract.Assert(numBytes == 1 || numBytes == 2, "BinaryReader::InternalReadOneChar assumes it's reading one or 2 bytes only.");
+                Debug.Assert(numBytes == 1 || numBytes == 2, "BinaryReader::InternalReadOneChar assumes it's reading one or 2 bytes only.");
 
                 try {
 
@@ -464,7 +461,7 @@ namespace System.IO {
                     throw;
                 }
 
-                Contract.Assert(charsRead < 2, "InternalReadOneChar - assuming we only got 0 or 1 char, not 2!");
+                Debug.Assert(charsRead < 2, "InternalReadOneChar - assuming we only got 0 or 1 char, not 2!");
                 //                Console.WriteLine("That became: " + charsRead + " characters.");
             }
             if (charsRead == 0)
@@ -472,7 +469,6 @@ namespace System.IO {
             return m_singleChar[0];
         }
 
-        [SecuritySafeCritical]
         public virtual char[] ReadChars(int count) {
             if (count<0) {
                 throw new ArgumentOutOfRangeException(nameof(count), Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegNum"));

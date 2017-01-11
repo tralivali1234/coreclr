@@ -40,7 +40,6 @@ namespace System.Threading
     /// </para>
     /// </remarks>
     [ComVisible(false)]
-    [HostProtection(Synchronization = true, ExternalThreading = true)]
     [DebuggerDisplay("Current Count = {m_currentCount}")]
     public class SemaphoreSlim : IDisposable
     {
@@ -89,14 +88,12 @@ namespace System.Threading
             internal TaskNode Prev, Next;
             internal TaskNode() : base() {}
 
-            [SecurityCritical]
             void IThreadPoolWorkItem.ExecuteWorkItem()
             {
                 bool setSuccessfully = TrySetResult(true);
-                Contract.Assert(setSuccessfully, "Should have been able to complete task");
+                Debug.Assert(setSuccessfully, "Should have been able to complete task");
             }
 
-            [SecurityCritical]
             void IThreadPoolWorkItem.MarkAborted(ThreadAbortException tae) { /* nop */ }
         }
         #endregion
@@ -318,7 +315,7 @@ namespace System.Threading
             if (millisecondsTimeout < -1)
             {
                 throw new ArgumentOutOfRangeException(
-                    "totalMilliSeconds", millisecondsTimeout, GetResourceString("SemaphoreSlim_Wait_TimeoutWrong"));
+                    nameof(millisecondsTimeout), millisecondsTimeout, GetResourceString("SemaphoreSlim_Wait_TimeoutWrong"));
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -372,7 +369,7 @@ namespace System.Threading
                 // then block on (once we've released the lock).
                 if (m_asyncHead != null)
                 {
-                    Contract.Assert(m_asyncTail != null, "tail should not be null if head isn't");
+                    Debug.Assert(m_asyncTail != null, "tail should not be null if head isn't");
                     asyncWaitTask = WaitAsync(millisecondsTimeout, cancellationToken);
                 }
                     // There are no async waiters, so we can proceed with normal synchronous waiting.
@@ -404,7 +401,7 @@ namespace System.Threading
                     // defer to synchronous waiters in priority, which means that if it's possible an asynchronous
                     // waiter didn't get released because a synchronous waiter was present, we need to ensure
                     // that synchronous waiter succeeds so that they have a chance to release.
-                    Contract.Assert(!waitSuccessful || m_currentCount > 0, 
+                    Debug.Assert(!waitSuccessful || m_currentCount > 0, 
                         "If the wait was successful, there should be count available.");
                     if (m_currentCount > 0)
                     {
@@ -612,7 +609,7 @@ namespace System.Threading
             if (millisecondsTimeout < -1)
             {
                 throw new ArgumentOutOfRangeException(
-                    "totalMilliSeconds", millisecondsTimeout, GetResourceString("SemaphoreSlim_Wait_TimeoutWrong"));
+                    nameof(millisecondsTimeout), millisecondsTimeout, GetResourceString("SemaphoreSlim_Wait_TimeoutWrong"));
             }
 
             // Bail early for cancellation
@@ -638,7 +635,7 @@ namespace System.Threading
                     // the semaphore or when the timeout expired or cancellation was requested.
                 else
                 {
-                    Contract.Assert(m_currentCount == 0, "m_currentCount should never be negative");
+                    Debug.Assert(m_currentCount == 0, "m_currentCount should never be negative");
                     var asyncWaiter = CreateAndAddAsyncWaiter();
                     return (millisecondsTimeout == Timeout.Infinite && !cancellationToken.CanBeCanceled) ?
                         asyncWaiter :
@@ -651,7 +648,7 @@ namespace System.Threading
         /// <returns>The created task.</returns>
         private TaskNode CreateAndAddAsyncWaiter()
         {
-            Contract.Assert(Monitor.IsEntered(m_lockObj), "Requires the lock be held");
+            Debug.Assert(Monitor.IsEntered(m_lockObj), "Requires the lock be held");
 
             // Create the task
             var task = new TaskNode();
@@ -659,13 +656,13 @@ namespace System.Threading
             // Add it to the linked list
             if (m_asyncHead == null)
             {
-                Contract.Assert(m_asyncTail == null, "If head is null, so too should be tail");
+                Debug.Assert(m_asyncTail == null, "If head is null, so too should be tail");
                 m_asyncHead = task;
                 m_asyncTail = task;
             }
             else
             {
-                Contract.Assert(m_asyncTail != null, "If head is not null, neither should be tail");
+                Debug.Assert(m_asyncTail != null, "If head is not null, neither should be tail");
                 m_asyncTail.Next = task;
                 task.Prev = m_asyncTail;
                 m_asyncTail = task;
@@ -681,7 +678,7 @@ namespace System.Threading
         private bool RemoveAsyncWaiter(TaskNode task)
         {
             Contract.Requires(task != null, "Expected non-null task");
-            Contract.Assert(Monitor.IsEntered(m_lockObj), "Requires the lock be held");
+            Debug.Assert(Monitor.IsEntered(m_lockObj), "Requires the lock be held");
 
             // Is the task in the list?  To be in the list, either it's the head or it has a predecessor that's in the list.
             bool wasInList = m_asyncHead == task || task.Prev != null;
@@ -691,7 +688,7 @@ namespace System.Threading
             if (task.Prev != null) task.Prev.Next = task.Next;
             if (m_asyncHead == task) m_asyncHead = task.Next;
             if (m_asyncTail == task) m_asyncTail = task.Prev;
-            Contract.Assert((m_asyncHead == null) == (m_asyncTail == null), "Head is null iff tail is null");
+            Debug.Assert((m_asyncHead == null) == (m_asyncTail == null), "Head is null iff tail is null");
 
             // Make sure not to leak
             task.Next = task.Prev = null;
@@ -706,8 +703,8 @@ namespace System.Threading
         /// <returns>The task to return to the caller.</returns>
         private async Task<bool> WaitUntilCountOrTimeoutAsync(TaskNode asyncWaiter, int millisecondsTimeout, CancellationToken cancellationToken)
         {
-            Contract.Assert(asyncWaiter != null, "Waiter should have been constructed");
-            Contract.Assert(Monitor.IsEntered(m_lockObj), "Requires the lock be held");
+            Debug.Assert(asyncWaiter != null, "Waiter should have been constructed");
+            Debug.Assert(Monitor.IsEntered(m_lockObj), "Requires the lock be held");
 
             // Wait until either the task is completed, timeout occurs, or cancellation is requested.
             // We need to ensure that the Task.Delay task is appropriately cleaned up if the await
@@ -812,7 +809,7 @@ namespace System.Threading
                 // waits are canceled, but the wait code path will handle that.
                 if (m_asyncHead != null)
                 {
-                    Contract.Assert(m_asyncTail != null, "tail should not be null if head isn't null");
+                    Debug.Assert(m_asyncTail != null, "tail should not be null if head isn't null");
                     int maxAsyncToRelease = currentCount - waitCount;
                     while (maxAsyncToRelease > 0 && m_asyncHead != null)
                     {
@@ -842,7 +839,6 @@ namespace System.Threading
         /// Queues a waiter task to the ThreadPool. We use this small helper method so that
         /// the larger Release(count) method does not need to be SecuritySafeCritical.
         /// </summary>
-        [SecuritySafeCritical] // for ThreadPool.UnsafeQueueCustomWorkItem
         private static void QueueWaiterTask(TaskNode waiterTask)
         {
             ThreadPool.UnsafeQueueCustomWorkItem(waiterTask, forceGlobal: false);
@@ -896,7 +892,7 @@ namespace System.Threading
         private static void CancellationTokenCanceledEventHandler(object obj)
         {
             SemaphoreSlim semaphore = obj as SemaphoreSlim;
-            Contract.Assert(semaphore != null, "Expected a SemaphoreSlim");
+            Debug.Assert(semaphore != null, "Expected a SemaphoreSlim");
             lock (semaphore.m_lockObj)
             {
                 Monitor.PulseAll(semaphore.m_lockObj); //wake up all waiters.

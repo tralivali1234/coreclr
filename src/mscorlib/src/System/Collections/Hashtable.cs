@@ -23,10 +23,7 @@ namespace System.Collections {
     using System.Runtime.CompilerServices;
     using System.Runtime.ConstrainedExecution;
     using System.Diagnostics.Contracts;
-#if !FEATURE_CORECLR
-    using System.Security.Cryptography;
-#endif
-   
+
     // The Hashtable class represents a dictionary of associated keys and values
     // with constant lookup time.
     // 
@@ -290,7 +287,7 @@ namespace System.Collections {
             loadsize = (int)(this.loadFactor * hashsize);
             isWriterInProgress = false;
             // Based on the current algorithm, loadsize must be less than hashsize.
-            Contract.Assert( loadsize < hashsize, "Invalid hashtable loadsize!");
+            Debug.Assert( loadsize < hashsize, "Invalid hashtable loadsize!");
         }
     
         // Constructs a new hashtable with the given initial capacity and load
@@ -444,14 +441,11 @@ namespace System.Collections {
         // Removes all entries from this hashtable.
         [ReliabilityContract(Consistency.WillNotCorruptState, Cer.Success)]
         public virtual void Clear() {
-            Contract.Assert(!isWriterInProgress, "Race condition detected in usages of Hashtable - multiple threads appear to be writing to a Hashtable instance simultaneously!  Don't do that - use Hashtable.Synchronized.");
+            Debug.Assert(!isWriterInProgress, "Race condition detected in usages of Hashtable - multiple threads appear to be writing to a Hashtable instance simultaneously!  Don't do that - use Hashtable.Synchronized.");
 
             if (count == 0 && occupancy == 0)
                 return;
 
-#if !FEATURE_CORECLR
-            Thread.BeginCriticalRegion();
-#endif
             isWriterInProgress = true;
             for (int i = 0; i < buckets.Length; i++){
                 buckets[i].hash_coll = 0;
@@ -463,9 +457,6 @@ namespace System.Collections {
             occupancy = 0;
             UpdateVersion();            
             isWriterInProgress = false;    
-#if !FEATURE_CORECLR
-            Thread.EndCriticalRegion();
-#endif
         }
         
         // Clone returns a virtually identical copy of this hash table.  This does
@@ -526,9 +517,7 @@ namespace System.Collections {
             } while (b.hash_coll < 0 && ++ntry < lbuckets.Length);
             return false;
         }
-    
-    
-        
+
         // Checks if this hashtable contains an entry with the given value. The
         // values of the entries of the hashtable are compared to the given value
         // using the Object.Equals method. This method performs a linear
@@ -750,28 +739,23 @@ namespace System.Collections {
             for (nb = 0; nb < buckets.Length; nb++){
                 bucket oldb = buckets[nb];
                 if ((oldb.key != null) && (oldb.key != buckets)) {
-                    int hashcode = ((forceNewHashCode ? GetHash(oldb.key) : oldb.hash_coll) & 0x7FFFFFFF);                              
+                    int hashcode = ((forceNewHashCode ? GetHash(oldb.key) : oldb.hash_coll) & 0x7FFFFFFF);
                     putEntry(newBuckets, oldb.key, oldb.val, hashcode);
                 }
             }
-            
+
             // New bucket[] is good to go - replace buckets and other internal state.
-#if !FEATURE_CORECLR
-            Thread.BeginCriticalRegion();            
-#endif
             isWriterInProgress = true;
             buckets = newBuckets;
             loadsize = (int)(loadFactor * newsize);
             UpdateVersion();
             isWriterInProgress = false;
-#if !FEATURE_CORECLR
-            Thread.EndCriticalRegion();   
-#endif
+
             // minimun size of hashtable is 3 now and maximum loadFactor is 0.72 now.
-            Contract.Assert(loadsize < newsize, "Our current implementaion means this is not possible.");
+            Debug.Assert(loadsize < newsize, "Our current implementaion means this is not possible.");
             return;
         }
-    
+
         // Returns an enumerator for this hashtable.
         // If modifications made to the hashtable while an enumeration is
         // in progress, the MoveNext and Current methods of the
@@ -820,7 +804,7 @@ namespace System.Collections {
         // 
         protected virtual bool KeyEquals(Object item, Object key)
         {
-            Contract.Assert(key != null, "key can't be null here!");
+            Debug.Assert(key != null, "key can't be null here!");
             if( Object.ReferenceEquals(buckets, item)) {
                 return false;
             }
@@ -913,36 +897,14 @@ namespace System.Collections {
 
                     // We pretty much have to insert in this order.  Don't set hash
                     // code until the value & key are set appropriately.
-#if !FEATURE_CORECLR
-                    Thread.BeginCriticalRegion(); 
-#endif
-                    isWriterInProgress = true;                    
+                    isWriterInProgress = true;
                     buckets[bucketNumber].val = nvalue;
                     buckets[bucketNumber].key  = key;
                     buckets[bucketNumber].hash_coll |= (int) hashcode;
                     count++;
                     UpdateVersion();
                     isWriterInProgress = false;   
-#if !FEATURE_CORECLR
-                    Thread.EndCriticalRegion();
-#endif
 
-#if FEATURE_RANDOMIZED_STRING_HASHING
-#if !FEATURE_CORECLR
-                    // coreclr has the randomized string hashing on by default so we don't need to resize at this point
-
-                    if(ntry > HashHelpers.HashCollisionThreshold && HashHelpers.IsWellKnownEqualityComparer(_keycomparer)) 
-                    {
-                        // PERF: We don't want to rehash if _keycomparer is already a RandomizedObjectEqualityComparer since in some
-                        // cases there may not be any strings in the hashtable and we wouldn't get any mixing.
-                        if(_keycomparer == null || !(_keycomparer is System.Collections.Generic.RandomizedObjectEqualityComparer))
-                        {
-                            _keycomparer = HashHelpers.GetRandomizedEqualityComparer(_keycomparer);
-                            rehash(buckets.Length, true);
-                        }
-                    }
-#endif // !FEATURE_CORECLR
-#endif // FEATURE_RANDOMIZED_STRING_HASHING
                     return;
                 }
 
@@ -954,31 +916,10 @@ namespace System.Collections {
                     if (add) {
                         throw new ArgumentException(Environment.GetResourceString("Argument_AddingDuplicate__", buckets[bucketNumber].key, key));
                     }
-#if !FEATURE_CORECLR
-                    Thread.BeginCriticalRegion();
-#endif
-                    isWriterInProgress = true;                    
+                    isWriterInProgress = true;
                     buckets[bucketNumber].val = nvalue;
-                    UpdateVersion();                    
+                    UpdateVersion();
                     isWriterInProgress = false; 
-#if !FEATURE_CORECLR
-                    Thread.EndCriticalRegion();   
-#endif
-
-#if FEATURE_RANDOMIZED_STRING_HASHING
-#if !FEATURE_CORECLR
-                    if(ntry > HashHelpers.HashCollisionThreshold && HashHelpers.IsWellKnownEqualityComparer(_keycomparer)) 
-                    {
-                        // PERF: We don't want to rehash if _keycomparer is already a RandomizedObjectEqualityComparer since in some
-                        // cases there may not be any strings in the hashtable and we wouldn't get any mixing.
-                        if(_keycomparer == null || !(_keycomparer is System.Collections.Generic.RandomizedObjectEqualityComparer))
-                        {
-                            _keycomparer = HashHelpers.GetRandomizedEqualityComparer(_keycomparer);
-                            rehash(buckets.Length, true);
-                        }
-                    }
-#endif // !FEATURE_CORECLR
-#endif
                     return;
                 }
 
@@ -992,7 +933,7 @@ namespace System.Collections {
                     }
                 }
 
-                bucketNumber = (int) (((long)bucketNumber + incr)% (uint)buckets.Length);               
+                bucketNumber = (int) (((long)bucketNumber + incr)% (uint)buckets.Length);
             } while (++ntry < buckets.Length);
 
             // This code is here if and only if there were no buckets without a collision bit set in the entire table
@@ -1000,47 +941,27 @@ namespace System.Collections {
             {
                 // We pretty much have to insert in this order.  Don't set hash
                 // code until the value & key are set appropriately.
-#if !FEATURE_CORECLR
-                Thread.BeginCriticalRegion();  
-#endif
-                isWriterInProgress = true;                    
+                isWriterInProgress = true;
                 buckets[emptySlotNumber].val = nvalue;
                 buckets[emptySlotNumber].key  = key;
                 buckets[emptySlotNumber].hash_coll |= (int) hashcode;
                 count++;
                 UpdateVersion();                
                 isWriterInProgress = false;     
-#if !FEATURE_CORECLR
-                Thread.EndCriticalRegion(); 
-#endif
 
-#if FEATURE_RANDOMIZED_STRING_HASHING
-#if !FEATURE_CORECLR
-                if(buckets.Length > HashHelpers.HashCollisionThreshold && HashHelpers.IsWellKnownEqualityComparer(_keycomparer)) 
-                {
-                    // PERF: We don't want to rehash if _keycomparer is already a RandomizedObjectEqualityComparer since in some
-                    // cases there may not be any strings in the hashtable and we wouldn't get any mixing.
-                    if(_keycomparer == null || !(_keycomparer is System.Collections.Generic.RandomizedObjectEqualityComparer))
-                    {
-                        _keycomparer = HashHelpers.GetRandomizedEqualityComparer(_keycomparer);
-                        rehash(buckets.Length, true);
-                    }
-                }
-#endif // !FEATURE_CORECLR
-#endif
                 return;
             }
-    
+
             // If you see this assert, make sure load factor & count are reasonable.
             // Then verify that our double hash function (h2, described at top of file)
             // meets the requirements described above. You should never see this assert.
-            Contract.Assert(false, "hash table insert failed!  Load factor too high, or our double hashing function is incorrect.");
+            Debug.Assert(false, "hash table insert failed!  Load factor too high, or our double hashing function is incorrect.");
             throw new InvalidOperationException(Environment.GetResourceString("InvalidOperation_HashInsertFailed"));
         }
     
         private void putEntry (bucket[] newBuckets, Object key, Object nvalue, int hashcode)
         {
-            Contract.Assert(hashcode >= 0, "hashcode >= 0");  // make sure collision bit (sign bit) wasn't set.
+            Debug.Assert(hashcode >= 0, "hashcode >= 0");  // make sure collision bit (sign bit) wasn't set.
 
             uint seed = (uint) hashcode;
             uint incr = (uint)(1 + ((seed * HashPrime) % ((uint)newBuckets.Length - 1)));
@@ -1058,7 +979,7 @@ namespace System.Collections {
                 newBuckets[bucketNumber].hash_coll |= unchecked((int)0x80000000);
                     occupancy++;
                 }
-                bucketNumber = (int) (((long)bucketNumber + incr)% (uint)newBuckets.Length);                
+                bucketNumber = (int) (((long)bucketNumber + incr)% (uint)newBuckets.Length);
             } while (true);
         }
     
@@ -1072,7 +993,7 @@ namespace System.Collections {
                 throw new ArgumentNullException(nameof(key), Environment.GetResourceString("ArgumentNull_Key"));
             }
             Contract.EndContractBlock();
-            Contract.Assert(!isWriterInProgress, "Race condition detected in usages of Hashtable - multiple threads appear to be writing to a Hashtable instance simultaneously!  Don't do that - use Hashtable.Synchronized.");
+            Debug.Assert(!isWriterInProgress, "Race condition detected in usages of Hashtable - multiple threads appear to be writing to a Hashtable instance simultaneously!  Don't do that - use Hashtable.Synchronized.");
 
             uint seed;
             uint incr;
@@ -1086,9 +1007,6 @@ namespace System.Collections {
                 b = buckets[bn];
                 if (((b.hash_coll & 0x7FFFFFFF) == hashcode) && 
                     KeyEquals (b.key, key)) {
-#if !FEATURE_CORECLR
-                    Thread.BeginCriticalRegion();    
-#endif
                     isWriterInProgress = true;
                     // Clear hash_coll field, then key, then value
                     buckets[bn].hash_coll &= unchecked((int)0x80000000);
@@ -1102,12 +1020,9 @@ namespace System.Collections {
                     count--;
                     UpdateVersion();
                     isWriterInProgress = false; 
-#if !FEATURE_CORECLR
-                    Thread.EndCriticalRegion();   
-#endif
                     return;
                 }
-                bn = (int) (((long)bn + incr)% (uint)buckets.Length);                               
+                bn = (int) (((long)bn + incr)% (uint)buckets.Length);
             } while (b.hash_coll < 0 && ++ntry < buckets.Length);
 
             //throw new ArgumentException(Environment.GetResourceString("Arg_RemoveArgNotFound"));
@@ -1131,7 +1046,6 @@ namespace System.Collections {
     
         // Returns a thread-safe wrapper for a Hashtable.
         //
-        [HostProtection(Synchronization=true)]
         public static Hashtable Synchronized(Hashtable table) {
             if (table==null)
                 throw new ArgumentNullException(nameof(table));
@@ -1143,7 +1057,6 @@ namespace System.Collections {
         // The ISerializable Implementation
         //
 
-        [System.Security.SecurityCritical]
         public virtual void GetObjectData(SerializationInfo info, StreamingContext context) {
             if (info==null) {
                 throw new ArgumentNullException(nameof(info));
@@ -1399,7 +1312,6 @@ namespace System.Collections {
             **           context -- the StreamingContext for the current serialization (ignored)
             **Exceptions: ArgumentNullException if info is null.
             ==============================================================================*/
-            [System.Security.SecurityCritical]  // auto-generated
             public override void GetObjectData(SerializationInfo info, StreamingContext context) {
                 if (info==null) {
                     throw new ArgumentNullException(nameof(info));
@@ -1746,7 +1658,7 @@ namespace System.Collections {
             // Note that this check works even when _items.Length overflowed thanks to the (uint) cast
             if ((uint)newSize > MaxPrimeArrayLength && MaxPrimeArrayLength > oldSize)
             {
-                Contract.Assert( MaxPrimeArrayLength == GetPrime(MaxPrimeArrayLength), "Invalid MaxPrimeArrayLength");
+                Debug.Assert( MaxPrimeArrayLength == GetPrime(MaxPrimeArrayLength), "Invalid MaxPrimeArrayLength");
                 return MaxPrimeArrayLength;
             }
 
@@ -1765,7 +1677,7 @@ namespace System.Collections {
 
         public static IEqualityComparer GetRandomizedEqualityComparer(object comparer)
         {
-            Contract.Assert(comparer == null || comparer == System.Collections.Generic.EqualityComparer<string>.Default || comparer is IWellKnownStringEqualityComparer); 
+            Debug.Assert(comparer == null || comparer == System.Collections.Generic.EqualityComparer<string>.Default || comparer is IWellKnownStringEqualityComparer); 
 
             if(comparer == null) {
                 return new System.Collections.Generic.RandomizedObjectEqualityComparer();
@@ -1781,7 +1693,7 @@ namespace System.Collections {
                 return cmp.GetRandomizedEqualityComparer();
             }
 
-            Contract.Assert(false, "Missing case in GetRandomizedEqualityComparer!");
+            Debug.Assert(false, "Missing case in GetRandomizedEqualityComparer!");
 
             return null;
         }
@@ -1804,9 +1716,6 @@ namespace System.Collections {
         }
 
         private const int bufferSize = 1024;
-#if !FEATURE_CORECLR
-        private static RandomNumberGenerator rng;
-#endif
         private static byte[] data;
         private static int currentIndex = bufferSize;
         private static readonly object lockObj = new Object();
@@ -1821,18 +1730,10 @@ namespace System.Collections {
                     if(data == null)
                     {
                         data = new byte[bufferSize];
-                        Contract.Assert(bufferSize % 8 == 0, "We increment our current index by 8, so our buffer size must be a multiple of 8");
-#if !FEATURE_CORECLR
-                        rng = RandomNumberGenerator.Create();
-#endif
-
+                        Debug.Assert(bufferSize % 8 == 0, "We increment our current index by 8, so our buffer size must be a multiple of 8");
                     }
 
-#if FEATURE_CORECLR
                     Microsoft.Win32.Win32Native.Random(true, data, data.Length);
-#else
-                    rng.GetBytes(data);
-#endif
                     currentIndex = 0;
                 }
 

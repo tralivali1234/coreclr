@@ -829,15 +829,24 @@ Stub * CreateInstantiatingILStub(MethodDesc* pTargetMD, void* pHiddenArg)
     CreateInstantiatingILStubTargetSig(pTargetMD, typeContext, &stubSigBuilder);
     
     // 2. Emit the method body
+    unsigned int numArgs = msig.NumFixedArgs();
     if (msig.HasThis())
     {
         // 2.1 Push the thisptr
         pCode->EmitLoadThis();
+        numArgs++;
     }
 
-    // 2.2 Push the hidden context param 
-    // InstantiatingStub
-    pCode->EmitLDC((TADDR)pHiddenArg);
+#if defined(_TARGET_X86_)
+    if (numArgs < NUM_ARGUMENT_REGISTERS)
+    {
+#endif // _TARGET_X86_
+        // 2.2 Push the hidden context param
+        // InstantiatingStub
+        pCode->EmitLDC((TADDR)pHiddenArg);
+#if defined(_TARGET_X86_)
+    }
+#endif // _TARGET_X86_
 
     // 2.3 Push the rest of the arguments
     for (unsigned i = 0; i < msig.NumFixedArgs();i++)
@@ -845,10 +854,19 @@ Stub * CreateInstantiatingILStub(MethodDesc* pTargetMD, void* pHiddenArg)
         pCode->EmitLDARG(i);
     }
 
-    // 2.4 Push the target address
+#if defined(_TARGET_X86_)
+    if (numArgs >= NUM_ARGUMENT_REGISTERS)
+    {
+        // 2.4 Push the hidden context param
+        // InstantiatingStub
+        pCode->EmitLDC((TADDR)pHiddenArg);
+    }
+#endif // _TARGET_X86_
+
+    // 2.5 Push the target address
     pCode->EmitLDC((TADDR)pTargetMD->GetMultiCallableAddrOfCode(CORINFO_ACCESS_ANY));
 
-    // 2.5 Do the calli
+    // 2.6 Do the calli
     pCode->EmitCALLI(TOKEN_ILSTUB_TARGET_SIG, msig.NumFixedArgs() + 1, msig.IsReturnTypeVoid() ? 0 : 1);
     pCode->EmitRET();
 
@@ -1215,12 +1233,12 @@ PCODE MethodDesc::DoPrestub(MethodTable *pDispatchingMT)
         RETURN GetStableEntryPoint();
     }
 
-#ifdef FEATURE_PREJIT 
+#if defined(FEATURE_PREJIT) && defined(FEATURE_CER)
     // If this method is the root of a CER call graph and we've recorded this fact in the ngen image then we're in the prestub in
     // order to trip any runtime level preparation needed for this graph (P/Invoke stub generation/library binding, generic
     // dictionary prepopulation etc.).
     GetModule()->RestoreCer(this);
-#endif // FEATURE_PREJIT
+#endif // FEATURE_PREJIT && FEATURE_CER
 
 #ifdef FEATURE_COMINTEROP 
     /**************************   INTEROP   *************************/
@@ -1647,9 +1665,9 @@ PCODE MethodDesc::DoPrestub(MethodTable *pDispatchingMT)
 // use the prestub.
 //==========================================================================
 
-#ifdef _TARGET_X86_
+#if defined(_TARGET_X86_) && !defined(FEATURE_STUBS_AS_IL)
 static PCODE g_UMThunkPreStub;
-#endif
+#endif // _TARGET_X86_ && !FEATURE_STUBS_AS_IL
 
 #ifndef DACCESS_COMPILE 
 
@@ -1676,9 +1694,9 @@ void InitPreStubManager(void)
         return;
     }
 
-#ifdef _TARGET_X86_
+#if defined(_TARGET_X86_) && !defined(FEATURE_STUBS_AS_IL)
     g_UMThunkPreStub = GenerateUMThunkPrestub()->GetEntryPoint();
-#endif
+#endif // _TARGET_X86_ && !FEATURE_STUBS_AS_IL
 
     ThePreStubManager::Init();
 }
@@ -1687,11 +1705,11 @@ PCODE TheUMThunkPreStub()
 {
     LIMITED_METHOD_CONTRACT;
 
-#ifdef _TARGET_X86_
+#if defined(_TARGET_X86_) && !defined(FEATURE_STUBS_AS_IL)
     return g_UMThunkPreStub;
-#else
+#else  // _TARGET_X86_ && !FEATURE_STUBS_AS_IL
     return GetEEFuncEntryPoint(TheUMEntryPrestub);
-#endif
+#endif // _TARGET_X86_ && !FEATURE_STUBS_AS_IL
 }
 
 PCODE TheVarargNDirectStub(BOOL hasRetBuffArg)

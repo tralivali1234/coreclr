@@ -12,6 +12,7 @@ namespace System.Reflection.Emit
     using System.Reflection;
     using System.Security.Permissions;
     using System.Globalization;
+    using System.Diagnostics;
     using System.Diagnostics.Contracts;
     
     [ClassInterface(ClassInterfaceType.None)]
@@ -209,20 +210,17 @@ namespace System.Reflection.Emit
             }
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         private int GetMethodToken(MethodBase method, Type[] optionalParameterTypes, bool useMethodDef)
         {
             return ((ModuleBuilder)m_methodBuilder.Module).GetMethodTokenInternal(method, optionalParameterTypes, useMethodDef);
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         internal virtual SignatureHelper GetMemberRefSignature(CallingConventions call, Type returnType, 
             Type[] parameterTypes, Type[] optionalParameterTypes)
         {
             return GetMemberRefSignature(call, returnType, parameterTypes, optionalParameterTypes, 0);
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         private SignatureHelper GetMemberRefSignature(CallingConventions call, Type returnType, 
             Type[] parameterTypes, Type[] optionalParameterTypes, int cGenericParameters)
         {
@@ -413,7 +411,7 @@ namespace System.Reflection.Emit
         {
             if (m_RelocFixupCount == 0)
             {
-                Contract.Assert(m_RelocFixupList == null);
+                Debug.Assert(m_RelocFixupList == null);
                 return null;
             }
 
@@ -471,7 +469,6 @@ namespace System.Reflection.Emit
             PutInteger4(arg);
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public virtual void Emit(OpCode opcode, MethodInfo meth)
         {
             if (meth == null)
@@ -503,7 +500,6 @@ namespace System.Reflection.Emit
         }
 
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public virtual void EmitCalli(OpCode opcode, CallingConventions callingConvention, 
             Type returnType, Type[] parameterTypes, Type[] optionalParameterTypes)
         {
@@ -592,7 +588,6 @@ namespace System.Reflection.Emit
             PutInteger4(modBuilder.GetSignatureToken(sig).Token);
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public virtual void EmitCall(OpCode opcode, MethodInfo methodInfo, Type[] optionalParameterTypes)
         {
             if (methodInfo == null)
@@ -652,7 +647,7 @@ namespace System.Reflection.Emit
             // SignatureHelper.
             if (opcode.StackBehaviourPop == StackBehaviour.Varpop)
             {
-                Contract.Assert(opcode.Equals(OpCodes.Calli),
+                Debug.Assert(opcode.Equals(OpCodes.Calli),
                                 "Unexpected opcode encountered for StackBehaviour VarPop.");
                 // Pop the arguments..
                 stackchange -= signature.ArgumentCount;
@@ -665,7 +660,6 @@ namespace System.Reflection.Emit
             PutInteger4(tempVal);
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [System.Runtime.InteropServices.ComVisible(true)]
         public virtual void Emit(OpCode opcode, ConstructorInfo con)
         {
@@ -686,7 +680,7 @@ namespace System.Reflection.Emit
             if (opcode.StackBehaviourPush == StackBehaviour.Varpush)
             {
                 // Instruction must be one of call or callvirt.
-                Contract.Assert(opcode.Equals(OpCodes.Call) ||
+                Debug.Assert(opcode.Equals(OpCodes.Call) ||
                                 opcode.Equals(OpCodes.Callvirt),
                                 "Unexpected opcode encountered for StackBehaviour of VarPush.");
                 stackchange++;
@@ -694,7 +688,7 @@ namespace System.Reflection.Emit
             if (opcode.StackBehaviourPop == StackBehaviour.Varpop)
             {
                 // Instruction must be one of call, callvirt or newobj.
-                Contract.Assert(opcode.Equals(OpCodes.Call) ||
+                Debug.Assert(opcode.Equals(OpCodes.Call) ||
                                 opcode.Equals(OpCodes.Callvirt) ||
                                 opcode.Equals(OpCodes.Newobj),
                                 "Unexpected opcode encountered for StackBehaviour of VarPop.");
@@ -709,7 +703,6 @@ namespace System.Reflection.Emit
             PutInteger4(tk);
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public virtual void Emit(OpCode opcode, Type cls)
         {
             // Puts opcode onto the stream and then the metadata token represented
@@ -749,7 +742,6 @@ namespace System.Reflection.Emit
             m_ILStream[m_length++] = (byte) (arg>>56);
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         unsafe public virtual void Emit(OpCode opcode, float arg) {
             EnsureCapacity(7);
             InternalEmit(opcode);
@@ -760,7 +752,6 @@ namespace System.Reflection.Emit
             m_ILStream[m_length++] = (byte) (tempVal>>24);
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         unsafe public virtual void Emit(OpCode opcode, double arg) {
             EnsureCapacity(11);
             InternalEmit(opcode);
@@ -1019,7 +1010,7 @@ namespace System.Reflection.Emit
 
         public virtual void BeginExceptFilterBlock() 
         {
-            // Begins a eception filter block.  Emits a branch instruction to the end of the current exception block.
+            // Begins an exception filter block.  Emits a branch instruction to the end of the current exception block.
 
             if (m_currExcStackCount == 0)
                 throw new NotSupportedException(Environment.GetResourceString("Argument_NotInExceptionBlock"));
@@ -1169,13 +1160,9 @@ namespace System.Reflection.Emit
 
         private static Type GetConsoleType()
         {
-#if FEATURE_LEGACYSURFACE
-            return typeof(Console);
-#else
             return Type.GetType(
                 "System.Console, System.Console, Version=4.0.0.0, Culture=neutral, PublicKeyToken=" + AssemblyRef.MicrosoftPublicKeyToken, 
                 throwOnError: true);
-#endif
         }
 
         public virtual void EmitWriteLine(String value)
@@ -1361,28 +1348,6 @@ namespace System.Reflection.Emit
         #endregion
 
         #endregion
-
-#if !FEATURE_CORECLR
-        void _ILGenerator.GetTypeInfoCount(out uint pcTInfo)
-        {
-            throw new NotImplementedException();
-        }
-
-        void _ILGenerator.GetTypeInfo(uint iTInfo, uint lcid, IntPtr ppTInfo)
-        {
-            throw new NotImplementedException();
-        }
-
-        void _ILGenerator.GetIDsOfNames([In] ref Guid riid, IntPtr rgszNames, uint cNames, uint lcid, IntPtr rgDispId)
-        {
-            throw new NotImplementedException();
-        }
-
-        void _ILGenerator.Invoke(uint dispIdMember, [In] ref Guid riid, uint lcid, short wFlags, IntPtr pDispParams, IntPtr pVarResult, IntPtr pExcepInfo, IntPtr puArgErr)
-        {
-            throw new NotImplementedException();
-        }
-#endif
     }
 
     internal struct __FixupData
@@ -1471,7 +1436,7 @@ namespace System.Reflection.Emit
                 m_catchAddr[m_currentCatch] = -1;
                 if (m_currentCatch > 0)
                 {
-                    Contract.Assert(m_catchEndAddr[m_currentCatch-1] == -1,"m_catchEndAddr[m_currentCatch-1] == -1");
+                    Debug.Assert(m_catchEndAddr[m_currentCatch-1] == -1,"m_catchEndAddr[m_currentCatch-1] == -1");
                     m_catchEndAddr[m_currentCatch-1] = catchorfilterAddr;
                 }
             }
@@ -1488,7 +1453,7 @@ namespace System.Reflection.Emit
                 {
                         if (m_type[m_currentCatch] != Filter)
                         {
-                            Contract.Assert(m_catchEndAddr[m_currentCatch-1] == -1,"m_catchEndAddr[m_currentCatch-1] == -1");
+                            Debug.Assert(m_catchEndAddr[m_currentCatch-1] == -1,"m_catchEndAddr[m_currentCatch-1] == -1");
                             m_catchEndAddr[m_currentCatch-1] = catchEndAddr;
                         }
                 }
@@ -1530,9 +1495,9 @@ namespace System.Reflection.Emit
         }
 
         internal void Done(int endAddr) {
-            Contract.Assert(m_currentCatch > 0,"m_currentCatch > 0");
-            Contract.Assert(m_catchAddr[m_currentCatch-1] > 0,"m_catchAddr[m_currentCatch-1] > 0");
-            Contract.Assert(m_catchEndAddr[m_currentCatch-1] == -1,"m_catchEndAddr[m_currentCatch-1] == -1");
+            Debug.Assert(m_currentCatch > 0,"m_currentCatch > 0");
+            Debug.Assert(m_catchAddr[m_currentCatch-1] > 0,"m_catchAddr[m_currentCatch-1] > 0");
+            Debug.Assert(m_catchEndAddr[m_currentCatch-1] == -1,"m_catchEndAddr[m_currentCatch-1] == -1");
             m_catchEndAddr[m_currentCatch-1] = endAddr;
             m_currentState = State_Done;
         }
@@ -1595,8 +1560,8 @@ namespace System.Reflection.Emit
         // not having a nesting relation. 
         internal bool IsInner(__ExceptionInfo exc) {
             Contract.Requires(exc != null);
-            Contract.Assert(m_currentCatch > 0,"m_currentCatch > 0");
-            Contract.Assert(exc.m_currentCatch > 0,"exc.m_currentCatch > 0");
+            Debug.Assert(m_currentCatch > 0,"m_currentCatch > 0");
+            Debug.Assert(exc.m_currentCatch > 0,"exc.m_currentCatch > 0");
 
             int exclast = exc.m_currentCatch - 1;
             int last = m_currentCatch - 1;
@@ -1605,7 +1570,7 @@ namespace System.Reflection.Emit
                 return true;
             else if (exc.m_catchEndAddr[exclast] == m_catchEndAddr[last])
             {
-                Contract.Assert(exc.GetEndAddress() != GetEndAddress(),
+                Debug.Assert(exc.GetEndAddress() != GetEndAddress(),
                                 "exc.GetEndAddress() != GetEndAddress()");
                 if (exc.GetEndAddress() > GetEndAddress())
                     return true;
@@ -1761,9 +1726,6 @@ namespace System.Reflection.Emit
             }
         }
 
-        #if FEATURE_CORECLR
-        [System.Security.SecurityCritical] // auto-generated
-        #endif
         internal void EmitScopeTree(ISymbolWriter symWriter)
         {
             int         i;
@@ -1820,7 +1782,7 @@ namespace System.Reflection.Emit
             // make sure that arrays are large enough to hold addition info
             i = FindDocument(document);
             
-            Contract.Assert(i < m_DocumentCount, "Bad document look up!");
+            Debug.Assert(i < m_DocumentCount, "Bad document look up!");
             m_Documents[i].AddLineNumberInfo(document, iOffset, iStartLine, iStartColumn, iEndLine, iEndColumn);
         }
         
@@ -1873,9 +1835,6 @@ namespace System.Reflection.Emit
             }
         }
 
-        #if FEATURE_CORECLR
-        [System.Security.SecurityCritical] // auto-generated
-        #endif
         internal void EmitLineNumberInfo(ISymbolWriter symWriter)
         {
             for (int i = 0; i < m_DocumentCount; i++)
@@ -1911,7 +1870,7 @@ namespace System.Reflection.Emit
             int             iEndLine,
             int             iEndColumn)
         {
-            Contract.Assert(document == m_document, "Bad document look up!");
+            Debug.Assert(document == m_document, "Bad document look up!");
             
             // make sure that arrays are large enough to hold addition info
             EnsureCapacity();
@@ -1967,9 +1926,6 @@ namespace System.Reflection.Emit
             }
         }
 
-        #if FEATURE_CORECLR
-        [System.Security.SecurityCritical] // auto-generated
-        #endif
         internal void EmitLineNumberInfo(ISymbolWriter symWriter)
         {
             int[]       iOffsetsTemp;

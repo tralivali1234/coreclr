@@ -147,13 +147,10 @@ int _ungetwc_nolock( wchar_t inChar, miniFILE* inStream )
 
 /***
 *   _safecrt_cfltcvt - convert a float to an ascii string.
-*       Uses sprintf - this usage is OK.
 ****/
 
 /* routine used for floating-point output */
 #define FORMATSIZE 30
-
-#define _snprintf   snprintf
 
 // taken from output.inl
 #define FL_ALTERNATE  0x00080   /* alternate form requested */
@@ -181,7 +178,7 @@ errno_t _safecrt_cfltcvt(double *arg, char *buffer, size_t sizeInBytes, int type
     format[formatlen] = 0;
 
     buffer[sizeInBytes - 1] = 0;
-    retvalue = _snprintf(buffer, sizeInBytes, format, *arg);
+    retvalue = snprintf(buffer, sizeInBytes, format, *arg);
     if (buffer[sizeInBytes - 1] != 0 || retvalue <= 0)
     {
         buffer[0] = 0;
@@ -199,14 +196,12 @@ void _safecrt_fassign(int flag, void* argument, char* number )
 {
     if ( flag != 0 )    // double
     {
-        double dblValue = 0.0;
-        (void)sscanf( number, "%lf", &dblValue );
+        double dblValue = strtod(number, NULL);
         *( ( double* )argument ) = dblValue;
     }
     else                // float
     {
-        float fltValue = 0.0;
-        (void)sscanf( number, "%f", &fltValue );
+        float fltValue = strtof(number, NULL);
         *( ( float* )argument ) = fltValue;
     }
 }

@@ -18,6 +18,7 @@ namespace System {
     using System.Runtime;
     using System.Runtime.InteropServices;
     using System.Runtime.CompilerServices;
+    using System.Diagnostics;
     using System.Diagnostics.Contracts;
 
 [System.Runtime.InteropServices.ComVisible(true)]
@@ -86,7 +87,7 @@ namespace System {
 
         // Return the Unicode category for Unicode character <= 0x00ff.      
         private static UnicodeCategory GetLatin1UnicodeCategory(char ch) {
-            Contract.Assert(IsLatin1(ch), "Char.GetLatin1UnicodeCategory(): ch should be <= 007f");
+            Debug.Assert(IsLatin1(ch), "Char.GetLatin1UnicodeCategory(): ch should be <= 007f");
             return (UnicodeCategory)(categoryForLatin1[(int)ch]);
         }
      
@@ -911,7 +912,6 @@ namespace System {
         ** Convert an UTF32 value into a surrogate pair.
         ==============================================================================*/
         
-        [System.Security.SecuritySafeCritical]
         public static String ConvertFromUtf32(int utf32)
         {
             // For UTF32 values from U+00D800 ~ U+00DFFF, we should throw.  They

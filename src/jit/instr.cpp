@@ -149,8 +149,6 @@ const char* CodeGen::genSizeStr(emitAttr attr)
         nullptr,
         "xmmword ptr ",
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
         "ymmword ptr"
     };
@@ -3240,7 +3238,7 @@ instruction CodeGen::ins_Move_Extend(var_types srcType, bool srcInReg)
  *
  *  Parameters
  *      srcType   - source type
- *      aligned   - whether source is 16-byte aligned if srcType is a SIMD type
+ *      aligned   - whether source is properly aligned if srcType is a SIMD type
  */
 instruction CodeGenInterface::ins_Load(var_types srcType, bool aligned /*=false*/)
 {
@@ -3258,8 +3256,7 @@ instruction CodeGenInterface::ins_Load(var_types srcType, bool aligned /*=false*
 #endif // FEATURE_SIMD
             if (compiler->canUseAVX())
         {
-            // TODO-CQ: consider alignment of AVX vectors.
-            return INS_movupd;
+            return (aligned) ? INS_movapd : INS_movupd;
         }
         else
         {
@@ -3404,7 +3401,7 @@ instruction CodeGen::ins_Copy(var_types dstType)
  *
  *  Parameters
  *      dstType   - destination type
- *      aligned   - whether destination is 16-byte aligned if dstType is a SIMD type
+ *      aligned   - whether destination is properly aligned if dstType is a SIMD type
  */
 instruction CodeGenInterface::ins_Store(var_types dstType, bool aligned /*=false*/)
 {
@@ -3422,8 +3419,7 @@ instruction CodeGenInterface::ins_Store(var_types dstType, bool aligned /*=false
 #endif // FEATURE_SIMD
             if (compiler->canUseAVX())
         {
-            // TODO-CQ: consider alignment of AVX vectors.
-            return INS_movupd;
+            return (aligned) ? INS_movapd : INS_movupd;
         }
         else
         {

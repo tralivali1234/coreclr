@@ -60,10 +60,8 @@ namespace System.Collections {
     // 
     [DebuggerTypeProxy(typeof(System.Collections.SortedList.SortedListDebugView))]  
     [DebuggerDisplay("Count = {Count}")]
-[System.Runtime.InteropServices.ComVisible(true)]
-#if FEATURE_CORECLR
+    [System.Runtime.InteropServices.ComVisible(true)]
     [Obsolete("Non-generic collections have been deprecated. Please use collections in System.Collections.Generic.")]
-#endif
     [Serializable]
     public class SortedList : IDictionary, ICloneable
     {
@@ -213,7 +211,7 @@ namespace System.Collections {
                     }
                     else {
                         // size can only be zero here.
-                        Contract.Assert( _size == 0, "Size is not zero");
+                        Debug.Assert( _size == 0, "Size is not zero");
                         keys = emptyArray;
                         values = emptyArray;                      
                     }
@@ -530,7 +528,6 @@ namespace System.Collections {
         
         // Returns a thread-safe SortedList.
         //
-        [HostProtection(Synchronization=true)]
         public static SortedList Synchronized(SortedList list) {
             if (list==null)
                 throw new ArgumentNullException(nameof(list));

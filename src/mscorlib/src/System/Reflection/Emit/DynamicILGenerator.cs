@@ -16,6 +16,7 @@ namespace System.Reflection.Emit
     using System.Collections.Generic;
     using System.Security.Permissions;
     using System.Threading;
+    using System.Diagnostics;
     using System.Diagnostics.CodeAnalysis;
     using System.Diagnostics.Contracts;
     using System.Security;
@@ -35,7 +36,6 @@ namespace System.Reflection.Emit
         }
 
 
-        [System.Security.SecurityCritical]  // auto-generated
         internal void GetCallableMethod(RuntimeModule module, DynamicMethod dm)
         {
             dm.m_methodHandle = ModuleHandle.GetDynamicMethod(dm,
@@ -86,7 +86,6 @@ namespace System.Reflection.Emit
         // Token resolution calls
         //
         //
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public override void Emit(OpCode opcode, MethodInfo meth)
         {
             if (meth == null)
@@ -227,7 +226,6 @@ namespace System.Reflection.Emit
         // Signature related calls (vararg, calli)
         //
         //
-        [System.Security.SecuritySafeCritical] // overrides SC
         public override void EmitCalli(OpCode opcode,
                                        CallingConventions callingConvention,
                                        Type returnType,
@@ -306,7 +304,6 @@ namespace System.Reflection.Emit
             PutInteger4(token);
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public override void EmitCall(OpCode opcode, MethodInfo methodInfo, Type[] optionalParameterTypes)
         {
             if (methodInfo == null)
@@ -364,7 +361,7 @@ namespace System.Reflection.Emit
             // SignatureHelper.
             if (opcode.StackBehaviourPop == StackBehaviour.Varpop)
             {
-                Contract.Assert(opcode.Equals(OpCodes.Calli),
+                Debug.Assert(opcode.Equals(OpCodes.Calli),
                                 "Unexpected opcode encountered for StackBehaviour VarPop.");
                 // Pop the arguments..
                 stackchange -= signature.ArgumentCount;
@@ -481,7 +478,6 @@ namespace System.Reflection.Emit
             throw new NotSupportedException(Environment.GetResourceString("InvalidOperation_NotAllowedInDynamicMethod"));
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         private int GetMemberRefToken(MethodBase methodInfo, Type[] optionalParameterTypes)
         {
             Type[] parameterTypes;
@@ -518,7 +514,6 @@ namespace System.Reflection.Emit
                 return GetTokenForVarArgMethod(dm, sig);
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         internal override SignatureHelper GetMemberRefSignature(
                                                 CallingConventions call,
                                                 Type returnType,
@@ -703,9 +698,6 @@ namespace System.Reflection.Emit
             m_method.m_resolver = this;
         }
 
-#if FEATURE_CORECLR
-        [System.Security.SecurityCritical] // auto-generated
-#endif
         internal DynamicResolver(DynamicILInfo dynamicILInfo)
         {
             m_stackSize = dynamicILInfo.MaxStackSize;
@@ -773,7 +765,6 @@ namespace System.Reflection.Emit
         {
             internal RuntimeMethodHandleInternal m_methodHandle;
 
-            [System.Security.SecuritySafeCritical]  // auto-generated
             ~DestroyScout()
             {
                 if (m_methodHandle.IsNullHandle())
@@ -886,7 +877,6 @@ namespace System.Reflection.Emit
             return m_exceptionHeader;
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         internal override unsafe void GetEHInfo(int excNumber, void* exc)
         {
             CORINFO_EH_CLAUSE* exception = (CORINFO_EH_CLAUSE*)exc;
@@ -921,7 +911,6 @@ namespace System.Reflection.Emit
         }
 #endif // FEATURE_COMPRESSEDSTACK
 
-        [System.Security.SecurityCritical]
         internal override void ResolveToken(int token, out IntPtr typeHandle, out IntPtr methodHandle, out IntPtr fieldHandle)
         {
             typeHandle = new IntPtr();
@@ -1002,9 +991,6 @@ namespace System.Reflection.Emit
     }
 
 
-#if FEATURE_CORECLR
-[System.Security.SecurityCritical] // auto-generated
-#endif
     [System.Runtime.InteropServices.ComVisible(true)]
     public class DynamicILInfo
     {
@@ -1031,7 +1017,6 @@ namespace System.Reflection.Emit
         #endregion
 
         #region Internal Methods
-        [System.Security.SecurityCritical]  // auto-generated
         internal void GetCallableMethod(RuntimeModule module, DynamicMethod dm)
         {
             dm.m_methodHandle = ModuleHandle.GetDynamicMethod(dm,
@@ -1063,7 +1048,6 @@ namespace System.Reflection.Emit
             m_maxStackSize = maxStackSize;
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         [CLSCompliant(false)]
         public unsafe void SetCode(byte* code, int codeSize, int maxStackSize)
         {
@@ -1089,7 +1073,6 @@ namespace System.Reflection.Emit
             m_exceptions = (exceptions != null) ? (byte[])exceptions.Clone() : EmptyArray<Byte>.Value;
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         [CLSCompliant(false)]
         public unsafe void SetExceptions(byte* exceptions, int exceptionsSize)
         {
@@ -1114,7 +1097,6 @@ namespace System.Reflection.Emit
             m_localSignature = (localSignature != null) ? (byte[])localSignature.Clone() : EmptyArray<Byte>.Value;
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         [CLSCompliant(false)]
         public unsafe void SetLocalSignature(byte* localSignature, int signatureSize)
         {
@@ -1135,7 +1117,6 @@ namespace System.Reflection.Emit
         #endregion
 
         #region Public Scope Methods
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public int GetTokenFor(RuntimeMethodHandle method)
         {
             return DynamicScope.GetTokenFor(method);
@@ -1221,7 +1202,6 @@ namespace System.Reflection.Emit
         #endregion
 
         #region Public Methods
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public int GetTokenFor(RuntimeMethodHandle method)
         {
             IRuntimeMethodInfo methodReal = method.GetMethodInfo();

@@ -120,27 +120,7 @@ namespace System.Globalization {
         [OnSerializing]
         private void OnSerializing(StreamingContext ctx)
         {
-#if !FEATURE_CORECLR
-            // Update these legacy flags, so that 1.1/2.0 versions of the framework
-            // can still throw while parsing; even when using a de-serialized
-            // NumberFormatInfo from a 4.0+ version of the framework
-            if (numberDecimalSeparator != numberGroupSeparator) {
-                validForParseAsNumber = true;
-            } else {
-                validForParseAsNumber = false;
-            }
-
-            if ((numberDecimalSeparator != numberGroupSeparator) &&
-                (numberDecimalSeparator != currencyGroupSeparator) &&
-                (currencyDecimalSeparator != numberGroupSeparator) &&
-                (currencyDecimalSeparator != currencyGroupSeparator)) {
-                validForParseAsCurrency = true;
-            } else {
-                validForParseAsCurrency = false;
-            }
-#endif // !FEATURE_CORECLR
         }
-
 
         [OnDeserializing]
         private void OnDeserializing(StreamingContext ctx)
@@ -152,7 +132,6 @@ namespace System.Globalization {
         {
         }
 #endregion Serialization
-
 
         static private void VerifyDecimalSeparator(String decSep, String propertyName) {
             if (decSep==null) {
@@ -231,7 +210,6 @@ namespace System.Globalization {
 
         // We aren't persisting dataItem any more (since its useless & we weren't using it),
         // Ditto with m_useUserOverride.  Don't use them, we use a local copy of everything.
-        [System.Security.SecuritySafeCritical]  // auto-generated
         internal NumberFormatInfo(CultureData cultureData)
         {
             if (cultureData != null)

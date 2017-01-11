@@ -32,6 +32,7 @@ namespace System.Globalization {
     using System.Security.Permissions;
     using Microsoft.Win32;
     using System.Security;
+    using System.Diagnostics;
     using System.Diagnostics.Contracts;
 
     //
@@ -221,7 +222,6 @@ namespace System.Globalization {
             return(IsSortable(ch.ToString()));
         }
 
-        [System.Security.SecuritySafeCritical]
         [System.Runtime.InteropServices.ComVisible(false)]
         public static bool IsSortable(String text) {
             if (text == null) {
@@ -291,7 +291,7 @@ namespace System.Globalization {
 #if FEATURE_USE_LCID
             // This is merely for serialization compatibility with Whidbey/Orcas, it can go away when we don't want that compat any more.
             culture = CultureInfo.GetCultureInfo(this.Name).LCID; // This is the lcid of the constructing culture (still have to dereference to get target sort)
-            Contract.Assert(m_name != null, "CompareInfo.OnSerializing - expected m_name to be set already");
+            Debug.Assert(m_name != null, "CompareInfo.OnSerializing - expected m_name to be set already");
 #endif
         }
 
@@ -321,14 +321,7 @@ namespace System.Globalization {
         {
             get
             {
-                Contract.Assert(m_name != null, "CompareInfo.Name Expected m_name to be set");
-#if !FEATURE_CORECLR
-                if (m_name == "zh-CHT" || m_name == "zh-CHS")
-                {
-                    return m_name;
-                }
-#endif // FEATURE_CORECLR
-
+                Debug.Assert(m_name != null, "CompareInfo.Name Expected m_name to be set");
                 return (m_sortName);
             }
         }
@@ -354,7 +347,7 @@ namespace System.Globalization {
             // some NLS VM functions can handle COMPARE_OPTIONS_ORDINAL
             // in which case options should be simply cast to int instead of using this function
             // Does not look like the best approach to me but for now I am going to leave it as it is
-            Contract.Assert(options != CompareOptions.OrdinalIgnoreCase, "[CompareInfo.GetNativeCompareFlags]CompareOptions.OrdinalIgnoreCase should be handled separately");
+            Debug.Assert(options != CompareOptions.OrdinalIgnoreCase, "[CompareInfo.GetNativeCompareFlags]CompareOptions.OrdinalIgnoreCase should be handled separately");
 
             // Use "linguistic casing" by default (load the culture's casing exception tables)
             int nativeCompareFlags = NORM_LINGUISTIC_CASING;
@@ -369,7 +362,7 @@ namespace System.Globalization {
             // Suffix & Prefix shouldn't use this, make sure to turn off the NORM_LINGUISTIC_CASING flag
             if (options == CompareOptions.Ordinal)                { nativeCompareFlags = COMPARE_OPTIONS_ORDINAL; }
 
-            Contract.Assert(((options & ~(CompareOptions.IgnoreCase |
+            Debug.Assert(((options & ~(CompareOptions.IgnoreCase |
                                           CompareOptions.IgnoreKanaType |
                                           CompareOptions.IgnoreNonSpace |
                                           CompareOptions.IgnoreSymbols |
@@ -377,7 +370,7 @@ namespace System.Globalization {
                                           CompareOptions.StringSort)) == 0) ||
                              (options == CompareOptions.Ordinal), "[CompareInfo.GetNativeCompareFlags]Expected all flags to be handled");
 
-            Contract.Assert((nativeCompareFlags & RESERVED_FIND_ASCII_STRING) == 0, "[CompareInfo.GetNativeCompareFlags] RESERVED_FIND_ASCII_STRING shouldn't be set here");
+            Debug.Assert((nativeCompareFlags & RESERVED_FIND_ASCII_STRING) == 0, "[CompareInfo.GetNativeCompareFlags] RESERVED_FIND_ASCII_STRING shouldn't be set here");
 
             return nativeCompareFlags;
         }
@@ -400,7 +393,6 @@ namespace System.Globalization {
             return (Compare(string1, string2, CompareOptions.None));
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe virtual int Compare(String string1, String string2, CompareOptions options){
 
             if (options == CompareOptions.OrdinalIgnoreCase)
@@ -471,7 +463,6 @@ namespace System.Globalization {
         }
 
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe virtual int Compare(String string1, int offset1, int length1, String string2, int offset2, int length2, CompareOptions options)
         {
             if (options == CompareOptions.OrdinalIgnoreCase)
@@ -548,7 +539,6 @@ namespace System.Globalization {
         ////////////////////////////////////////////////////////////////////////
 
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe virtual bool IsPrefix(String source, String prefix, CompareOptions options)
         {
             if (source == null || prefix == null) {
@@ -603,7 +593,6 @@ namespace System.Globalization {
         ////////////////////////////////////////////////////////////////////////
 
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe virtual bool IsSuffix(String source, String suffix, CompareOptions options)
         {
             if (source == null || suffix == null) {
@@ -749,7 +738,6 @@ namespace System.Globalization {
             return IndexOf(source, value, startIndex, count, CompareOptions.None);
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe virtual int IndexOf(String source, char value, int startIndex, int count, CompareOptions options)
         {
             // Validate inputs
@@ -782,7 +770,6 @@ namespace System.Globalization {
         }
 
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe virtual int IndexOf(String source, String value, int startIndex, int count, CompareOptions options)
         {
             // Validate inputs
@@ -931,7 +918,6 @@ namespace System.Globalization {
         }
 
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe virtual int LastIndexOf(String source, char value, int startIndex, int count, CompareOptions options)
         {
             // Verify Arguments
@@ -980,7 +966,6 @@ namespace System.Globalization {
         }
 
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe virtual int LastIndexOf(String source, String value, int startIndex, int count, CompareOptions options)
         {
             // Verify Arguments
@@ -1053,7 +1038,6 @@ namespace System.Globalization {
             return CreateSortKey(source, CompareOptions.None);
         }
 
-        [System.Security.SecuritySafeCritical]
         private SortKey CreateSortKey(String source, CompareOptions options)
         {
             if (source==null) { throw new ArgumentNullException(nameof(source)); }
@@ -1209,7 +1193,6 @@ namespace System.Globalization {
             return GetHashCodeOfString(source, options, false, 0);
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         internal int GetHashCodeOfString(string source, CompareOptions options, bool forceRandomizedHashing, long additionalEntropy)
         {
             //
@@ -1261,40 +1244,16 @@ namespace System.Globalization {
         }
 #endif
 
-        [System.Security.SecuritySafeCritical]
         internal static IntPtr InternalInitSortHandle(String localeName, out IntPtr handleOrigin)
         {
             return NativeInternalInitSortHandle(localeName, out handleOrigin);
         }
-
-#if !FEATURE_CORECLR
-        private const int SORT_VERSION_WHIDBEY = 0x00001000;
-        private const int SORT_VERSION_V4 = 0x00060101;
-
-        internal static bool IsLegacy20SortingBehaviorRequested
-        {
-            get
-            {
-                return InternalSortVersion == SORT_VERSION_WHIDBEY;
-            }
-        }
-
-        private static uint InternalSortVersion
-        {
-            [System.Security.SecuritySafeCritical]
-            get
-            {
-                return InternalGetSortVersion();
-            }
-        }
-#endif
 
         [OptionalField(VersionAdded = 3)]
         private SortVersion m_SortVersion;
 
         public SortVersion Version
         {
-            [SecuritySafeCritical]
             get
             {
                 if(m_SortVersion == null) 
@@ -1309,39 +1268,27 @@ namespace System.Globalization {
             }
         }
         
-        [System.Security.SecurityCritical]
         [DllImport(JitHelpers.QCall, CharSet = CharSet.Unicode)]
         [SuppressUnmanagedCodeSecurity]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool InternalGetNlsVersionEx(IntPtr handle, IntPtr handleOrigin, String localeName, ref Win32Native.NlsVersionInfoEx lpNlsVersionInformation);
 
-#if !FEATURE_CORECLR
-        [System.Security.SecurityCritical]
-        [DllImport(JitHelpers.QCall, CharSet = CharSet.Unicode)]
-        [SuppressUnmanagedCodeSecurity]
-        private static extern uint InternalGetSortVersion();
-
-#endif
-        [System.Security.SecurityCritical]
         [DllImport(JitHelpers.QCall, CharSet = CharSet.Unicode)]
         [SuppressUnmanagedCodeSecurity]
         private static extern IntPtr NativeInternalInitSortHandle(String localeName, out IntPtr handleOrigin);
 
         // Get a locale sensitive sort hash code from native code -- COMNlsInfo::InternalGetGlobalizedHashCode
-        [System.Security.SecurityCritical]  // auto-generated
         [DllImport(JitHelpers.QCall, CharSet = CharSet.Unicode)]
         [SuppressUnmanagedCodeSecurity]
         private static extern int InternalGetGlobalizedHashCode(IntPtr handle, IntPtr handleOrigin, string localeName, string source, int length, int dwFlags, bool forceRandomizedHashing, long additionalEntropy);
 
         // Use native API calls to see if this string is entirely defined -- COMNlsInfo::InternalIsSortable
-        [System.Security.SecurityCritical]  // auto-generated
         [DllImport(JitHelpers.QCall, CharSet = CharSet.Unicode)]
         [SuppressUnmanagedCodeSecurity]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool InternalIsSortable(IntPtr handle, IntPtr handleOrigin, String localeName, String source, int length);
 
         // Compare a string using the native API calls -- COMNlsInfo::InternalCompareString
-        [System.Security.SecurityCritical]  // auto-generated
         [DllImport(JitHelpers.QCall, CharSet = CharSet.Unicode)]
         [SuppressUnmanagedCodeSecurity]
         private static extern int InternalCompareString(IntPtr handle, IntPtr handleOrigin, String localeName, String string1, int offset1, int length1,
@@ -1349,13 +1296,11 @@ namespace System.Globalization {
 
         // InternalFindNLSStringEx parameters is not exactly matching kernel32::FindNLSStringEx parameters.
         // Call through to NewApis::FindNLSStringEx so we can get the right behavior
-        [System.Security.SecurityCritical]  // auto-generated
         [DllImport(JitHelpers.QCall, CharSet = CharSet.Unicode)]
         [SuppressUnmanagedCodeSecurity]
         private static extern int InternalFindNLSStringEx(IntPtr handle, IntPtr handleOrigin, String localeName, int flags, String source, int sourceCount, int startIndex, string target, int targetCount);
 
         // Call through to NewAPis::LCMapStringEx so we can get appropriate behavior for all platforms
-        [System.Security.SecurityCritical]  // auto-generated
         [DllImport(JitHelpers.QCall, CharSet = CharSet.Unicode)]
         [SuppressUnmanagedCodeSecurity]
         private static extern int InternalGetSortKey(IntPtr handle, IntPtr handleOrigin, String localeName, int flags, String source, int sourceCount, byte[] target, int targetCount);

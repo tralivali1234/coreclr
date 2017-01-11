@@ -11,10 +11,10 @@
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 using System;
-using System.Diagnostics;
 using System.Security.Permissions;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Diagnostics;
 using System.Diagnostics.Contracts;
 
 namespace System.Threading
@@ -32,7 +32,6 @@ namespace System.Threading
     /// </remarks>
     [ComVisible(false)]
     [DebuggerDisplay("Initial Count={InitialCount}, Current Count={CurrentCount}")]
-    [HostProtection(Synchronization = true, ExternalThreading = true)]
     public class CountdownEvent : IDisposable
     {
         // CountdownEvent is a simple synchronization primitive used for fork/join parallelism. We create a
@@ -186,7 +185,7 @@ namespace System.Threading
         public bool Signal()
         {
             ThrowIfDisposed();
-            Contract.Assert(m_event != null);
+            Debug.Assert(m_event != null);
 
             if (m_currentCount <= 0)
             {
@@ -233,7 +232,7 @@ namespace System.Threading
             }
 
             ThrowIfDisposed();
-            Contract.Assert(m_event != null);
+            Debug.Assert(m_event != null);
 
             int observedCount;
             SpinWait spin = new SpinWait();
@@ -267,7 +266,7 @@ namespace System.Threading
                 return true;
             }
 
-            Contract.Assert(m_currentCount >= 0, "latch was decremented below zero");
+            Debug.Assert(m_currentCount >= 0, "latch was decremented below zero");
             return false;
         }
 

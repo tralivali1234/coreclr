@@ -177,7 +177,7 @@ private:
     USHORT m_usPort;
 };
 
-#define forDbi (*(forDbiWorker *)NULL)
+extern forDbiWorker forDbi;
 
 // for dbi we just default to new, but we need to have these defined for both dac and dbi
 inline void * operator new(size_t lenBytes, const forDbiWorker &)
@@ -6929,11 +6929,11 @@ public:
     // new-style constructor
     CordbMiscFrame(DebuggerIPCE_JITFuncData * pJITFuncData);
 
-#if defined(DBG_TARGET_WIN64) || defined(DBG_TARGET_ARM)
+#ifdef WIN64EXCEPTIONS
     SIZE_T             parentIP;
     FramePointer       fpParentOrSelf;
     bool               fIsFilterFunclet;
-#endif // DBG_TARGET_WIN64 || DBG_TARGET_ARM
+#endif // WIN64EXCEPTIONS
 };
 
 

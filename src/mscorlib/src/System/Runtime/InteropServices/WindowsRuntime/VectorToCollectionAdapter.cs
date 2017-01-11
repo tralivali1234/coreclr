@@ -8,6 +8,7 @@ using System;
 using System.Security;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.Contracts;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
@@ -26,12 +27,11 @@ namespace System.Runtime.InteropServices.WindowsRuntime
     {
         private VectorToCollectionAdapter()
         {
-            Contract.Assert(false, "This class is never instantiated");
+            Debug.Assert(false, "This class is never instantiated");
         }
 
         // int Count { get }
         [Pure]
-        [SecurityCritical]
         internal int Count<T>()
         {
             IVector<T> _this = JitHelpers.UnsafeCast<IVector<T>>(this);
@@ -45,14 +45,12 @@ namespace System.Runtime.InteropServices.WindowsRuntime
         }
 
         // bool IsReadOnly { get }
-        [SecurityCritical]
         internal bool IsReadOnly<T>()
         {
             return false;
         }
 
         // void Add(T item)
-        [SecurityCritical]
         internal void Add<T>(T item)
         {
             IVector<T> _this = JitHelpers.UnsafeCast<IVector<T>>(this);
@@ -60,7 +58,6 @@ namespace System.Runtime.InteropServices.WindowsRuntime
         }
 
         // void Clear()
-        [SecurityCritical]
         internal void Clear<T>()
         {
             IVector<T> _this = JitHelpers.UnsafeCast<IVector<T>>(this);
@@ -68,7 +65,6 @@ namespace System.Runtime.InteropServices.WindowsRuntime
         }
 
         // bool Contains(T item)
-        [SecurityCritical]
         internal bool Contains<T>(T item)
         {
             IVector<T> _this = JitHelpers.UnsafeCast<IVector<T>>(this);
@@ -78,7 +74,6 @@ namespace System.Runtime.InteropServices.WindowsRuntime
         }
 
         // void CopyTo(T[] array, int arrayIndex)
-        [SecurityCritical]
         internal void CopyTo<T>(T[] array, int arrayIndex)
         {
             if (array == null)
@@ -104,7 +99,6 @@ namespace System.Runtime.InteropServices.WindowsRuntime
         }
 
         // bool Remove(T item)
-        [SecurityCritical]
         internal bool Remove<T>(T item)
         {
             IVector<T> _this = JitHelpers.UnsafeCast<IVector<T>>(this);

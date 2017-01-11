@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.Contracts;
 using System.Globalization;
 using System.Runtime.CompilerServices;
@@ -17,7 +18,6 @@ namespace System
         private const int TrimTail = 1;
         private const int TrimBoth = 2;
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         unsafe private static void FillStringChecked(String dest, int destPos, String src)
         {
             Contract.Requires(dest != null);
@@ -109,7 +109,6 @@ namespace System
             return Concat(objArgs);
         }
 
-        [System.Security.SecuritySafeCritical]
         public static string Concat(params object[] args)
         {
             if (args == null)
@@ -167,8 +166,8 @@ namespace System
             {
                 string s = strings[i];
 
-                Contract.Assert(s != null);
-                Contract.Assert(position <= totalLength - s.Length, "We didn't allocate enough space for the result string!");
+                Debug.Assert(s != null);
+                Debug.Assert(position <= totalLength - s.Length, "We didn't allocate enough space for the result string!");
 
                 FillStringChecked(result, position, s);
                 position += s.Length;
@@ -262,7 +261,6 @@ namespace System
         }
 
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public static String Concat(String str0, String str1) {
             Contract.Ensures(Contract.Result<String>() != null);
             Contract.Ensures(Contract.Result<String>().Length ==
@@ -291,7 +289,6 @@ namespace System
             return result;
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public static String Concat(String str0, String str1, String str2) {
             Contract.Ensures(Contract.Result<String>() != null);
             Contract.Ensures(Contract.Result<String>().Length ==
@@ -325,7 +322,6 @@ namespace System
             return result;
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public static String Concat(String str0, String str1, String str2, String str3) {
             Contract.Ensures(Contract.Result<String>() != null);
             Contract.Ensures(Contract.Result<String>().Length == 
@@ -366,7 +362,6 @@ namespace System
             return result;
         }
 
-        [System.Security.SecuritySafeCritical]
         public static String Concat(params String[] values) {
             if (values == null)
                 throw new ArgumentNullException(nameof(values));
@@ -502,7 +497,6 @@ namespace System
                     .AppendFormatHelper(provider, format, args));
         }
     
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public String Insert(int startIndex, String value)
         {
             if (value == null)
@@ -541,37 +535,143 @@ namespace System
             }
             return result;
         }
+
+        public static string Join(char separator, params string[] value)
+        {
+            if (value == null)
+            {
+                throw new ArgumentNullException(nameof(value));
+            }
+
+            return Join(separator, value, 0, value.Length);
+        }
+
+        public unsafe static string Join(char separator, params object[] values)
+        {
+            // Defer argument validation to the internal function
+            return JoinCore(&separator, 1, values);
+        }
+
+        public unsafe static string Join<T>(char separator, IEnumerable<T> values)
+        {
+            // Defer argument validation to the internal function
+            return JoinCore(&separator, 1, values);
+        }
+
+        public unsafe static string Join(char separator, string[] value, int startIndex, int count)
+        {
+            // Defer argument validation to the internal function
+            return JoinCore(&separator, 1, value, startIndex, count);
+        }
     
         // Joins an array of strings together as one string with a separator between each original string.
         //
-        public static String Join(String separator, params String[] value) {
-            if (value==null)
+        public static string Join(string separator, params string[] value)
+        {
+            if (value == null)
+            {
                 throw new ArgumentNullException(nameof(value));
-            Contract.EndContractBlock();
+            }
             return Join(separator, value, 0, value.Length);
         }
 
         [ComVisible(false)]
-        public static string Join(string separator, params object[] values)
+        public unsafe static string Join(string separator, params object[] values)
+        {
+            separator = separator ?? string.Empty;
+            fixed (char* pSeparator = &separator.m_firstChar)
+            {
+                // Defer argument validation to the internal function
+                return JoinCore(pSeparator, separator.Length, values);
+            }
+        }
+
+        [ComVisible(false)]
+        public unsafe static string Join<T>(string separator, IEnumerable<T> values)
+        {
+            separator = separator ?? string.Empty;
+            fixed (char* pSeparator = &separator.m_firstChar)
+            {
+                // Defer argument validation to the internal function
+                return JoinCore(pSeparator, separator.Length, values);
+            }
+        }
+
+        [ComVisible(false)]
+        public static string Join(string separator, IEnumerable<string> values)
         {
             if (values == null)
+            {
                 throw new ArgumentNullException(nameof(values));
-            Contract.EndContractBlock();
+            }
+
+            using (IEnumerator<string> en = values.GetEnumerator())
+            {
+                if (!en.MoveNext())
+                {
+                    return string.Empty;
+                }
+
+                string firstValue = en.Current;
+
+                if (!en.MoveNext())
+                {
+                    // Only one value available
+                    return firstValue ?? string.Empty;
+                }
+
+                // Null separator and values are handled by the StringBuilder
+                StringBuilder result = StringBuilderCache.Acquire();
+                result.Append(firstValue);
+
+                do
+                {
+                    result.Append(separator);
+                    result.Append(en.Current);
+                }
+                while (en.MoveNext());
+
+                return StringBuilderCache.GetStringAndRelease(result);
+            }
+        }
+
+        // Joins an array of strings together as one string with a separator between each original string.
+        //
+        public unsafe static string Join(string separator, string[] value, int startIndex, int count)
+        {
+            separator = separator ?? string.Empty;
+            fixed (char* pSeparator = &separator.m_firstChar)
+            {
+                // Defer argument validation to the internal function
+                return JoinCore(pSeparator, separator.Length, value, startIndex, count);
+            }
+        }
+
+        private unsafe static string JoinCore(char* separator, int separatorLength, object[] values)
+        {
+            if (values == null)
+            {
+                throw new ArgumentNullException(nameof(values));
+            }
 
             if (values.Length == 0)
+            {
                 return string.Empty;
+            }
 
             string firstString = values[0]?.ToString();
 
             if (values.Length == 1)
+            {
                 return firstString ?? string.Empty;
+            }
 
             StringBuilder result = StringBuilderCache.Acquire();
             result.Append(firstString);
 
             for (int i = 1; i < values.Length; i++)
             {
-                result.Append(separator);
+                result.Append(separator, separatorLength);
                 object value = values[i];
                 if (value != null)
                 {
@@ -582,18 +682,19 @@ namespace System
             return StringBuilderCache.GetStringAndRelease(result);
         }
 
-        [ComVisible(false)]
-        public static String Join<T>(String separator, IEnumerable<T> values)
+        private unsafe static string JoinCore<T>(char* separator, int separatorLength, IEnumerable<T> values)
         {
             if (values == null)
+            {
                 throw new ArgumentNullException(nameof(values));
-            Contract.Ensures(Contract.Result<String>() != null);
-            Contract.EndContractBlock();
+            }
 
             using (IEnumerator<T> en = values.GetEnumerator())
             {
                 if (!en.MoveNext())
+                {
                     return string.Empty;
+                }
                 
                 // We called MoveNext once, so this will be the first item
                 T currentValue = en.Current;
@@ -614,14 +715,14 @@ namespace System
                 }
 
                 StringBuilder result = StringBuilderCache.Acquire();
-                
+
                 result.Append(firstString);
 
                 do
                 {
                     currentValue = en.Current;
 
-                    result.Append(separator);
+                    result.Append(separator, separatorLength);
                     if (currentValue != null)
                     {
                         result.Append(currentValue.ToString());
@@ -633,107 +734,113 @@ namespace System
             }
         }
 
-        [ComVisible(false)]
-        public static String Join(String separator, IEnumerable<String> values) {
-            if (values == null)
-                throw new ArgumentNullException(nameof(values));
-            Contract.Ensures(Contract.Result<String>() != null);
-            Contract.EndContractBlock();
+        private unsafe static string JoinCore(char* separator, int separatorLength, string[] value, int startIndex, int count)
+        {
+            // If the separator is null, it is converted to an empty string before entering this function.
+            // Even for empty strings, fixed should never return null (it should return a pointer to a null char).
+            Debug.Assert(separator != null);
+            Debug.Assert(separatorLength >= 0);
 
-            using(IEnumerator<String> en = values.GetEnumerator()) {
-                if (!en.MoveNext())
-                    return String.Empty;
-
-                String firstValue = en.Current;
-
-                if (!en.MoveNext()) {
-                    // Only one value available
-                    return firstValue ?? String.Empty;
-                }
-
-                // Null separator and values are handled by the StringBuilder
-                StringBuilder result = StringBuilderCache.Acquire();
-                result.Append(firstValue);
-
-                do {
-                    result.Append(separator);
-                    result.Append(en.Current);
-                } while (en.MoveNext());
-                return StringBuilderCache.GetStringAndRelease(result);
-            }
-        }
-
-        // Joins an array of strings together as one string with a separator between each original string.
-        //
-        [System.Security.SecuritySafeCritical]  // auto-generated
-        public unsafe static String Join(String separator, String[] value, int startIndex, int count) {
-            //Range check the array
             if (value == null)
+            {
                 throw new ArgumentNullException(nameof(value));
-
+            }
             if (startIndex < 0)
+            {
                 throw new ArgumentOutOfRangeException(nameof(startIndex), Environment.GetResourceString("ArgumentOutOfRange_StartIndex"));
+            }
             if (count < 0)
+            {
                 throw new ArgumentOutOfRangeException(nameof(count), Environment.GetResourceString("ArgumentOutOfRange_NegativeCount"));
-
+            }
             if (startIndex > value.Length - count)
+            {
                 throw new ArgumentOutOfRangeException(nameof(startIndex), Environment.GetResourceString("ArgumentOutOfRange_IndexCountBuffer"));
-            Contract.EndContractBlock();
-
-            //Treat null as empty string.
-            if (separator == null) {
-                separator = String.Empty;
-            }
-
-            //If count is 0, that skews a whole bunch of the calculations below, so just special case that.
-            if (count == 0) {
-                return String.Empty;
-            }
-
-            if (count == 1) {
-                return value[startIndex] ?? String.Empty;
-            }
-
-            int jointLength = 0;
-            //Figure out the total length of the strings in value
-            int endIndex = startIndex + count - 1;
-            for (int stringToJoinIndex = startIndex; stringToJoinIndex <= endIndex; stringToJoinIndex++) {
-                string currentValue = value[stringToJoinIndex];
-
-                if (currentValue != null) {
-                    jointLength += currentValue.Length;
-                }
             }
             
-            //Add enough room for the separator.
-            jointLength += (count - 1) * separator.Length;
+            if (count <= 1)
+            {
+                return count == 0 ?
+                    string.Empty :
+                    value[startIndex] ?? string.Empty;
+            }
 
-            // Note that we may not catch all overflows with this check (since we could have wrapped around the 4gb range any number of times
-            // and landed back in the positive range.) The input array might be modifed from other threads, 
-            // so we have to do an overflow check before each append below anyway. Those overflows will get caught down there.
-            if ((jointLength < 0) || ((jointLength + 1) < 0) ) {
+            long totalSeparatorsLength = (long)(count - 1) * separatorLength;
+            if (totalSeparatorsLength > int.MaxValue)
+            {
                 throw new OutOfMemoryException();
             }
+            int totalLength = (int)totalSeparatorsLength;
 
-            //If this is an empty string, just return.
-            if (jointLength == 0) {
-                return String.Empty;
-            }
-
-            string jointString = FastAllocateString( jointLength );
-            fixed (char * pointerToJointString = &jointString.m_firstChar) {
-                UnSafeCharBuffer charBuffer = new UnSafeCharBuffer( pointerToJointString, jointLength);                
-                
-                // Append the first string first and then append each following string prefixed by the separator.
-                charBuffer.AppendString( value[startIndex] );
-                for (int stringToJoinIndex = startIndex + 1; stringToJoinIndex <= endIndex; stringToJoinIndex++) {
-                    charBuffer.AppendString( separator );
-                    charBuffer.AppendString( value[stringToJoinIndex] );
+            // Calculate the length of the resultant string so we know how much space to allocate.
+            for (int i = startIndex, end = startIndex + count; i < end; i++)
+            {
+                string currentValue = value[i];
+                if (currentValue != null)
+                {
+                    totalLength += currentValue.Length;
+                    if (totalLength < 0) // Check for overflow
+                    {
+                        throw new OutOfMemoryException();
+                    }
                 }
-                Contract.Assert(*(pointerToJointString + charBuffer.Length) == '\0', "String must be null-terminated!");
             }
 
-            return jointString;
+            // Copy each of the strings into the resultant buffer, interleaving with the separator.
+            string result = FastAllocateString(totalLength);
+            int copiedLength = 0;
+
+            for (int i = startIndex, end = startIndex + count; i < end; i++)
+            {
+                // It's possible that another thread may have mutated the input array
+                // such that our second read of an index will not be the same string
+                // we got during the first read.
+
+                // We range check again to avoid buffer overflows if this happens.
+
+                string currentValue = value[i];
+                if (currentValue != null)
+                {
+                    int valueLen = currentValue.Length;
+                    if (valueLen > totalLength - copiedLength)
+                    {
+                        copiedLength = -1;
+                        break;
+                    }
+
+                    // Fill in the value.
+                    FillStringChecked(result, copiedLength, currentValue);
+                    copiedLength += valueLen;
+                }
+                    
+                if (i < end - 1)
+                {
+                    // Fill in the separator.
+                    fixed (char* pResult = &result.m_firstChar)
+                    {
+                        // If we are called from the char-based overload, we will not
+                        // want to call MemoryCopy each time we fill in the separator. So
+                        // specialize for 1-length separators.
+                        if (separatorLength == 1)
+                        {
+                            pResult[copiedLength] = *separator;
+                        }
+                        else
+                        {
+                            wstrcpy(pResult + copiedLength, separator, separatorLength);
+                        }
+                    }
+                    copiedLength += separatorLength;
+                }
+            }
+
+            // If we copied exactly the right amount, return the new string.  Otherwise,
+            // something changed concurrently to mutate the input array: fall back to
+            // doing the concatenation again, but this time with a defensive copy. This
+            // fall back should be extremely rare.
+            return copiedLength == totalLength ?
+                result :
+                JoinCore(separator, separatorLength, (string[])value.Clone(), startIndex, count);
         }
         
         //
@@ -744,7 +851,6 @@ namespace System
         }
 
         [Pure]
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public String PadLeft(int totalWidth, char paddingChar) {
             if (totalWidth < 0)
                 throw new ArgumentOutOfRangeException(nameof(totalWidth), Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegNum"));
@@ -774,7 +880,6 @@ namespace System
         }
 
         [Pure]
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public String PadRight(int totalWidth, char paddingChar) {
             if (totalWidth < 0)
                 throw new ArgumentOutOfRangeException(nameof(totalWidth), Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegNum"));
@@ -798,7 +903,6 @@ namespace System
             return result;
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public String Remove(int startIndex, int count)
         {
             if (startIndex < 0)
@@ -855,7 +959,6 @@ namespace System
 
         // Replaces all instances of oldChar with newChar.
         //
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public String Replace(char oldChar, char newChar)
         {
             Contract.Ensures(Contract.Result<String>() != null);
@@ -926,7 +1029,6 @@ namespace System
 
         // This method contains the same functionality as StringBuilder Replace. The only difference is that
         // a new String has to be allocated since Strings are immutable
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         private extern String ReplaceInternal(String oldValue, String newValue);
 
@@ -996,13 +1098,11 @@ namespace System
             return SplitInternal(separator, count, options);
         }
 
-        [System.Security.SecuritySafeCritical]
         private unsafe String[] SplitInternal(char separator, int count, StringSplitOptions options)
         {
             return SplitInternal(&separator, 1, count, options);
         }
 
-        [System.Security.SecuritySafeCritical]
         private unsafe String[] SplitInternal(char[] separator, int count, StringSplitOptions options)
         {
             fixed (char* pSeparators = separator)
@@ -1012,7 +1112,6 @@ namespace System
             }
         }
 
-        [System.Security.SecurityCritical]
         private unsafe String[] SplitInternal(char* separators, int separatorsLength, int count, StringSplitOptions options)
         {
             if (count < 0)
@@ -1027,14 +1126,8 @@ namespace System
             bool omitEmptyEntries = (options == StringSplitOptions.RemoveEmptyEntries);
 
             if ((count == 0) || (omitEmptyEntries && this.Length == 0)) 
-            {           
-#if FEATURE_CORECLR
+            {
                 return EmptyArray<String>.Value;
-#else
-                // Keep the old behavior of returning a new empty array
-                // to mitigate any potential compat risk.
-                return new String[0];
-#endif
             }
 
             if (count == 1)
@@ -1042,13 +1135,13 @@ namespace System
                 return new String[] { this };
             }
             
-            int[] sepList = new int[Length];            
+            int[] sepList = new int[Length];
             int numReplaces = MakeSeparatorList(separators, separatorsLength, sepList);
             
             // Handle the special case of no replaces.
             if (0 == numReplaces) {
                 return new String[] { this };
-            }            
+            }
 
             if(omitEmptyEntries) 
             {
@@ -1057,7 +1150,7 @@ namespace System
             else 
             {
                 return SplitKeepEmptyEntries(sepList, null, 1, numReplaces, count);
-            }            
+            }
         }
 
         [ComVisible(false)]
@@ -1105,13 +1198,7 @@ namespace System
             }
             
             if ((count == 0) || (omitEmptyEntries && this.Length ==0)) {
-#if FEATURE_CORECLR
                 return EmptyArray<String>.Value;
-#else
-                // Keep the old behavior of returning a new empty array
-                // to mitigate any potential compat risk.
-                return new String[0];
-#endif
             }
 
             if (count == 1 || (singleSeparator && separator.Length == 0)) {
@@ -1218,7 +1305,7 @@ namespace System
             }
 
             // we must have at least one slot left to fill in the last string.
-            Contract.Assert(arrIndex < maxItems);
+            Debug.Assert(arrIndex < maxItems);
 
             //Handle the last string at the end of the array if there is one.
             if (currIndex< Length) {                
@@ -1241,9 +1328,8 @@ namespace System
         // Args: separator  -- A string containing all of the split characters.
         //       sepList    -- an array of ints for split char indicies.
         //--------------------------------------------------------------------    
-        [System.Security.SecurityCritical]
         private unsafe int MakeSeparatorList(char* separators, int separatorsLength, int[] sepList) {
-            Contract.Assert(separatorsLength >= 0, "separatorsLength >= 0");
+            Debug.Assert(separatorsLength >= 0, "separatorsLength >= 0");
             int foundCount=0;
 
             if (separators == null || separatorsLength == 0) {
@@ -1280,9 +1366,8 @@ namespace System
         // Args: separator  -- the separator
         //       sepList    -- an array of ints for split string indicies.
         //--------------------------------------------------------------------
-        [System.Security.SecuritySafeCritical]  // auto-generated
         private unsafe int MakeSeparatorList(string separator, int[] sepList) {
-            Contract.Assert(!string.IsNullOrEmpty(separator), "!string.IsNullOrEmpty(separator)");
+            Debug.Assert(!string.IsNullOrEmpty(separator), "!string.IsNullOrEmpty(separator)");
 
             int foundCount = 0;
             int sepListCount = sepList.Length;
@@ -1310,9 +1395,8 @@ namespace System
         //       sepList    -- an array of ints for split string indicies.
         //       lengthList -- an array of ints for split string lengths.
         //--------------------------------------------------------------------    
-        [System.Security.SecuritySafeCritical]  // auto-generated
         private unsafe int MakeSeparatorList(String[] separators, int[] sepList, int[] lengthList) {
-            Contract.Assert(separators != null && separators.Length > 0, "separators != null && separators.Length > 0");
+            Debug.Assert(separators != null && separators.Length > 0, "separators != null && separators.Length > 0");
             
             int foundCount = 0;
             int sepListCount = sepList.Length;
@@ -1350,7 +1434,6 @@ namespace System
     
         // Returns a substring of this string.
         //
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public String Substring(int startIndex, int length) {
                     
             //Bounds Checking.
@@ -1382,10 +1465,9 @@ namespace System
             return InternalSubString(startIndex, length);
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         unsafe string InternalSubString(int startIndex, int length) {
-            Contract.Assert( startIndex >= 0 && startIndex <= this.Length, "StartIndex is out of range!");
-            Contract.Assert( length >= 0 && startIndex <= this.Length - length, "length is out of range!");            
+            Debug.Assert( startIndex >= 0 && startIndex <= this.Length, "StartIndex is out of range!");
+            Debug.Assert( length >= 0 && startIndex <= this.Length - length, "length is out of range!");            
             
             String result = FastAllocateString(length);
 
@@ -1493,7 +1575,6 @@ namespace System
         }
 
        
-        [System.Security.SecuritySafeCritical]  // auto-generated
         private String TrimHelper(int trimType) {
             //end will point to the first non-trimmed character on the right
             //start will point to the first non-trimmed character on the Left
@@ -1517,7 +1598,6 @@ namespace System
         }
     
     
-        [System.Security.SecuritySafeCritical]  // auto-generated
         private String TrimHelper(char[] trimChars, int trimType) {
             //end will point to the first non-trimmed character on the right
             //start will point to the first non-trimmed character on the Left
@@ -1555,7 +1635,6 @@ namespace System
         }
 
 
-        [System.Security.SecurityCritical]  // auto-generated
         private String CreateTrimmedString(int start, int end) {
             int len = end -start + 1;
             if (len == this.Length) {

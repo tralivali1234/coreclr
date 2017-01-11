@@ -7,6 +7,7 @@ namespace System.Text
     using System.Runtime.Serialization;
     using System.Text;
     using System;
+    using System.Diagnostics;
     using System.Diagnostics.Contracts;
     // A Decoder is used to decode a sequence of blocks of bytes into a
     // sequence of blocks of characters. Following instantiation of a decoder,
@@ -124,7 +125,6 @@ namespace System.Text
 
         // We expect this to be the workhorse for NLS Encodings, but for existing
         // ones we need a working (if slow) default implimentation)
-        [System.Security.SecurityCritical]  // auto-generated
         [CLSCompliant(false)]
         [System.Runtime.InteropServices.ComVisible(false)]
         public virtual unsafe int GetCharCount(byte* bytes, int count, bool flush)
@@ -189,7 +189,6 @@ namespace System.Text
         // the char[] to our char* output buffer.  If the result count was wrong, we
         // could easily overflow our output buffer.  Therefore we do an extra test
         // when we copy the buffer so that we don't overflow charCount either.
-        [System.Security.SecurityCritical]  // auto-generated
         [CLSCompliant(false)]
         [System.Runtime.InteropServices.ComVisible(false)]
         public virtual unsafe int GetChars(byte* bytes, int byteCount,
@@ -218,7 +217,7 @@ namespace System.Text
             // Do the work
             int result = GetChars(arrByte, 0, byteCount, arrChar, 0, flush);
 
-            Contract.Assert(result <= charCount, "Returned more chars than we have space for");
+            Debug.Assert(result <= charCount, "Returned more chars than we have space for");
 
             // Copy the char array
             // WARNING: We MUST make sure that we don't copy too many chars.  We can't
@@ -306,7 +305,6 @@ namespace System.Text
         // Note that if all of the input bytes are not consumed, then we'll do a /2, which means
         // that its likely that we didn't consume as many bytes as we could have.  For some
         // applications this could be slow.  (Like trying to exactly fill an output buffer from a bigger stream)
-        [System.Security.SecurityCritical]  // auto-generated
         [CLSCompliant(false)]
         [System.Runtime.InteropServices.ComVisible(false)]
         public virtual unsafe void Convert(byte* bytes, int byteCount,

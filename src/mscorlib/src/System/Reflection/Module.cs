@@ -59,9 +59,6 @@ namespace System.Reflection
     [ClassInterface(ClassInterfaceType.None)]
     [ComDefaultInterface(typeof(_Module))]
     [System.Runtime.InteropServices.ComVisible(true)]
-#pragma warning disable 618
-    [PermissionSetAttribute(SecurityAction.InheritanceDemand, Unrestricted = true)]
-#pragma warning restore 618
     public abstract class Module : _Module, ISerializable, ICustomAttributeProvider
     {   
         #region Static Constructor
@@ -274,7 +271,6 @@ namespace System.Reflection
             }
         }
 
-        [System.Security.SecurityCritical]  // auto-generated_required
         public virtual void GetObjectData(SerializationInfo info, StreamingContext context)
         {
             throw new NotImplementedException();
@@ -299,9 +295,6 @@ namespace System.Reflection
 
         public virtual String FullyQualifiedName 
         {
-#if FEATURE_CORECLR
-            [System.Security.SecurityCritical] // auto-generated
-#endif
             get
             {
                 throw new NotImplementedException();
@@ -543,36 +536,7 @@ namespace System.Reflection
         {
             return ModuleHandle.EmptyHandle;
         }
-
-#if FEATURE_X509 && FEATURE_CAS_POLICY
-        public virtual System.Security.Cryptography.X509Certificates.X509Certificate GetSignerCertificate()
-        {
-            throw new NotImplementedException();
-        }
-#endif // FEATURE_X509 && FEATURE_CAS_POLICY
         #endregion
-
-#if !FEATURE_CORECLR
-        void _Module.GetTypeInfoCount(out uint pcTInfo)
-        {
-            throw new NotImplementedException();
-        }
-
-        void _Module.GetTypeInfo(uint iTInfo, uint lcid, IntPtr ppTInfo)
-        {
-            throw new NotImplementedException();
-        }
-
-        void _Module.GetIDsOfNames([In] ref Guid riid, IntPtr rgszNames, uint cNames, uint lcid, IntPtr rgDispId)
-        {
-            throw new NotImplementedException();
-        }
-
-        void _Module.Invoke(uint dispIdMember, [In] ref Guid riid, uint lcid, short wFlags, IntPtr pDispParams, IntPtr pVarResult, IntPtr pExcepInfo, IntPtr puArgErr)
-        {
-            throw new NotImplementedException();
-        }
-#endif
     }
 
     [Serializable]
@@ -581,46 +545,32 @@ namespace System.Reflection
         internal RuntimeModule() { throw new NotSupportedException(); }
 
         #region FCalls
-        [System.Security.SecurityCritical]  // auto-generated
         [DllImport(JitHelpers.QCall, CharSet = CharSet.Unicode)]
 		[SuppressUnmanagedCodeSecurity]
         private extern static void GetType(RuntimeModule module, String className, bool ignoreCase, bool throwOnError, ObjectHandleOnStack type, ObjectHandleOnStack keepAlive);
 
-        [System.Security.SecurityCritical]
         [DllImport(JitHelpers.QCall)]
         [SuppressUnmanagedCodeSecurity]
         private static extern bool nIsTransientInternal(RuntimeModule module);
 
-        [System.Security.SecurityCritical]  // auto-generated
         [DllImport(JitHelpers.QCall, CharSet = CharSet.Unicode)]
         [SuppressUnmanagedCodeSecurity]
         private extern static void GetScopeName(RuntimeModule module, StringHandleOnStack retString);
 
-        [System.Security.SecurityCritical]  // auto-generated
         [DllImport(JitHelpers.QCall, CharSet = CharSet.Unicode)]
         [SuppressUnmanagedCodeSecurity]
         private extern static void GetFullyQualifiedName(RuntimeModule module, StringHandleOnStack retString);
 
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         private extern static RuntimeType[] GetTypes(RuntimeModule module);
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         internal RuntimeType[] GetDefinedTypes()
         {
             return GetTypes(GetNativeHandle());
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         private extern static bool IsResource(RuntimeModule module);
-
-#if FEATURE_X509 && FEATURE_CAS_POLICY
-        [System.Security.SecurityCritical]  // auto-generated
-        [DllImport(JitHelpers.QCall, CharSet = CharSet.Unicode)]
-        [SuppressUnmanagedCodeSecurity]
-        static private extern void GetSignerCertificate(RuntimeModule module, ObjectHandleOnStack retData);
-#endif // FEATURE_X509 && FEATURE_CAS_POLICY
         #endregion
 
         #region Module overrides
@@ -646,7 +596,6 @@ namespace System.Reflection
             return typeHandleArgs;
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public override byte[] ResolveSignature(int metadataToken)
         {
             MetadataToken tk = new MetadataToken(metadataToken);
@@ -673,7 +622,6 @@ namespace System.Reflection
             return sig;
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public override MethodBase ResolveMethod(int metadataToken, Type[] genericTypeArguments, Type[] genericMethodArguments)
         {
             MetadataToken tk = new MetadataToken(metadataToken);
@@ -724,7 +672,6 @@ namespace System.Reflection
             }
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         private FieldInfo ResolveLiteralField(int metadataToken, Type[] genericTypeArguments, Type[] genericMethodArguments)
         {
             MetadataToken tk = new MetadataToken(metadataToken);
@@ -756,7 +703,6 @@ namespace System.Reflection
             }
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public override FieldInfo ResolveField(int metadataToken, Type[] genericTypeArguments, Type[] genericMethodArguments)
         {
             MetadataToken tk = new MetadataToken(metadataToken);
@@ -811,7 +757,6 @@ namespace System.Reflection
             }           
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public override Type ResolveType(int metadataToken, Type[] genericTypeArguments, Type[] genericMethodArguments)
         {
             MetadataToken tk = new MetadataToken(metadataToken);
@@ -844,7 +789,6 @@ namespace System.Reflection
             }
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public override MemberInfo ResolveMember(int metadataToken, Type[] genericTypeArguments, Type[] genericMethodArguments)
         {
             MetadataToken tk = new MetadataToken(metadataToken);
@@ -889,7 +833,6 @@ namespace System.Reflection
                 nameof(metadataToken));
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public override string ResolveString(int metadataToken)
         {
             MetadataToken tk = new MetadataToken(metadataToken);
@@ -917,7 +860,6 @@ namespace System.Reflection
 
         public override int MDStreamVersion
         {
-            [System.Security.SecuritySafeCritical]  // auto-generated
             get
             {
                 return ModuleHandle.GetMDStreamVersion(GetNativeHandle());
@@ -973,7 +915,6 @@ namespace System.Reflection
             }
         }
 
-        [System.Security.SecuritySafeCritical]
         internal bool IsTransientInternal()
         {
             return RuntimeModule.nIsTransientInternal(this.GetNativeHandle());
@@ -981,7 +922,6 @@ namespace System.Reflection
         
         internal MetadataImport MetadataImport
         {
-            [System.Security.SecurityCritical]  // auto-generated
             get
             {
                 unsafe
@@ -1012,7 +952,6 @@ namespace System.Reflection
             return CustomAttribute.GetCustomAttributes(this, attributeRuntimeType);
         }
     
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public override bool IsDefined(Type attributeType, bool inherit)
         {
             if (attributeType == null)
@@ -1034,7 +973,6 @@ namespace System.Reflection
         #endregion
 
         #region Public Virtuals
-        [System.Security.SecurityCritical]  // auto-generated_required
         public override void GetObjectData(SerializationInfo info, StreamingContext context)
         {
             if (info == null)
@@ -1045,7 +983,6 @@ namespace System.Reflection
             UnitySerializationHolder.GetUnitySerializationInfo(info, UnitySerializationHolder.ModuleUnity, this.ScopeName, this.GetRuntimeAssembly());
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [System.Runtime.InteropServices.ComVisible(true)]
         public override Type GetType(String className, bool throwOnError, bool ignoreCase)
         {
@@ -1060,7 +997,6 @@ namespace System.Reflection
             return retType;
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         internal string GetFullyQualifiedName()
         {
             String fullyQualifiedName = null;
@@ -1070,11 +1006,6 @@ namespace System.Reflection
 
         public override String FullyQualifiedName
         {
-#if FEATURE_CORECLR
-            [System.Security.SecurityCritical] // auto-generated
-#else
-            [System.Security.SecuritySafeCritical]
-#endif
             get
             {
                 String fullyQualifiedName = GetFullyQualifiedName();
@@ -1082,7 +1013,7 @@ namespace System.Reflection
                 if (fullyQualifiedName != null) {
                     bool checkPermission = true;
                     try {
-                        Path.GetFullPathInternal(fullyQualifiedName);
+                        Path.GetFullPath(fullyQualifiedName);
                     }
                     catch(ArgumentException) {
                         checkPermission = false;
@@ -1096,7 +1027,6 @@ namespace System.Reflection
             }
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public override Type[] GetTypes()
         {
             return GetTypes(GetNativeHandle());
@@ -1108,7 +1038,6 @@ namespace System.Reflection
 
         public override Guid ModuleVersionId
         {
-            [System.Security.SecuritySafeCritical]  // auto-generated
             get
             {
                 unsafe
@@ -1122,7 +1051,6 @@ namespace System.Reflection
 
         public override int MetadataToken
         {
-            [System.Security.SecuritySafeCritical]  // auto-generated
             get
             {
                 return ModuleHandle.GetToken(GetNativeHandle());
@@ -1163,7 +1091,6 @@ namespace System.Reflection
 
         public override String ScopeName
         {
-            [System.Security.SecuritySafeCritical]  // auto-generated
             get
             {
                 string scopeName = null;
@@ -1174,7 +1101,6 @@ namespace System.Reflection
 
         public override String Name
         {
-            [System.Security.SecuritySafeCritical]  // auto-generated
             get
             {
                 String s = GetFullyQualifiedName();
@@ -1215,16 +1141,6 @@ namespace System.Reflection
         {
             return this;
         }
-
-#if FEATURE_X509 && FEATURE_CAS_POLICY
-        [System.Security.SecuritySafeCritical]  // auto-generated
-        public override System.Security.Cryptography.X509Certificates.X509Certificate GetSignerCertificate()
-        {
-            byte[] data = null;
-            GetSignerCertificate(GetNativeHandle(), JitHelpers.GetObjectHandleOnStack(ref data));
-            return (data != null) ? new System.Security.Cryptography.X509Certificates.X509Certificate(data) : null;
-        }
-#endif // FEATURE_X509 && FEATURE_CAS_POLICY
         #endregion
     }
 }

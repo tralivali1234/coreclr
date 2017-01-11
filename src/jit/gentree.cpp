@@ -5959,11 +5959,11 @@ void Compiler::gtComputeFPlvls(GenTreePtr tree)
             noway_assert(!isflt);
             break;
 
-#ifdef DEBUG
         default:
+#ifdef DEBUG
             noway_assert(!"Unhandled special operator in gtComputeFPlvls()");
-            break;
 #endif
+            break;
     }
 
 DONE:
@@ -6787,6 +6787,57 @@ GenTreePtr Compiler::gtNewOneConNode(var_types type)
     }
 }
 
+#ifdef FEATURE_SIMD
+//---------------------------------------------------------------------
+// gtNewSIMDVectorZero: create a GT_SIMD node for Vector<T>.Zero
+//
+// Arguments:
+//    simdType  -  simd vector type
+//    baseType  -  element type of vector
+//    size      -  size of vector in bytes
+GenTreePtr Compiler::gtNewSIMDVectorZero(var_types simdType, var_types baseType, unsigned size)
+{
+    baseType         = genActualType(baseType);
+    GenTree* initVal = gtNewZeroConNode(baseType);
+    initVal->gtType  = baseType;
+    return gtNewSIMDNode(simdType, initVal, nullptr, SIMDIntrinsicInit, baseType, size);
+}
+
+//---------------------------------------------------------------------
+// gtNewSIMDVectorOne: create a GT_SIMD node for Vector<T>.One
+//
+// Arguments:
+//    simdType  -  simd vector type
+//    baseType  -  element type of vector
+//    size      -  size of vector in bytes
+GenTreePtr Compiler::gtNewSIMDVectorOne(var_types simdType, var_types baseType, unsigned size)
+{
+    GenTree* initVal;
+    if (varTypeIsSmallInt(baseType))
+    {
+        unsigned baseSize = genTypeSize(baseType);
+        int      val;
+        if (baseSize == 1)
+        {
+            val = 0x01010101;
+        }
+        else
+        {
+            val = 0x00010001;
+        }
+        initVal = gtNewIconNode(val);
+    }
+    else
+    {
+        initVal = gtNewOneConNode(baseType);
+    }
+
+    baseType        = genActualType(baseType);
+    initVal->gtType = baseType;
+    return gtNewSIMDNode(simdType, initVal, nullptr, SIMDIntrinsicInit, baseType, size);
+}
+#endif // FEATURE_SIMD
+
 GenTreeCall* Compiler::gtNewIndCallNode(GenTreePtr addr, var_types type, GenTreeArgList* args, IL_OFFSETX ilOffset)
 {
     return gtNewCallNode(CT_INDIRECT, (CORINFO_METHOD_HANDLE)addr, type, args, ilOffset);
@@ -7275,17 +7326,32 @@ GenTree* Compiler::gtNewBlockVal(GenTreePtr addr, unsigned size)
 {
     // By default we treat this as an opaque struct type with known size.
     var_types blkType = TYP_STRUCT;
-#if FEATURE_SIMD
     if ((addr->gtOper == GT_ADDR) && (addr->gtGetOp1()->OperGet() == GT_LCL_VAR))
     {
         GenTree* val = addr->gtGetOp1();
-        if (varTypeIsSIMD(val) && (genTypeSize(val->TypeGet()) == size))
+#if FEATURE_SIMD
+        if (varTypeIsSIMD(val))
         {
-            blkType = val->TypeGet();
-            return addr->gtGetOp1();
+            if (genTypeSize(val->TypeGet()) == size)
+            {
+                blkType = val->TypeGet();
+                return addr->gtGetOp1();
+            }
         }
-    }
+        else
 #endif // FEATURE_SIMD
+#ifndef LEGACY_BACKEND
+            if (val->TypeGet() == TYP_STRUCT)
+        {
+            GenTreeLclVarCommon* lcl    = addr->gtGetOp1()->AsLclVarCommon();
+            LclVarDsc*           varDsc = &(lvaTable[lcl->gtLclNum]);
+            if ((varDsc->TypeGet() == TYP_STRUCT) && (varDsc->lvExactSize == size))
+            {
+                return addr->gtGetOp1();
+            }
+        }
+#endif // !LEGACY_BACKEND
+    }
     return new (this, GT_BLK) GenTreeBlk(GT_BLK, blkType, addr, size);
 }
 
@@ -7368,10 +7434,10 @@ void GenTreeIntCon::FixupInitBlkValue(var_types asgType)
             }
 #endif // _TARGET_64BIT_
 
-            // Make the type used in the GT_IND node match for evaluation types.
+            // Make the type match for evaluation types.
             gtType = asgType;
 
-            // if we are using an GT_INITBLK on a GC type the value being assigned has to be zero (null).
+            // if we are initializing a GC type the value being assigned must be zero (null).
             assert(!varTypeIsGC(asgType) || (cns == 0));
         }
 
@@ -7478,9 +7544,6 @@ void Compiler::gtBlockOpInit(GenTreePtr result, GenTreePtr dst, GenTreePtr srcOr
     result->gtFlags |= dst->gtFlags & GTF_ALL_EFFECT;
     result->gtFlags |= result->gtOp.gtOp2->gtFlags & GTF_ALL_EFFECT;
 
-    // TODO-1stClassStructs: This should be done only if the destination is non-local.
-    result->gtFlags |= (GTF_GLOB_REF | GTF_ASG);
-
     // REVERSE_OPS is necessary because the use must occur before the def
     result->gtFlags |= GTF_REVERSE_OPS;
 
@@ -7551,12 +7614,20 @@ GenTree* Compiler::gtNewBlkOpNode(
             srcOrFillVal = srcOrFillVal->gtGetOp1()->gtGetOp1();
         }
     }
+    else
+    {
+        // InitBlk
+        assert(varTypeIsIntegral(srcOrFillVal));
+        if (varTypeIsStruct(dst))
+        {
+            if (!srcOrFillVal->IsIntegralConst(0))
+            {
+                srcOrFillVal = gtNewOperNode(GT_INIT_VAL, TYP_INT, srcOrFillVal);
+            }
+        }
+    }
 
     GenTree* result = gtNewAssignNode(dst, srcOrFillVal);
-    if (!isCopyBlock)
-    {
-        result->gtFlags |= GTF_BLK_INIT;
-    }
     gtBlockOpInit(result, dst, srcOrFillVal, isVolatile);
     return result;
 }
@@ -9224,30 +9295,53 @@ GenTree** GenTreeUseEdgeIterator::GetNextUseEdge() const
         }
 
         case GT_DYN_BLK:
+        {
+            GenTreeDynBlk* const dynBlock = m_node->AsDynBlk();
             switch (m_state)
             {
                 case 0:
-                    return &(m_node->AsDynBlk()->gtOp1);
+                    return dynBlock->gtEvalSizeFirst ? &dynBlock->gtDynamicSize : &dynBlock->gtOp1;
                 case 1:
-                    return &(m_node->AsDynBlk()->gtDynamicSize);
+                    return dynBlock->gtEvalSizeFirst ? &dynBlock->gtOp1 : &dynBlock->gtDynamicSize;
                 default:
                     return nullptr;
             }
-            break;
+        }
+        break;
 
         case GT_STORE_DYN_BLK:
-            switch (m_state)
+        {
+            GenTreeDynBlk* const dynBlock = m_node->AsDynBlk();
+            if (dynBlock->gtEvalSizeFirst)
             {
-                case 0:
-                    return &(m_node->AsDynBlk()->gtOp1);
-                case 1:
-                    return &(m_node->AsDynBlk()->gtOp2);
-                case 2:
-                    return &(m_node->AsDynBlk()->gtDynamicSize);
-                default:
-                    return nullptr;
+                switch (m_state)
+                {
+                    case 0:
+                        return &dynBlock->gtDynamicSize;
+                    case 1:
+                        return dynBlock->IsReverseOp() ? &dynBlock->gtOp2 : &dynBlock->gtOp1;
+                    case 2:
+                        return dynBlock->IsReverseOp() ? &dynBlock->gtOp1 : &dynBlock->gtOp2;
+                    default:
+                        return nullptr;
+                }
             }
-            break;
+            else
+            {
+                switch (m_state)
+                {
+                    case 0:
+                        return dynBlock->IsReverseOp() ? &dynBlock->gtOp2 : &dynBlock->gtOp1;
+                    case 1:
+                        return dynBlock->IsReverseOp() ? &dynBlock->gtOp1 : &dynBlock->gtOp2;
+                    case 2:
+                        return &dynBlock->gtDynamicSize;
+                    default:
+                        return nullptr;
+                }
+            }
+        }
+        break;
 
         case GT_LEA:
         {
@@ -9854,7 +9948,7 @@ void Compiler::gtDispNodeName(GenTree* tree)
     {
         sprintf_s(bufp, sizeof(buf), " %s_ovfl%c", name, 0);
     }
-    else if (tree->OperIsBlk() && (tree->AsBlk()->gtBlkSize != 0))
+    else if (tree->OperIsBlk() && !tree->OperIsDynBlk())
     {
         sprintf_s(bufp, sizeof(buf), " %s(%d)", name, tree->AsBlk()->gtBlkSize);
     }
@@ -11267,19 +11361,62 @@ void Compiler::gtDispTree(GenTreePtr   tree,
         {
             printf(" (last use)");
         }
-        if (tree->OperIsCopyBlkOp())
+        if (tree->OperIsBlkOp())
         {
-            printf(" (copy)");
-        }
-        else if (tree->OperIsInitBlkOp())
-        {
-            printf(" (init)");
+            if (tree->OperIsCopyBlkOp())
+            {
+                printf(" (copy)");
+            }
+            else if (tree->OperIsInitBlkOp())
+            {
+                printf(" (init)");
+            }
+            if (tree->OperIsStoreBlk() && (tree->AsBlk()->gtBlkOpKind != GenTreeBlk::BlkOpKindInvalid))
+            {
+                switch (tree->AsBlk()->gtBlkOpKind)
+                {
+                    case GenTreeBlk::BlkOpKindRepInstr:
+                        printf(" (RepInstr)");
+                        break;
+                    case GenTreeBlk::BlkOpKindUnroll:
+                        printf(" (Unroll)");
+                        break;
+                    case GenTreeBlk::BlkOpKindHelper:
+                        printf(" (Helper)");
+                        break;
+                    default:
+                        unreached();
+                }
+            }
         }
         else if (tree->OperIsFieldList())
         {
             printf(" %s at offset %d", varTypeName(tree->AsFieldList()->gtFieldType),
                    tree->AsFieldList()->gtFieldOffset);
         }
+#if FEATURE_PUT_STRUCT_ARG_STK
+        else if ((tree->OperGet() == GT_PUTARG_STK) &&
+                 (tree->AsPutArgStk()->gtPutArgStkKind != GenTreePutArgStk::Kind::Invalid))
+        {
+            switch (tree->AsPutArgStk()->gtPutArgStkKind)
+            {
+                case GenTreePutArgStk::Kind::RepInstr:
+                    printf(" (RepInstr)");
+                    break;
+                case GenTreePutArgStk::Kind::Unroll:
+                    printf(" (Unroll)");
+                    break;
+                case GenTreePutArgStk::Kind::Push:
+                    printf(" (Push)");
+                    break;
+                case GenTreePutArgStk::Kind::PushAllSlots:
+                    printf(" (PushAllSlots)");
+                    break;
+                default:
+                    unreached();
+            }
+        }
+#endif // FEATURE_PUT_STRUCT_ARG_STK
 
         IndirectAssignmentAnnotation* pIndirAnnote;
         if (tree->gtOper == GT_ASG && GetIndirAssignMap()->Lookup(tree, &pIndirAnnote))
@@ -13920,8 +14057,8 @@ GenTreePtr Compiler::gtNewTempAssign(unsigned tmp, GenTreePtr val)
     var_types valTyp = val->TypeGet();
     if (val->OperGet() == GT_LCL_VAR && lvaTable[val->gtLclVar.gtLclNum].lvNormalizeOnLoad())
     {
-        valTyp = lvaGetRealType(val->gtLclVar.gtLclNum);
-        val    = gtNewLclvNode(val->gtLclVar.gtLclNum, valTyp, val->gtLclVar.gtLclILoffs);
+        valTyp      = lvaGetRealType(val->gtLclVar.gtLclNum);
+        val->gtType = valTyp;
     }
     var_types dstTyp = varDsc->TypeGet();
 
@@ -14325,12 +14462,14 @@ GenTreePtr Compiler::gtBuildCommaList(GenTreePtr list, GenTreePtr expr)
         result->gtFlags |= (list->gtFlags & GTF_ALL_EFFECT);
         result->gtFlags |= (expr->gtFlags & GTF_ALL_EFFECT);
 
-        // 'list' and 'expr' should have valuenumbers defined for both or for neither one
-        noway_assert(list->gtVNPair.BothDefined() == expr->gtVNPair.BothDefined());
+        // 'list' and 'expr' should have valuenumbers defined for both or for neither one (unless we are remorphing,
+        // in which case a prior transform involving either node may have discarded or otherwise invalidated the value
+        // numbers).
+        assert((list->gtVNPair.BothDefined() == expr->gtVNPair.BothDefined()) || !fgGlobalMorph);
 
         // Set the ValueNumber 'gtVNPair' for the new GT_COMMA node
         //
-        if (expr->gtVNPair.BothDefined())
+        if (list->gtVNPair.BothDefined() && expr->gtVNPair.BothDefined())
         {
             // The result of a GT_COMMA node is op2, the normal value number is op2vnp
             // But we also need to include the union of side effects from op1 and op2.
@@ -14960,7 +15099,6 @@ BasicBlock* Compiler::bbNewBasicBlock(BBjumpKinds jumpKind)
     {
         VarSetOps::AssignNoCopy(this, block->bbVarUse, VarSetOps::MakeEmpty(this));
         VarSetOps::AssignNoCopy(this, block->bbVarDef, VarSetOps::MakeEmpty(this));
-        VarSetOps::AssignNoCopy(this, block->bbVarTmp, VarSetOps::MakeEmpty(this));
         VarSetOps::AssignNoCopy(this, block->bbLiveIn, VarSetOps::MakeEmpty(this));
         VarSetOps::AssignNoCopy(this, block->bbLiveOut, VarSetOps::MakeEmpty(this));
         VarSetOps::AssignNoCopy(this, block->bbScope, VarSetOps::MakeEmpty(this));
@@ -14969,7 +15107,6 @@ BasicBlock* Compiler::bbNewBasicBlock(BBjumpKinds jumpKind)
     {
         VarSetOps::AssignNoCopy(this, block->bbVarUse, VarSetOps::UninitVal());
         VarSetOps::AssignNoCopy(this, block->bbVarDef, VarSetOps::UninitVal());
-        VarSetOps::AssignNoCopy(this, block->bbVarTmp, VarSetOps::UninitVal());
         VarSetOps::AssignNoCopy(this, block->bbLiveIn, VarSetOps::UninitVal());
         VarSetOps::AssignNoCopy(this, block->bbLiveOut, VarSetOps::UninitVal());
         VarSetOps::AssignNoCopy(this, block->bbScope, VarSetOps::UninitVal());

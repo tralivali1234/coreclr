@@ -566,7 +566,7 @@ public:
 
     bool isContainedIntOrIImmed() const
     {
-        return isContained() && IsCnsIntOrI();
+        return isContained() && IsCnsIntOrI() && !isContainedSpillTemp();
     }
 
     bool isContainedFltOrDblImmed() const
@@ -939,7 +939,6 @@ public:
                                      // -- is a volatile block operation
 #define GTF_BLK_UNALIGNED 0x02000000 // GT_ASG, GT_STORE_BLK, GT_STORE_OBJ, GT_STORE_DYNBLK
                                      // -- is an unaligned block operation
-#define GTF_BLK_INIT 0x01000000 // GT_ASG, GT_STORE_BLK, GT_STORE_OBJ, GT_STORE_DYNBLK -- is an init block operation
 
 #define GTF_OVERFLOW 0x10000000 // GT_ADD, GT_SUB, GT_MUL, - Need overflow check
                                 // GT_ASG_ADD, GT_ASG_SUB,
@@ -956,6 +955,9 @@ public:
                                        //                  struct fields constituting a single call argument.
 
 //----------------------------------------------------------------
+#define GTF_SIMD12_OP 0x80000000 // GT_SIMD -- Indicates that the operands need to be handled as SIMD12
+                                 //            even if they have been retyped as SIMD16.
+//----------------------------------------------------------------
 
 #define GTF_STMT_CMPADD 0x80000000  // GT_STMT    -- added by compiler
 #define GTF_STMT_HAS_CSE 0x40000000 // GT_STMT    -- CSE def or use was subsituted
@@ -968,8 +970,10 @@ public:
 #define GTF_DEBUG_NODE_MORPHED 0x00000001 // the node has been morphed (in the global morphing phase)
 #define GTF_DEBUG_NODE_SMALL 0x00000002
 #define GTF_DEBUG_NODE_LARGE 0x00000004
+#define GTF_DEBUG_NODE_CG_PRODUCED 0x00000008 // genProduceReg has been called on this node
+#define GTF_DEBUG_NODE_CG_CONSUMED 0x00000010 // genConsumeReg has been called on this node
 
-#define GTF_DEBUG_NODE_MASK 0x00000007 // These flags are all node (rather than operation) properties.
+#define GTF_DEBUG_NODE_MASK 0x0000001F // These flags are all node (rather than operation) properties.
 
 #define GTF_DEBUG_VAR_CSE_REF 0x00800000 // GT_LCL_VAR -- This is a CSE LCL_VAR node
 #endif                                   // defined(DEBUG)
@@ -980,6 +984,8 @@ public:
 #ifdef DEBUG
     unsigned gtTreeID;
     unsigned gtSeqNum; // liveness traversal order within the current statement
+
+    int gtUseNum; // use-ordered traversal within the function
 #endif
 
     static const unsigned short gtOperKindTable[];
@@ -1140,6 +1146,21 @@ public:
         return (gtOper == GT_LEA);
     }
 
+    static bool OperIsInitVal(genTreeOps gtOper)
+    {
+        return (gtOper == GT_INIT_VAL);
+    }
+
+    bool OperIsInitVal() const
+    {
+        return OperIsInitVal(OperGet());
+    }
+
+    bool IsConstInitVal()
+    {
+        return (gtOper == GT_CNS_INT) || (OperIsInitVal() && (gtGetOp1()->gtOper == GT_CNS_INT));
+    }
+
     bool OperIsBlkOp();
     bool OperIsCopyBlkOp();
     bool OperIsInitBlkOp();
@@ -1154,6 +1175,16 @@ public:
     bool OperIsBlk() const
     {
         return OperIsBlk(OperGet());
+    }
+
+    static bool OperIsDynBlk(genTreeOps gtOper)
+    {
+        return ((gtOper == GT_DYN_BLK) || (gtOper == GT_STORE_DYN_BLK));
+    }
+
+    bool OperIsDynBlk() const
+    {
+        return OperIsDynBlk(OperGet());
     }
 
     static bool OperIsStoreBlk(genTreeOps gtOper)
@@ -4166,6 +4197,19 @@ struct GenTreeObj : public GenTreeBlk
             // Let's assert it just to be safe.
             noway_assert(roundUp(gtBlkSize, REGSIZE_BYTES) == gtBlkSize);
         }
+        else
+        {
+            genTreeOps newOper = GT_BLK;
+            if (gtOper == GT_STORE_OBJ)
+            {
+                newOper = GT_STORE_BLK;
+            }
+            else
+            {
+                assert(gtOper == GT_OBJ);
+            }
+            SetOper(newOper);
+        }
     }
 
     void CopyGCInfo(GenTreeObj* srcObj)
@@ -4217,6 +4261,8 @@ public:
     GenTreeDynBlk(GenTreePtr addr, GenTreePtr dynamicSize)
         : GenTreeBlk(GT_DYN_BLK, TYP_STRUCT, addr, 0), gtDynamicSize(dynamicSize), gtEvalSizeFirst(false)
     {
+        // Conservatively the 'addr' could be null or point into the global heap.
+        gtFlags |= GTF_EXCEPT | GTF_GLOB_REF;
         gtFlags |= (dynamicSize->gtFlags & GTF_ALL_EFFECT);
     }
 
@@ -4621,10 +4667,14 @@ struct GenTreePutArgStk : public GenTreeUnOp
     // block node.
 
     enum class Kind : __int8{
-        Invalid, RepInstr, Unroll, AllSlots,
+        Invalid, RepInstr, Unroll, Push, PushAllSlots,
     };
 
     Kind gtPutArgStkKind;
+    bool isPushKind()
+    {
+        return (gtPutArgStkKind == Kind::Push) || (gtPutArgStkKind == Kind::PushAllSlots);
+    }
 
     unsigned gtNumSlots;             // Number of slots for the argument to be passed on stack
     unsigned gtNumberReferenceSlots; // Number of reference slots.
@@ -4828,34 +4878,31 @@ inline bool GenTree::OperIsDynBlkOp()
     return false;
 }
 
-inline bool GenTree::OperIsCopyBlkOp()
-{
-    if (gtOper == GT_ASG)
-    {
-        return (varTypeIsStruct(gtGetOp1()) && ((gtFlags & GTF_BLK_INIT) == 0));
-    }
-#ifndef LEGACY_BACKEND
-    else if (OperIsStoreBlk())
-    {
-        return ((gtFlags & GTF_BLK_INIT) == 0);
-    }
-#endif
-    return false;
-}
-
 inline bool GenTree::OperIsInitBlkOp()
 {
-    if (gtOper == GT_ASG)
+    if (!OperIsBlkOp())
     {
-        return (varTypeIsStruct(gtGetOp1()) && ((gtFlags & GTF_BLK_INIT) != 0));
+        return false;
     }
 #ifndef LEGACY_BACKEND
-    else if (OperIsStoreBlk())
+    GenTree* src;
+    if (gtOper == GT_ASG)
     {
-        return ((gtFlags & GTF_BLK_INIT) != 0);
+        src = gtGetOp2();
     }
-#endif
-    return false;
+    else
+    {
+        src = AsBlk()->Data()->gtSkipReloadOrCopy();
+    }
+#else  // LEGACY_BACKEND
+    GenTree* src = gtGetOp2();
+#endif // LEGACY_BACKEND
+    return src->OperIsInitVal() || src->OperIsConst();
+}
+
+inline bool GenTree::OperIsCopyBlkOp()
+{
+    return OperIsBlkOp() && !OperIsInitBlkOp();
 }
 
 //------------------------------------------------------------------------

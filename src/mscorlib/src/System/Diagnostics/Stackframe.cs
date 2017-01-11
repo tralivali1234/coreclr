@@ -11,13 +11,7 @@ namespace System.Diagnostics {
     using System.Security.Permissions;
     using System.Diagnostics.Contracts;
 
-    // There is no good reason for the methods of this class to be virtual.  
-    // In order to ensure trusted code can trust the data it gets from a 
-    // StackTrace, we use an InheritanceDemand to prevent partially-trusted
-    // subclasses.
-#if !FEATURE_CORECLR
-    [SecurityPermission(SecurityAction.InheritanceDemand, UnmanagedCode=true)]
-#endif
+    // There is no good reason for the methods of this class to be virtual.
     [Serializable]
     [System.Runtime.InteropServices.ComVisible(true)]
     public class StackFrame
@@ -49,9 +43,6 @@ namespace System.Diagnostics {
         }
 
         // Constructs a StackFrame corresponding to the active stack frame.
-#if FEATURE_CORECLR
-        [System.Security.SecuritySafeCritical]
-#endif
         public StackFrame()
         {
             InitMembers();
@@ -59,9 +50,6 @@ namespace System.Diagnostics {
         }
     
         // Constructs a StackFrame corresponding to the active stack frame.
-        #if FEATURE_CORECLR
-        [System.Security.SecurityCritical] // auto-generated
-        #endif
         public StackFrame(bool fNeedFileInfo)
         {
             InitMembers();
@@ -78,9 +66,6 @@ namespace System.Diagnostics {
     
         // Constructs a StackFrame corresponding to a calling stack frame.
         // 
-        #if FEATURE_CORECLR
-        [System.Security.SecurityCritical] // auto-generated
-        #endif
         public StackFrame(int skipFrames, bool fNeedFileInfo)
         {
             InitMembers();
@@ -200,11 +185,6 @@ namespace System.Diagnostics {
         // information is normally extracted from the debugging symbols
         // for the executable.
         //
-        #if FEATURE_CORECLR
-        [System.Security.SecurityCritical] // auto-generated
-        #else
-        [System.Security.SecuritySafeCritical]
-        #endif
         public virtual String GetFileName()
         {
             if (strFileName != null)
@@ -242,7 +222,6 @@ namespace System.Diagnostics {
     
         // Builds a readable representation of the stack frame
         //
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public override String ToString()
         {
             StringBuilder sb = new StringBuilder(255);

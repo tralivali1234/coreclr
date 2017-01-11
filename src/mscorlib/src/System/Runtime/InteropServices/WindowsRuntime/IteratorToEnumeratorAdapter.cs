@@ -7,6 +7,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.Contracts;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
@@ -28,11 +29,10 @@ namespace System.Runtime.InteropServices.WindowsRuntime
     {
         private IterableToEnumerableAdapter()
         {
-            Contract.Assert(false, "This class is never instantiated");
+            Debug.Assert(false, "This class is never instantiated");
         }
         
         // This method is invoked when GetEnumerator is called on a WinRT-backed implementation of IEnumerable<T>.
-        [SecurityCritical]
         internal IEnumerator<T> GetEnumerator_Stub<T>()
         {
             IIterable<T> _this = JitHelpers.UnsafeCast<IIterable<T>>(this);
@@ -43,7 +43,6 @@ namespace System.Runtime.InteropServices.WindowsRuntime
         // and it is possible that the implementation supports IEnumerable<Type>/IEnumerable<string>/IEnumerable<Exception>/
         // IEnumerable<array>/IEnumerable<delegate> rather than IEnumerable<T> because T is assignable from Type/string/
         // Exception/array/delegate via co-variance.
-        [SecurityCritical]
         internal IEnumerator<T> GetEnumerator_Variance_Stub<T>() where T : class
         {
             bool fUseString;
@@ -70,7 +69,7 @@ namespace System.Runtime.InteropServices.WindowsRuntime
     {
         private BindableIterableToEnumerableAdapter()
         {
-            Contract.Assert(false, "This class is never instantiated");
+            Debug.Assert(false, "This class is never instantiated");
         }
 
         private sealed class NonGenericToGenericIterator : IIterator<object>
@@ -87,7 +86,6 @@ namespace System.Runtime.InteropServices.WindowsRuntime
         }
 
         // This method is invoked when GetEnumerator is called on a WinRT-backed implementation of IEnumerable.
-        [SecurityCritical]
         internal IEnumerator GetEnumerator_Stub()
         {
             IBindableIterable _this = JitHelpers.UnsafeCast<IBindableIterable>(this);
@@ -145,7 +143,6 @@ namespace System.Runtime.InteropServices.WindowsRuntime
             }
         }
 
-        [SecuritySafeCritical]
         public bool MoveNext()
         {
             // If we've passed the end of the iteration, IEnumerable<T> should return false, while

@@ -12,11 +12,11 @@
 //
 // =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 using System;
-using System.Diagnostics;
 using System.Security.Permissions;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using System.Runtime.ConstrainedExecution;
+using System.Diagnostics;
 using System.Diagnostics.Contracts;
 
 namespace System.Threading
@@ -55,7 +55,6 @@ namespace System.Threading
     /// </para>
     /// </remarks>
     [ComVisible(false)]
-    [HostProtection(Synchronization = true, ExternalThreading = true)]
     [DebuggerTypeProxy(typeof(SystemThreading_SpinLockDebugView))]
     [DebuggerDisplay("IsHeld = {IsHeld}")]
     public struct SpinLock
@@ -107,7 +106,6 @@ namespace System.Threading
         // The waiters count is calculated by m_owner & WAITERS_MASK 01111....110
         private static int MAXIMUM_WAITERS = WAITERS_MASK;
 
-
         /// <summary>
         /// Initializes a new instance of the <see cref="T:System.Threading.SpinLock"/>
         /// structure with the option to track thread IDs to improve debugging.
@@ -123,10 +121,9 @@ namespace System.Threading
             if (!enableThreadOwnerTracking)
             {
                 m_owner |= LOCK_ID_DISABLE_MASK;
-                Contract.Assert(!IsThreadOwnerTrackingEnabled, "property should be false by now");
+                Debug.Assert(!IsThreadOwnerTrackingEnabled, "property should be false by now");
             }
         }
-
 
         /// <summary>
         /// Initializes a new instance of the <see cref="T:System.Threading.SpinLock"/>
@@ -157,9 +154,6 @@ namespace System.Threading
         /// </exception>
         public void Enter(ref bool lockTaken)
         {
-#if !FEATURE_CORECLR
-            Thread.BeginCriticalRegion();
-#endif
             //Try to keep the code and branching in this method as small as possible in order to inline the method
             int observedOwner = m_owner;
             if (lockTaken || //invalid parameter
@@ -256,10 +250,6 @@ namespace System.Threading
         /// a negative number other than -1, which represents an infinite time-out.</exception>
         public void TryEnter(int millisecondsTimeout, ref bool lockTaken)
         {
-#if !FEATURE_CORECLR
-            Thread.BeginCriticalRegion();
-#endif
-
             int observedOwner = m_owner;
             if (millisecondsTimeout < -1 || //invalid parameter
                 lockTaken || //invalid parameter
@@ -277,10 +267,6 @@ namespace System.Threading
         /// <param name="lockTaken">The lockTaken param</param>
         private void ContinueTryEnter(int millisecondsTimeout, ref bool lockTaken)
         {
-            //Leave the critical region which is entered by the fast path
-#if !FEATURE_CORECLR
-            Thread.EndCriticalRegion();
-#endif
             // The fast path doesn't throw any exception, so we have to validate the parameters here
             if (lockTaken)
             {
@@ -294,19 +280,11 @@ namespace System.Threading
                     nameof(millisecondsTimeout), millisecondsTimeout, Environment.GetResourceString("SpinLock_TryEnter_ArgumentOutOfRange"));
             }
 
-
             uint startTime = 0;
             if (millisecondsTimeout != Timeout.Infinite && millisecondsTimeout != 0)
             {
                 startTime = TimeoutHelper.GetTime();
             }
-
-#if !FEATURE_CORECLR
-            if (CdsSyncEtwBCLProvider.Log.IsEnabled())
-            {
-                CdsSyncEtwBCLProvider.Log.SpinLock_FastPathFailed(m_owner);
-            }
-#endif
 
             if (IsThreadOwnerTrackingEnabled)
             {
@@ -333,19 +311,12 @@ namespace System.Threading
             observedOwner = m_owner;
             if ((observedOwner & LOCK_ANONYMOUS_OWNED) == LOCK_UNOWNED)
             {
-#if !FEATURE_CORECLR
-                Thread.BeginCriticalRegion();
-#endif
-
                 if (Interlocked.CompareExchange(ref m_owner, observedOwner | 1, observedOwner, ref lockTaken) == observedOwner)
                 {
                     // Aquired lock
                     return;
                 }
 
-#if !FEATURE_CORECLR
-                Thread.EndCriticalRegion();
-#endif
                 if (millisecondsTimeout == 0)
                 {
                     // Did not aquire lock in CompareExchange and timeout is 0 so fail fast
@@ -377,23 +348,15 @@ namespace System.Threading
                     observedOwner = m_owner;
                     if ((observedOwner & LOCK_ANONYMOUS_OWNED) == LOCK_UNOWNED)
                     {
-#if !FEATURE_CORECLR
-                        Thread.BeginCriticalRegion();
-#endif
-
                         int newOwner = (observedOwner & WAITERS_MASK) == 0 ? // Gets the number of waiters, if zero
                             observedOwner | 1 // don't decrement it. just set the lock bit, it is zzero because a previous call of Exit(false) ehich corrupted the waiters
                             : (observedOwner - 2) | 1; // otherwise decrement the waiters and set the lock bit
-                        Contract.Assert((newOwner & WAITERS_MASK) >= 0);
+                        Debug.Assert((newOwner & WAITERS_MASK) >= 0);
 
                         if (Interlocked.CompareExchange(ref m_owner, newOwner, observedOwner, ref lockTaken) == observedOwner)
                         {
                             return;
                         }
-
-#if !FEATURE_CORECLR
-                        Thread.EndCriticalRegion();
-#endif
                     }
                 }
 
@@ -405,7 +368,6 @@ namespace System.Threading
                 }
             }
 
-
             //*** Step 3, Yielding
             //Sleep(1) every 50 yields
             int yieldsoFar = 0;
@@ -414,22 +376,15 @@ namespace System.Threading
                 observedOwner = m_owner;
                 if ((observedOwner & LOCK_ANONYMOUS_OWNED) == LOCK_UNOWNED)
                 {
-#if !FEATURE_CORECLR
-                    Thread.BeginCriticalRegion();
-#endif
                     int newOwner = (observedOwner & WAITERS_MASK) == 0 ? // Gets the number of waiters, if zero
                            observedOwner | 1 // don't decrement it. just set the lock bit, it is zzero because a previous call of Exit(false) ehich corrupted the waiters
                            : (observedOwner - 2) | 1; // otherwise decrement the waiters and set the lock bit
-                    Contract.Assert((newOwner & WAITERS_MASK) >= 0);
+                    Debug.Assert((newOwner & WAITERS_MASK) >= 0);
 
                     if (Interlocked.CompareExchange(ref m_owner, newOwner, observedOwner, ref lockTaken) == observedOwner)
                     {
                         return;
                     }
-
-#if !FEATURE_CORECLR
-                    Thread.EndCriticalRegion();
-#endif
                 }
 
                 if (yieldsoFar % SLEEP_ONE_FREQUENCY == 0)
@@ -471,7 +426,7 @@ namespace System.Threading
                 if ((observedOwner & WAITERS_MASK) == 0) return; // don't decrement the waiters if it's corrupted by previous call of Exit(false)
                 if (Interlocked.CompareExchange(ref m_owner, observedOwner - 2, observedOwner) == observedOwner)
                 {
-                    Contract.Assert(!IsThreadOwnerTrackingEnabled); // Make sure the waiters never be negative which will cause the thread tracking bit to be flipped
+                    Debug.Assert(!IsThreadOwnerTrackingEnabled); // Make sure the waiters never be negative which will cause the thread tracking bit to be flipped
                     break;
                 }
                 spinner.SpinOnce();
@@ -484,7 +439,7 @@ namespace System.Threading
         /// </summary>
         private void ContinueTryEnterWithThreadTracking(int millisecondsTimeout, uint startTime, ref bool lockTaken)
         {
-            Contract.Assert(IsThreadOwnerTrackingEnabled);
+            Debug.Assert(IsThreadOwnerTrackingEnabled);
 
             int lockUnowned = 0;
             // We are using thread IDs to mark ownership. Snap the thread ID and check for recursion.
@@ -511,17 +466,10 @@ namespace System.Threading
 
                 if (m_owner == lockUnowned)
                 {
-#if !FEATURE_CORECLR
-                    Thread.BeginCriticalRegion();
-#endif
                     if (Interlocked.CompareExchange(ref m_owner, m_newOwner, lockUnowned, ref lockTaken) == lockUnowned)
                     {
                         return;
                     }
-#if !FEATURE_CORECLR
-                    // The thread failed to get the lock, so we don't need to remain in a critical region.
-                    Thread.EndCriticalRegion();
-#endif
                 }
                 // Check the timeout.  We only RDTSC if the next spin will yield, to amortize the cost.
                 if (millisecondsTimeout == 0 ||
@@ -551,11 +499,6 @@ namespace System.Threading
                 ExitSlowPath(true);
             else
                 Interlocked.Decrement(ref m_owner);
-
-#if !FEATURE_CORECLR
-            Thread.EndCriticalRegion();
-#endif
-
         }
 
         /// <summary>
@@ -587,10 +530,6 @@ namespace System.Threading
             }
             else
                 ExitSlowPath(useMemoryBarrier);
-
-#if !FEATURE_CORECLR
-            Thread.EndCriticalRegion();
-#endif
         }
 
         /// <summary>

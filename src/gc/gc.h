@@ -137,6 +137,10 @@ class DacHeapWalker;
 
 #define MP_LOCKS
 
+extern "C" uint32_t* g_gc_card_table;
+extern "C" uint8_t* g_gc_lowest_address;
+extern "C" uint8_t* g_gc_highest_address;
+
 namespace WKS {
     ::IGCHeapInternal* CreateGCHeap();
     class GCHeap;

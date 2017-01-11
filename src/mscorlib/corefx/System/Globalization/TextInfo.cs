@@ -12,15 +12,10 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-using System;
+using System.Diagnostics;
 using System.Diagnostics.Contracts;
-using System.Runtime;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
-using System.Security;
 using System.Text;
-using System.Threading;
 
 namespace System.Globalization
 {
@@ -235,10 +230,10 @@ namespace System.Globalization
         ////
         ////  Clone
         ////
-        ////  Is the implementation of IColnable.
+        ////  Is the implementation of ICloneable.
         ////
         //////////////////////////////////////////////////////////////////////////
-        public virtual Object Clone()
+        public virtual object Clone()
         {
             object o = MemberwiseClone();
             ((TextInfo)o).SetReadOnlyState(false);
@@ -375,7 +370,7 @@ namespace System.Globalization
             return c;
         }
 
-        static private bool IsAscii(Char c)
+        private static bool IsAscii(Char c)
         {
             return c < 0x80;
         }
@@ -582,7 +577,7 @@ namespace System.Globalization
 
         private static int AddNonLetter(ref StringBuilder result, ref String input, int inputIndex, int charLen)
         {
-            Contract.Assert(charLen == 1 || charLen == 2, "[TextInfo.AddNonLetter] CharUnicodeInfo.InternalGetUnicodeCategory returned an unexpected charLen!");
+            Debug.Assert(charLen == 1 || charLen == 2, "[TextInfo.AddNonLetter] CharUnicodeInfo.InternalGetUnicodeCategory returned an unexpected charLen!");
             if (charLen == 2)
             {
                 // Surrogate pair
@@ -598,7 +593,7 @@ namespace System.Globalization
 
         private int AddTitlecaseLetter(ref StringBuilder result, ref String input, int inputIndex, int charLen)
         {
-            Contract.Assert(charLen == 1 || charLen == 2, "[TextInfo.AddTitlecaseLetter] CharUnicodeInfo.InternalGetUnicodeCategory returned an unexpected charLen!");
+            Debug.Assert(charLen == 1 || charLen == 2, "[TextInfo.AddTitlecaseLetter] CharUnicodeInfo.InternalGetUnicodeCategory returned an unexpected charLen!");
 
             // for surrogate pairs do a simple ToUpper operation on the substring
             if (charLen == 2) 
@@ -735,7 +730,7 @@ namespace System.Globalization
 
         private unsafe int GetCaseInsensitiveHashCodeSlow(String str)
         {
-            Contract.Assert(str != null);
+            Debug.Assert(str != null);
 
             string upper = ToUpper(str);
 

@@ -23,7 +23,7 @@ namespace System.Runtime.CompilerServices
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void* AsPointer<T>(ref T value)
         {
-            // The body of this function will be replaced by the EE with unsafe code that just returns sizeof !!T
+            // The body of this function will be replaced by the EE with unsafe code!!!
             // See getILIntrinsicImplementationForUnsafe for how this happens.  
             throw new InvalidOperationException();
         }
@@ -47,7 +47,7 @@ namespace System.Runtime.CompilerServices
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ref TTo As<TFrom, TTo>(ref TFrom source)
         {
-            // The body of this function will be replaced by the EE with unsafe code that just returns sizeof !!T
+            // The body of this function will be replaced by the EE with unsafe code!!!
             // See getILIntrinsicImplementationForUnsafe for how this happens.  
             throw new InvalidOperationException();
         }

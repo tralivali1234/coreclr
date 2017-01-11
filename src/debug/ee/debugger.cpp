@@ -75,6 +75,9 @@ SVAL_IMPL_INIT(BOOL, Debugger, s_fCanChangeNgenFlags, TRUE);
 
 bool g_EnableSIS = false;
 
+// The following instances are used for invoking overloaded new/delete
+InteropSafe interopsafe;
+InteropSafeExecutable interopsafeEXEC;
 
 #ifndef DACCESS_COMPILE
 
@@ -594,8 +597,8 @@ void DoAssertOnType(DebuggerIPCEventType event, int count)
         if (g_iDbgRuntimeCounter[event & 0x00ff] == count)
         {
             char        tmpStr[256];
-            sprintf(tmpStr, "%s == %d, break now!",
-                     IPCENames::GetName(event), count);
+            _snprintf_s(tmpStr, _countof(tmpStr), _TRUNCATE, "%s == %d, break now!",
+                        IPCENames::GetName(event), count);
 
             // fire the assertion
             DbgAssertDialog(__FILE__, __LINE__, tmpStr);
@@ -608,8 +611,8 @@ void DoAssertOnType(DebuggerIPCEventType event, int count)
         if (g_iDbgDebuggerCounter[event & 0x00ff] == count)
         {
             char        tmpStr[256];
-            sprintf(tmpStr, "%s == %d, break now!",
-                     IPCENames::GetName(event), count);
+            _snprintf_s(tmpStr, _countof(tmpStr), _TRUNCATE, "%s == %d, break now!",
+                        IPCENames::GetName(event), count);
 
             // fire the assertion
             DbgAssertDialog(__FILE__, __LINE__, tmpStr);
@@ -11907,7 +11910,7 @@ HRESULT Debugger::GetAndSendInterceptCommand(DebuggerIPCEvent *event)
 
                             //
                             // Save off this breakpoint, so that if the exception gets unwound before we hit
-                            // the breakpoint - the exeception info can call back to remove it.
+                            // the breakpoint - the exception info can call back to remove it.
                             //
                             pExState->GetDebuggerState()->SetDebuggerInterceptContext((void *)pBreakpoint);
 

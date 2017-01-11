@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Collections;
+using System.Diagnostics;
 using System.Diagnostics.Contracts;
 using System.Globalization;
 using System.Runtime.CompilerServices;
@@ -17,7 +18,6 @@ namespace System
         //Native Static Methods
         //
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         private unsafe static int CompareOrdinalIgnoreCaseHelper(String strA, String strB)
         {
             Contract.Requires(strA != null);
@@ -35,7 +35,7 @@ namespace System
                     int charA = *a;
                     int charB = *b;
 
-                    Contract.Assert((charA | charB) <= 0x7F, "strings have to be ASCII");
+                    Debug.Assert((charA | charB) <= 0x7F, "strings have to be ASCII");
 
                     // uppercase both chars - notice that we need just one compare per char
                     if ((uint)(charA - 'a') <= (uint)('z' - 'a')) charA -= 0x20;
@@ -55,13 +55,11 @@ namespace System
         }
 
         // native call to COMString::CompareOrdinalEx
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         internal static extern int CompareOrdinalHelper(String strA, int indexA, int countA, String strB, int indexB, int countB);
 
         //This will not work in case-insensitive mode for any character greater than 0x80.  
         //We'll throw an ArgumentException.
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         unsafe internal static extern int nativeCompareOrdinalIgnoreCaseWC(String strA, sbyte *strBBytes);
 
@@ -75,7 +73,6 @@ namespace System
         // Search/Query methods
         //
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [ReliabilityContract(Consistency.WillNotCorruptState, Cer.MayFail)]
         private unsafe static bool EqualsHelper(String strA, String strB)
         {
@@ -137,7 +134,6 @@ namespace System
             }
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [ReliabilityContract(Consistency.WillNotCorruptState, Cer.MayFail)]
         private unsafe static bool StartsWithOrdinalHelper(String str, String startsWith)
         {
@@ -155,7 +151,7 @@ namespace System
 #if BIT64
                 // Single int read aligns pointers for the following long reads
                 // No length check needed as this method is called when length >= 2
-                Contract.Assert(length >= 2);
+                Debug.Assert(length >= 2);
                 if (*(int*)a != *(int*)b) goto ReturnFalse;
                 length -= 2; a += 2; b += 2;
 
@@ -194,7 +190,6 @@ namespace System
             }
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         private unsafe static int CompareOrdinalHelper(String strA, String strB)
         {
             Contract.Requires(strA != null);
@@ -202,7 +197,7 @@ namespace System
 
             // NOTE: This may be subject to change if eliminating the check
             // in the callers makes them small enough to be inlined by the JIT
-            Contract.Assert(strA.m_firstChar == strB.m_firstChar,
+            Debug.Assert(strA.m_firstChar == strB.m_firstChar,
                 "For performance reasons, callers of this method should " +
                 "check/short-circuit beforehand if the first char is the same.");
 
@@ -310,7 +305,7 @@ namespace System
                 if (*a != *b) return *a - *b;
 
                 DiffOffset1:
-                Contract.Assert(*(a + 1) != *(b + 1), "This char must be different if we reach here!");
+                Debug.Assert(*(a + 1) != *(b + 1), "This char must be different if we reach here!");
                 return *(a + 1) - *(b + 1);
             }
         }
@@ -342,7 +337,6 @@ namespace System
         // Provides a more flexible function for string comparision. See StringComparison 
         // for meaning of different comparisonType.
         [Pure]
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public static int Compare(String strA, String strB, StringComparison comparisonType) 
         {
             // Single comparison to check if comparisonType is within [CurrentCulture .. OrdinalIgnoreCase]
@@ -532,7 +526,6 @@ namespace System
         }
 
         [Pure]
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public static int Compare(String strA, int indexA, String strB, int indexB, int length, StringComparison comparisonType) {
             if (comparisonType < StringComparison.CurrentCulture || comparisonType > StringComparison.OrdinalIgnoreCase) {
                 throw new ArgumentException(Environment.GetResourceString("NotSupported_StringComparison"), nameof(comparisonType));
@@ -638,7 +631,6 @@ namespace System
         // Compares strA and strB using an ordinal (code-point) comparison.
         //
         [Pure]
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public static int CompareOrdinal(String strA, int indexA, String strB, int indexB, int length)
         {
             if (strA == null || strB == null)
@@ -724,7 +716,6 @@ namespace System
         }
 
         [Pure]
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [ComVisible(false)]
         public Boolean EndsWith(String value, StringComparison comparisonType) {
             if( (Object)value == null) {
@@ -846,7 +837,6 @@ namespace System
         }
 
         [Pure]
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public bool Equals(String value, StringComparison comparisonType) {
             if (comparisonType < StringComparison.CurrentCulture || comparisonType > StringComparison.OrdinalIgnoreCase)
                 throw new ArgumentException(Environment.GetResourceString("NotSupported_StringComparison"), nameof(comparisonType));
@@ -915,7 +905,6 @@ namespace System
         }
 
         [Pure]
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public static bool Equals(String a, String b, StringComparison comparisonType) {
             if (comparisonType < StringComparison.CurrentCulture || comparisonType > StringComparison.OrdinalIgnoreCase)
                 throw new ArgumentException(Environment.GetResourceString("NotSupported_StringComparison"), nameof(comparisonType));
@@ -981,16 +970,13 @@ namespace System
 #if FEATURE_RANDOMIZED_STRING_HASHING
         // Do not remove!
         // This method is called by reflection in System.Xml
-        [System.Security.SecurityCritical]
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         internal static extern int InternalMarvin32HashString(string s, int strLen, long additionalEntropy);
 
-        [System.Security.SecuritySafeCritical]
         internal static bool UseRandomizedHashing() {
             return InternalUseRandomizedHashing();
         }
 
-        [System.Security.SecurityCritical]
         [System.Security.SuppressUnmanagedCodeSecurity]
         [DllImport(JitHelpers.QCall, CharSet = CharSet.Unicode)]
         private static extern bool InternalUseRandomizedHashing();
@@ -998,7 +984,6 @@ namespace System
 
         // Gets a hash code for this string.  If strings A and B are such that A.Equals(B), then
         // they will return the same hash code.
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [ReliabilityContract(Consistency.WillNotCorruptState, Cer.MayFail)]
         public override int GetHashCode()
         {
@@ -1012,15 +997,19 @@ namespace System
             return GetLegacyNonRandomizedHashCode();
         }
 
+        // Gets a hash code for this string and this comparison. If strings A and B and comparition C are such
+        // that String.Equals(A, B, C), then they will return the same hash code with this comparison C.
+        [ReliabilityContract(Consistency.WillNotCorruptState, Cer.MayFail)]
+        public int GetHashCode(StringComparison comparisonType) => StringComparer.FromComparison(comparisonType).GetHashCode(this);
+
         // Use this if and only if you need the hashcode to not change across app domains (e.g. you have an app domain agile
         // hash table).
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [ReliabilityContract(Consistency.WillNotCorruptState, Cer.MayFail)]
         internal int GetLegacyNonRandomizedHashCode() {
             unsafe {
                 fixed (char* src = &m_firstChar) {
-                    Contract.Assert(src[this.Length] == '\0', "src[this.Length] == '\\0'");
-                    Contract.Assert( ((int)src)%4 == 0, "Managed string should start at 4 bytes boundary");
+                    Debug.Assert(src[this.Length] == '\0', "src[this.Length] == '\\0'");
+                    Debug.Assert( ((int)src)%4 == 0, "Managed string should start at 4 bytes boundary");
 #if BIT64
                     int hash1 = 5381;
 #else // !BIT64 (32)
@@ -1080,7 +1069,6 @@ namespace System
         }
 
         [Pure]
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [ComVisible(false)]
         public Boolean StartsWith(String value, StringComparison comparisonType) {
             if( (Object)value == null) {

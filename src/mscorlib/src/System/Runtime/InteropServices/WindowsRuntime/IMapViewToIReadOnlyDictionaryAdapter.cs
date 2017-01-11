@@ -28,11 +28,10 @@ namespace System.Runtime.InteropServices.WindowsRuntime
     {
         private IMapViewToIReadOnlyDictionaryAdapter()
         {
-            Contract.Assert(false, "This class is never instantiated");
+            Debug.Assert(false, "This class is never instantiated");
         }
 
         // V this[K key] { get }
-        [SecurityCritical]
         internal V Indexer_Get<K, V>(K key)
         {
             if (key == null)
@@ -44,7 +43,6 @@ namespace System.Runtime.InteropServices.WindowsRuntime
         }
 
         // IEnumerable<K> Keys { get }
-        [SecurityCritical]
         internal IEnumerable<K> Keys<K, V>()
         {
             IMapView<K, V> _this = JitHelpers.UnsafeCast<IMapView<K, V>>(this);
@@ -53,7 +51,6 @@ namespace System.Runtime.InteropServices.WindowsRuntime
         }
 
         // IEnumerable<V> Values { get }
-        [SecurityCritical]
         internal IEnumerable<V> Values<K, V>()
         {
             IMapView<K, V> _this = JitHelpers.UnsafeCast<IMapView<K, V>>(this);
@@ -63,7 +60,6 @@ namespace System.Runtime.InteropServices.WindowsRuntime
 
         // bool ContainsKey(K key)
         [Pure]
-        [SecurityCritical]
         internal bool ContainsKey<K, V>(K key)
         {
             if (key == null)
@@ -74,7 +70,6 @@ namespace System.Runtime.InteropServices.WindowsRuntime
         }
 
         // bool TryGetValue(TKey key, out TValue value)
-        [SecurityCritical]
         internal bool TryGetValue<K, V>(K key, out V value)
         {
             if (key == null)

@@ -1216,8 +1216,6 @@ EEJitManager::EEJitManager()
 }
 
 #if defined(_TARGET_X86_) || defined(_TARGET_AMD64_)
-extern "C" DWORD __stdcall getcpuid(DWORD arg, unsigned char result[16]);
-extern "C" DWORD __stdcall xmmYmmStateSupport();
 
 bool DoesOSSupportAVX()
 {
@@ -1228,16 +1226,9 @@ bool DoesOSSupportAVX()
     typedef DWORD64 (WINAPI *PGETENABLEDXSTATEFEATURES)();
     PGETENABLEDXSTATEFEATURES pfnGetEnabledXStateFeatures = NULL;
     
-    // Probe ApiSet first
-    HMODULE hMod = WszLoadLibraryEx(W("api-ms-win-core-xstate-l2-1-0.dll"), NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
-
-    if (hMod == NULL)
-    {
-        // On older OS's where apiset is not present probe kernel32
-        hMod = WszLoadLibraryEx(WINDOWS_KERNEL32_DLLNAME_W, NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
-        if(hMod = NULL)
-            return FALSE;
-    }
+    HMODULE hMod = WszLoadLibraryEx(WINDOWS_KERNEL32_DLLNAME_W, NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if(hMod == NULL)
+        return FALSE;
         
     pfnGetEnabledXStateFeatures = (PGETENABLEDXSTATEFEATURES)GetProcAddress(hMod, "GetEnabledXStateFeatures");
         
@@ -1720,7 +1711,7 @@ BOOL EEJitManager::LoadJIT()
         {
             // Now, load the compat jit and initialize it.
 
-            LPCWSTR pwzJitName = MAKEDLLNAME_W(L"compatjit");
+            LPCWSTR pwzJitName = MAKEDLLNAME_W(W("compatjit"));
 
             // Note: if the compatjit fails to load, we ignore it, and continue to use the main JIT for
             // everything. You can imagine a policy where if the user requests the compatjit, and we fail
@@ -3029,7 +3020,7 @@ void * EEJitManager::allocCodeFragmentBlock(size_t blockSize, unsigned alignment
     {
         CrstHolder ch(&m_CodeHeapCritSec);
 
-        mem = (TADDR) allocCodeRaw(&requestInfo, sizeof(TADDR), blockSize, alignment, &pCodeHeap);
+        mem = (TADDR) allocCodeRaw(&requestInfo, sizeof(CodeHeader), blockSize, alignment, &pCodeHeap);
 
         // CodeHeader comes immediately before the block
         CodeHeader * pCodeHdr = (CodeHeader *) (mem - sizeof(CodeHeader));
@@ -3446,6 +3437,16 @@ void EEJitManager::CleanupCodeHeaps()
     CONTRACTL_END;
 
     _ASSERTE (g_fProcessDetach || (GCHeapUtilities::IsGCInProgress() && ::IsGCThread()));
+
+	// Quick out, don't even take the lock if we have not cleanup to do.
+	// This is important because ETW takes the CodeHeapLock when it is doing
+	// rundown, and if there are many JIT compiled methods, this can take a while.
+	// Because cleanup is called synchronously before a GC, this means GCs get
+	// blocked while ETW is doing rundown.   By not taking the lock we avoid
+	// this stall most of the time since cleanup is rare, and ETW rundown is rare
+	// the likelihood of both is very very rare.   
+	if (m_cleanupList == NULL)
+		return;
 
     CrstHolder ch(&m_CodeHeapCritSec);
 
@@ -6153,12 +6154,12 @@ __forceinline bool Nirvana_PrintMethodDescWorker(__in_ecount(iBuffer) char * szB
 
     if (*pNamespace != 0)
     {
-        if(FAILED(StringCchPrintfA(szBuffer, iBuffer, "%s.%s.%s", pNamespace, pClassName, pSigString)))
+        if (_snprintf_s(szBuffer, iBuffer, _TRUNCATE, "%s.%s.%s", pNamespace, pClassName, pSigString) == -1)
             return false;
     }
     else
     {
-        if(FAILED(StringCchPrintfA(szBuffer, iBuffer, "%s.%s", pClassName, pSigString)))
+        if (_snprintf_s(szBuffer, iBuffer, _TRUNCATE, "%s.%s", pClassName, pSigString) == -1)
             return false;
     }
 

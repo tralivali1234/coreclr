@@ -30,11 +30,10 @@ namespace System.Runtime.InteropServices.WindowsRuntime
     {
         private IVectorViewToIReadOnlyListAdapter()
         {
-            Contract.Assert(false, "This class is never instantiated");
+            Debug.Assert(false, "This class is never instantiated");
         }
 
         // T this[int index] { get }
-        [SecurityCritical]
         internal T Indexer_Get<T>(int index)
         {
             if (index < 0)
@@ -59,7 +58,6 @@ namespace System.Runtime.InteropServices.WindowsRuntime
         }
 
         // T this[int index] { get }
-        [SecurityCritical]
         internal T Indexer_Get_Variance<T>(int index) where T : class
         {
             bool fUseString;

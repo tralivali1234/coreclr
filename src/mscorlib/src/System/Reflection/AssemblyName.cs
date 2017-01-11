@@ -104,19 +104,12 @@ namespace System.Reflection {
     
         public String CodeBase
         {
-#if FEATURE_CORECLR
-            [System.Security.SecurityCritical] // auto-generated
-#endif
             get { return _CodeBase; }
-#if FEATURE_CORECLR
-            [System.Security.SecurityCritical] // auto-generated
-#endif
             set { _CodeBase = value; }
         }
     
         public String EscapedCodeBase
         {
-            [System.Security.SecuritySafeCritical]  // auto-generated
             get
             {
                 if (_CodeBase == null)
@@ -190,7 +183,6 @@ namespace System.Reflection {
          * if the file contains an assembly manifest. This method causes
          * the file to be opened and closed.
          */
-        [System.Security.SecuritySafeCritical]  // auto-generated
         static public AssemblyName GetAssemblyName(String assemblyFile)
         {
             if(assemblyFile == null)
@@ -199,7 +191,7 @@ namespace System.Reflection {
 
             // Assembly.GetNameInternal() will not demand path discovery 
             //  permission, so do that first.
-            String fullPath = Path.GetFullPathInternal(assemblyFile);
+            string fullPath = Path.GetFullPath(assemblyFile);
             new FileIOPermission( FileIOPermissionAccess.PathDiscovery, fullPath ).Demand();
             return nGetFileInformation(fullPath);
         }
@@ -231,7 +223,6 @@ namespace System.Reflection {
 
         // The compressed version of the public key formed from a truncated hash.
         // Will throw a SecurityException if _PublicKey is invalid
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public byte[] GetPublicKeyToken()
         {
             if (_PublicKeyToken == null)
@@ -280,7 +271,6 @@ namespace System.Reflection {
        
         public String FullName
         {
-            [System.Security.SecuritySafeCritical]  // auto-generated
             get {
                 return nToString();
             }
@@ -296,7 +286,6 @@ namespace System.Reflection {
                 return s;
         }
 
-        [System.Security.SecurityCritical]  // auto-generated_required
         public void GetObjectData(SerializationInfo info, StreamingContext context)
         {
             if (info == null)
@@ -361,7 +350,6 @@ namespace System.Reflection {
             m_siInfo = info; 
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public AssemblyName(String assemblyName)
         {
             if (assemblyName == null)
@@ -375,7 +363,6 @@ namespace System.Reflection {
             nInit();
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         static public bool ReferenceMatchesDefinition(AssemblyName reference,
                                                              AssemblyName definition)
         {
@@ -390,7 +377,6 @@ namespace System.Reflection {
         
         /// "parse" tells us to parse the simple name of the assembly as if it was the full name
         /// almost never the right thing to do, but needed for compat
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         static internal extern bool ReferenceMatchesDefinitionInternal(AssemblyName reference,
                                                                      AssemblyName definition,
@@ -398,11 +384,9 @@ namespace System.Reflection {
 
 
 
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         internal extern void nInit(out RuntimeAssembly assembly, bool forIntrospection, bool raiseResolveEvent);
 
-        [System.Security.SecurityCritical]  // auto-generated
         internal void nInit()
         {
             RuntimeAssembly dummy = null;
@@ -487,53 +471,17 @@ namespace System.Reflection {
             _StrongNameKeyPair = keyPair;
         }
 
-#if !FEATURE_CORECLR
-        void _AssemblyName.GetTypeInfoCount(out uint pcTInfo)
-        {
-            throw new NotImplementedException();
-        }
-
-        void _AssemblyName.GetTypeInfo(uint iTInfo, uint lcid, IntPtr ppTInfo)
-        {
-            throw new NotImplementedException();
-        }
-
-        void _AssemblyName.GetIDsOfNames([In] ref Guid riid, IntPtr rgszNames, uint cNames, uint lcid, IntPtr rgDispId)
-        {
-            throw new NotImplementedException();
-        }
-
-        void _AssemblyName.Invoke(uint dispIdMember, [In] ref Guid riid, uint lcid, short wFlags, IntPtr pDispParams, IntPtr pVarResult, IntPtr pExcepInfo, IntPtr puArgErr)
-        {
-            throw new NotImplementedException();
-        }
-#endif
-
-#if FEATURE_APTCA
-        internal string GetNameWithPublicKey()
-        {
-            byte[] key = GetPublicKey();
-
-            // The following string should not be localized because it is used in security decisions.
-            return Name + ", PublicKey=" + System.Security.Util.Hex.EncodeHexString(key);
-        }
-#endif
-
         // This call opens and closes the file, but does not add the
         // assembly to the domain.
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         static internal extern AssemblyName nGetFileInformation(String s);
 
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         private extern String nToString();
 
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         private extern byte[] nGetPublicKeyToken();
-    
-        [System.Security.SecurityCritical]  // auto-generated
+
         static internal String EscapeCodeBase(String codebase)
         {
             if (codebase == null)
@@ -544,7 +492,7 @@ namespace System.Reflection {
             if (dest == null)
                 return codebase;
 
-            return new string(dest, 0, position);            
+            return new string(dest, 0, position);
         }
 
         // This implementation of EscapeString has been copied from System.Private.Uri from corefx repo

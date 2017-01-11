@@ -683,7 +683,7 @@ const unsigned char AbbrevTable[] = {
         DW_AT_type, DW_FORM_ref4, 0, 0,
 
     4, DW_TAG_subprogram, DW_CHILDREN_yes,
-        DW_AT_name, DW_FORM_strp, DW_AT_decl_file, DW_FORM_data1, DW_AT_decl_line, DW_FORM_data1,
+        DW_AT_name, DW_FORM_strp, DW_AT_linkage_name, DW_FORM_strp, DW_AT_decl_file, DW_FORM_data1, DW_AT_decl_line, DW_FORM_data1,
         DW_AT_type, DW_FORM_ref4, DW_AT_external, DW_FORM_flag_present,
         DW_AT_low_pc, DW_FORM_addr, DW_AT_high_pc,
 #if defined(_TARGET_AMD64_)
@@ -719,7 +719,7 @@ const unsigned char AbbrevTable[] = {
         DW_AT_upper_bound, DW_FORM_exprloc, 0, 0,
 
     12, DW_TAG_subprogram, DW_CHILDREN_yes,
-        DW_AT_name, DW_FORM_strp, DW_AT_decl_file, DW_FORM_data1, DW_AT_decl_line, DW_FORM_data1,
+        DW_AT_name, DW_FORM_strp, DW_AT_linkage_name, DW_FORM_strp, DW_AT_decl_file, DW_FORM_data1, DW_AT_decl_line, DW_FORM_data1,
         DW_AT_type, DW_FORM_ref4, DW_AT_external, DW_FORM_flag_present,
         DW_AT_low_pc, DW_FORM_addr, DW_AT_high_pc, 
 #if defined(_TARGET_AMD64_)
@@ -739,6 +739,28 @@ const unsigned char AbbrevTable[] = {
         DW_AT_name, DW_FORM_strp, DW_AT_type, DW_FORM_ref4, DW_AT_external, DW_FORM_flag_present, 0, 0,
 
     15, DW_TAG_variable, DW_CHILDREN_no, DW_AT_specification, DW_FORM_ref4, DW_AT_location, DW_FORM_exprloc,
+        0, 0,
+
+    16, DW_TAG_try_block, DW_CHILDREN_no,
+        DW_AT_low_pc, DW_FORM_addr, DW_AT_high_pc,
+#if defined(_TARGET_AMD64_)
+        DW_FORM_data8,
+#elif defined(_TARGET_ARM_)
+        DW_FORM_data4,
+#else
+#error Unsupported platform!
+#endif
+        0, 0,
+
+    17, DW_TAG_catch_block, DW_CHILDREN_no,
+        DW_AT_low_pc, DW_FORM_addr, DW_AT_high_pc,
+#if defined(_TARGET_AMD64_)
+        DW_FORM_data8,
+#elif defined(_TARGET_ARM_)
+        DW_FORM_data4,
+#else
+#error Unsupported platform!
+#endif
         0, 0,
 
     0
@@ -767,10 +789,23 @@ struct __attribute__((packed)) DebugInfoCU
     1, 0, DW_LANG_C89, 0, 0
 };
 
+struct __attribute__((packed)) DebugInfoTryCatchSub
+{
+    uint8_t m_sub_abbrev;
+#if defined(_TARGET_AMD64_)
+    uint64_t m_sub_low_pc, m_sub_high_pc;
+#elif defined(_TARGET_ARM_)
+    uint32_t m_sub_low_pc, m_sub_high_pc;
+#else
+#error Unsupported platform!
+#endif
+};
+
 struct __attribute__((packed)) DebugInfoSub
 {
     uint8_t m_sub_abbrev;
     uint32_t m_sub_name;
+    uint32_t m_linkage_name;
     uint8_t m_file, m_line;
     uint32_t m_sub_type;
 #if defined(_TARGET_AMD64_)
@@ -1029,6 +1064,79 @@ void TypeMember::DumpStaticDebugInfo(char* ptr, int& offset)
     offset += ptrSize + 2;
 }
 
+void FunctionMember::MangleName(char *buf, int &buf_offset, const char *name)
+{
+    int name_length = strlen(name);
+
+    char tmp[20];
+    int tmp_len = sprintf_s(tmp, _countof(tmp), "%i", name_length);
+    if (tmp_len <= 0)
+        return;
+
+    if (buf)
+        strncpy(buf + buf_offset, tmp, tmp_len);
+    buf_offset += tmp_len;
+
+    if (buf)
+    {
+        for (int i = 0; i < name_length; i++)
+        {
+            char c = name[i];
+            bool valid = (c >= 'a' && c <= 'z') ||
+                         (c >= 'A' && c <= 'Z') ||
+                         (c >= '0' && c <= '9');
+            *(buf + buf_offset + i) = valid ? c : '_';
+        }
+    }
+    buf_offset += name_length;
+}
+
+void FunctionMember::DumpMangledNamespaceAndMethod(char *buf, int &offset, const char *nspace, const char *mname)
+{
+    static const char *begin_mangled = "_ZN";
+    static const char *end_mangled = "Ev";
+    static const int begin_mangled_len = strlen(begin_mangled);
+    static const int end_mangled_len = strlen(end_mangled);
+
+    if (buf)
+        strncpy(buf + offset, begin_mangled, begin_mangled_len);
+    offset += begin_mangled_len;
+
+    MangleName(buf, offset, nspace);
+    MangleName(buf, offset, mname);
+
+    if (buf)
+        strncpy(buf + offset, end_mangled, end_mangled_len);
+    offset += end_mangled_len;
+
+    if (buf)
+        buf[offset] = '\0';
+    ++offset;
+}
+
+void FunctionMember::DumpLinkageName(char* ptr, int& offset)
+{
+    SString namespaceOrClassName;
+    SString methodName;
+
+    md->GetMethodInfoNoSig(namespaceOrClassName, methodName);
+    SString utf8namespaceOrClassName;
+    SString utf8methodName;
+    namespaceOrClassName.ConvertToUTF8(utf8namespaceOrClassName);
+    methodName.ConvertToUTF8(utf8methodName);
+
+    const char *nspace = utf8namespaceOrClassName.GetUTF8NoConvert();
+    const char *mname = utf8methodName.GetUTF8NoConvert();
+
+    if (!nspace || !mname)
+    {
+        m_linkage_name_offset = 0;
+        return;
+    }
+
+    m_linkage_name_offset = offset;
+    DumpMangledNamespaceAndMethod(ptr, offset, nspace, mname);
+}
 
 void FunctionMember::DumpStrings(char* ptr, int& offset)
 {
@@ -1037,7 +1145,112 @@ void FunctionMember::DumpStrings(char* ptr, int& offset)
     for (int i = 0; i < m_num_vars; ++i)
     {
         vars[i].DumpStrings(ptr, offset);
-    } 
+    }
+
+    DumpLinkageName(ptr, offset);
+}
+
+bool FunctionMember::GetBlockInNativeCode(int blockILOffset, int blockILLen, TADDR *startOffset, TADDR *endOffset)
+{
+    PCODE pCode = md->GetNativeCode();
+
+    const int blockILEnd = blockILOffset + blockILLen;
+
+    *startOffset = 0;
+    *endOffset = 0;
+
+    bool inBlock = false;
+
+    for (int i = 0; i < nlines; ++i)
+    {
+        TADDR nativeOffset = lines[i].nativeOffset + pCode;
+
+        // Limit block search to current function addresses
+        if (nativeOffset < m_sub_low_pc)
+            continue;
+        if (nativeOffset >= m_sub_low_pc + m_sub_high_pc)
+            break;
+
+        // Skip invalid IL offsets
+        switch(lines[i].ilOffset)
+        {
+            case ICorDebugInfo::PROLOG:
+            case ICorDebugInfo::EPILOG:
+            case ICorDebugInfo::NO_MAPPING:
+                continue;
+            default:
+                break;
+        }
+
+        // Check if current IL is within block
+        if (blockILOffset <= lines[i].ilOffset && lines[i].ilOffset < blockILEnd)
+        {
+            if (!inBlock)
+            {
+                *startOffset = lines[i].nativeOffset;
+                inBlock = true;
+            }
+        }
+        else
+        {
+            if (inBlock)
+            {
+                *endOffset = lines[i].nativeOffset;
+                inBlock = false;
+                break;
+            }
+        }
+    }
+
+    if (inBlock)
+    {
+        *endOffset = m_sub_low_pc + m_sub_high_pc - pCode;
+    }
+
+    return *endOffset != *startOffset;
+}
+
+void FunctionMember::DumpTryCatchBlock(char* ptr, int& offset, int ilOffset, int ilLen, int abbrev)
+{
+    TADDR startOffset;
+    TADDR endOffset;
+
+    if (!GetBlockInNativeCode(ilOffset, ilLen, &startOffset, &endOffset))
+        return;
+
+    if (ptr != nullptr)
+    {
+        DebugInfoTryCatchSub subEntry;
+
+        subEntry.m_sub_abbrev = abbrev;
+        subEntry.m_sub_low_pc = md->GetNativeCode() + startOffset;
+        subEntry.m_sub_high_pc = endOffset - startOffset;
+
+        memcpy(ptr + offset, &subEntry, sizeof(DebugInfoTryCatchSub));
+    }
+    offset += sizeof(DebugInfoTryCatchSub);
+}
+
+void FunctionMember::DumpTryCatchDebugInfo(char* ptr, int& offset)
+{
+    if (!md)
+        return;
+
+    COR_ILMETHOD *pHeader = md->GetILHeader();
+    COR_ILMETHOD_DECODER header(pHeader);
+
+    unsigned ehCount = header.EHCount();
+
+    for (unsigned e = 0; e < ehCount; e++)
+    {
+        IMAGE_COR_ILMETHOD_SECT_EH_CLAUSE_FAT ehBuff;
+        const IMAGE_COR_ILMETHOD_SECT_EH_CLAUSE_FAT* ehInfo;
+
+        ehInfo = header.EH->EHClause(e, &ehBuff);
+
+        DumpTryCatchBlock(ptr, offset, ehInfo->TryOffset, ehInfo->TryLength, 16);
+        DumpTryCatchBlock(ptr, offset, ehInfo->HandlerOffset, ehInfo->HandlerLength, 17);
+    }
 }
 
 void FunctionMember::DumpDebugInfo(char* ptr, int& offset)
@@ -1048,6 +1261,7 @@ void FunctionMember::DumpDebugInfo(char* ptr, int& offset)
 
         subEntry.m_sub_abbrev = 4;
         subEntry.m_sub_name = m_member_name_offset;
+        subEntry.m_linkage_name = m_linkage_name_offset;
         subEntry.m_file = m_file;
         subEntry.m_line = m_line;
         subEntry.m_sub_type = m_member_type->m_type_offset;
@@ -1084,6 +1298,8 @@ void FunctionMember::DumpDebugInfo(char* ptr, int& offset)
     {
         vars[i].DumpDebugInfo(ptr, offset);
     }
+
+    DumpTryCatchDebugInfo(ptr, offset);
 
     // terminate children
     if (ptr != nullptr)
@@ -1335,10 +1551,8 @@ void NotifyGdb::MethodCompiled(MethodDesc* MethodDescPtr)
     LPCUTF8 methodName = MethodDescPtr->GetName();
     EECodeInfo codeInfo(pCode);
     TADDR codeSize = codeInfo.GetCodeManager()->GetFunctionSize(codeInfo.GetGCInfoToken());
-    
-#ifdef _TARGET_ARM_
-    pCode &= ~1; // clear thumb flag for debug info
-#endif    
+
+    pCode = PCODEToPINSTR(pCode);
 
     /* Get module name */
     const Module* mod = MethodDescPtr->GetMethodTable()->GetModule();
@@ -1431,16 +1645,14 @@ void NotifyGdb::MethodCompiled(MethodDesc* MethodDescPtr)
         return;
     }
 
-    CodeHeader* pCH = ((CodeHeader*)(pCode & ~1)) - 1;
+    CodeHeader* pCH = (CodeHeader*)pCode - 1;
     CalledMethod* pCalledMethods = reinterpret_cast<CalledMethod*>(pCH->GetCalledMethods());
     /* Collect addresses of thunks called by method */
-    if (!CollectCalledMethods(pCalledMethods))
+    if (!CollectCalledMethods(pCalledMethods, (TADDR)MethodDescPtr->GetNativeCode()))
     {
         return;
     }
     pCH->SetCalledMethods(NULL);
-    if (!codeAddrs.Contains((TADDR)pCode))
-        codeAddrs.Add((TADDR)pCode);
 
     MetaSig sig(MethodDescPtr);
     int nArgsCount = sig.NumFixedArgs();
@@ -1473,11 +1685,12 @@ void NotifyGdb::MethodCompiled(MethodDesc* MethodDescPtr)
         method[method_index]->GetLocalsDebugInfo(pTypeMap, locals, symInfo[firstLineIndex].nativeOffset);
         method[method_index]->m_sub_low_pc = pCode + method_start;
         method[method_index]->m_sub_high_pc = method_size;
-        method[method_index]->m_member_name = new char[strlen(methodName) + 10];
+        size_t methodNameSize = strlen(methodName) + 10;
+        method[method_index]->m_member_name = new char[methodNameSize];
         if (method_index == 0)
-            sprintf(method[method_index]->m_member_name, "%s", methodName);
+            sprintf_s(method[method_index]->m_member_name, methodNameSize, "%s", methodName);
         else
-            sprintf(method[method_index]->m_member_name, "%s_%i", methodName, method_index);
+            sprintf_s(method[method_index]->m_member_name, methodNameSize, "%s_%i", methodName, method_index);
 
         // method's class
         GetTypeInfoFromTypeHandle(TypeHandle(method[method_index]->md->GetMethodTable()), pTypeMap);
@@ -1509,7 +1722,7 @@ void NotifyGdb::MethodCompiled(MethodDesc* MethodDescPtr)
     }
     
     /* Build .debug_info section */
-    if (!BuildDebugInfo(dbgInfo, pTypeMap))
+    if (!BuildDebugInfo(dbgInfo, pTypeMap, symInfo, symInfoLen))
     {
         return;
     }
@@ -1603,7 +1816,7 @@ void NotifyGdb::MethodCompiled(MethodDesc* MethodDescPtr)
     for (int i = 1 + method.GetCount(); i < SymbolCount; i++)
     {
         ++pShdr;
-        pShdr->sh_addr = SymbolNames[i].m_value;
+        pShdr->sh_addr = PCODEToPINSTR(SymbolNames[i].m_value);
         pShdr->sh_size = 8;
     }
 
@@ -1887,18 +2100,17 @@ static void fixLineMapping(SymbolsInfo* lines, unsigned nlines)
     int prevLine = 0;
     for (int i = 0; i < nlines; ++i)
     {
+        if (lines[i].lineNumber == HiddenLine)
+            continue;
         if (lines[i].ilOffset == ICorDebugInfo::PROLOG) // will be fixed in next step
         {
             prevLine = 0;
         }
         else
         {
-            if (lines[i].lineNumber == 0 || lines[i].lineNumber == HiddenLine)
+            if (lines[i].lineNumber == 0)
             {
-                if (prevLine != 0)
-                {
-                    lines[i].lineNumber = prevLine;
-                }
+                lines[i].lineNumber = prevLine;
             }
             else
             {
@@ -1910,10 +2122,22 @@ static void fixLineMapping(SymbolsInfo* lines, unsigned nlines)
     prevLine = lines[nlines - 1].lineNumber;
     for (int i = nlines - 1; i >= 0; --i)
     {
-        if (lines[i].lineNumber == 0 || lines[i].lineNumber == HiddenLine)
+        if (lines[i].lineNumber == HiddenLine)
+            continue;
+        if (lines[i].lineNumber == 0)
             lines[i].lineNumber = prevLine;
         else
             prevLine = lines[i].lineNumber;
+    }
+    // Skip HiddenLines
+    for (int i = 0; i < nlines; ++i)
+    {
+        if (lines[i].lineNumber == HiddenLine)
+        {
+            lines[i].lineNumber = 0;
+            if (i + 1 < nlines && lines[i + 1].ilOffset == ICorDebugInfo::NO_MAPPING)
+                lines[i + 1].lineNumber = 0;
+        }
     }
 }
 
@@ -1950,6 +2174,13 @@ bool NotifyGdb::BuildLineProg(MemBuf& buf, PCODE startAddr, TADDR codeSize, Symb
             IssueParamCommand(ptr, DW_LNS_set_file, cnv_buf, len);
             prevFile = lines[i].fileIndex;
         }
+
+        // GCC don't use the is_prologue_end flag to mark the first instruction after the prologue.
+        // Instead of it it is issueing a line table entry for the first instruction of the prologue
+        // and one for the first instruction after the prologue.
+        // We do not want to confuse the debugger so we have to avoid adding a line in such case.
+        if (i > 0 && lines[i - 1].nativeOffset == lines[i].nativeOffset)
+            continue;
 
         IssueSetAddress(ptr, startAddr + lines[i].nativeOffset);
 
@@ -2054,7 +2285,7 @@ bool NotifyGdb::BuildDebugAbbrev(MemBuf& buf)
 }
 
 /* Build tge DWARF .debug_info section */
-bool NotifyGdb::BuildDebugInfo(MemBuf& buf, PTK_TypeInfoMap pTypeMap)
+bool NotifyGdb::BuildDebugInfo(MemBuf& buf, PTK_TypeInfoMap pTypeMap, SymbolsInfo* lines, unsigned nlines)
 {
     int totalTypeVarSubSize = 0;
     {
@@ -2069,8 +2300,22 @@ bool NotifyGdb::BuildDebugInfo(MemBuf& buf, PTK_TypeInfoMap pTypeMap)
 
     for (int i = 0; i < method.GetCount(); ++i)
     {
+        method[i]->lines = lines;
+        method[i]->nlines = nlines;
         method[i]->DumpDebugInfo(nullptr, totalTypeVarSubSize);
     }
+    // Drop pointers to lines when exiting current scope
+    struct DropMethodLines
+    {
+        ~DropMethodLines()
+        {
+            for (int i = 0; i < method.GetCount(); ++i)
+            {
+                method[i]->lines = nullptr;
+                method[i]->nlines = 0;
+            }
+        }
+    } dropMethodLines;
 
     //int locSize = GetArgsAndLocalsLen(argsDebug, argsDebugSize, localsDebug, localsDebugSize);
     buf.MemSize = sizeof(DwarfCompUnit) + sizeof(DebugInfoCU) + totalTypeVarSubSize + 2;
@@ -2140,9 +2385,12 @@ bool NotifyGdb::BuildDebugPub(MemBuf& buf, const char* name, uint32_t size, uint
 }
 
 /* Store addresses and names of the called methods into symbol table */
-bool NotifyGdb::CollectCalledMethods(CalledMethod* pCalledMethods)
+bool NotifyGdb::CollectCalledMethods(CalledMethod* pCalledMethods, TADDR nativeCode)
 {
     AddrSet tmpCodeAddrs;
+
+    if (!codeAddrs.Contains(nativeCode))
+        codeAddrs.Add(nativeCode);
 
     CalledMethod* pList = pCalledMethods;
 
@@ -2160,7 +2408,8 @@ bool NotifyGdb::CollectCalledMethods(CalledMethod* pCalledMethods)
     SymbolNames = new (nothrow) Elf_Symbol[SymbolCount];
 
     pList = pCalledMethods;
-    for (int i = 1 + method.GetCount(); i < SymbolCount;)
+    int i = 1 + method.GetCount();
+    while (i < SymbolCount && pList != NULL)
     {
         TADDR callAddr = (TADDR)pList->GetCallAddr();
         if (!codeAddrs.Contains(callAddr))
@@ -2170,7 +2419,7 @@ bool NotifyGdb::CollectCalledMethods(CalledMethod* pCalledMethods)
             int symbolNameLength = strlen(methodName) + sizeof("__thunk_");
             SymbolNames[i].m_name = new char[symbolNameLength];
             SymbolNames[i].m_releaseName = true;
-            sprintf((char*)SymbolNames[i].m_name, "__thunk_%s", methodName);
+            sprintf_s((char*)SymbolNames[i].m_name, symbolNameLength, "__thunk_%s", methodName);
             SymbolNames[i].m_value = callAddr;
             ++i;
             codeAddrs.Add(callAddr);
@@ -2179,7 +2428,7 @@ bool NotifyGdb::CollectCalledMethods(CalledMethod* pCalledMethods)
         pList = pList->GetNext();
         delete ptr;
     }
-
+    SymbolCount = i;
     return true;
 }
 
@@ -2231,10 +2480,7 @@ bool NotifyGdb::BuildSymbolTableSection(MemBuf& buf, PCODE addr, TADDR codeSize)
         sym[i].st_name = SymbolNames[i].m_off;
         sym[i].setBindingAndType(STB_GLOBAL, STT_FUNC);
         sym[i].st_other = 0;
-        sym[i].st_value = SymbolNames[i].m_value - addr;
-#ifdef _TARGET_ARM_
-        sym[i].st_value |= 1; // for THUMB code
-#endif    
+        sym[i].st_value = PINSTRToPCODE(SymbolNames[i].m_value - addr);
         sym[i].st_shndx = textSectionIndex;
         sym[i].st_size = SymbolNames[i].m_size;
     }
@@ -2246,7 +2492,11 @@ bool NotifyGdb::BuildSymbolTableSection(MemBuf& buf, PCODE addr, TADDR codeSize)
         sym[i].st_other = 0;
         sym[i].st_shndx = SectionNamesCount + (i - (1 + method.GetCount())); // .thunks section index
         sym[i].st_size = 8;
+#ifdef _TARGET_ARM_
+        sym[i].st_value = 1; // for THUMB code
+#else
         sym[i].st_value = 0;
+#endif
     }
     return true;
 }
@@ -2301,7 +2551,7 @@ bool NotifyGdb::BuildSectionTables(MemBuf& sectBuf, MemBuf& strBuf)
         bool isThunkSection = i >= SectionNamesCount;
         if (isThunkSection)
         {
-            sprintf(thunkSectNameBuf, ".thunk_%i", i);
+            sprintf_s(thunkSectNameBuf, _countof(thunkSectNameBuf), ".thunk_%i", i);
             sectName = thunkSectNameBuf;
         }
         else

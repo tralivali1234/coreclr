@@ -3,8 +3,11 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+
+#pragma warning disable 0809  //warning CS0809: Obsolete member 'Span<T>.Equals(object)' overrides non-obsolete member 'object.Equals(object)'
 
 namespace System
 {
@@ -13,10 +16,10 @@ namespace System
     /// characteristics on par with T[]. Unlike arrays, it can point to either managed
     /// or native memory, or to memory allocated on the stack. It is type- and memory-safe.
     /// </summary>
-    public unsafe struct ReadOnlySpan<T>
+    public struct ReadOnlySpan<T>
     {
-        /// <summary>A byref or a native ptr. Do not access directly</summary>
-        private readonly IntPtr _rawPointer;
+        /// <summary>A byref or a native ptr.</summary>
+        private readonly ByReference<T> _pointer;
         /// <summary>The number of elements this ReadOnlySpan contains.</summary>
         private readonly int _length;
 
@@ -31,9 +34,30 @@ namespace System
             if (array == null)
                 ThrowHelper.ThrowArgumentNullException(ExceptionArgument.array);
 
-            // TODO-SPAN: This has GC hole. It needs to be JIT intrinsic instead
-            _rawPointer = (IntPtr)Unsafe.AsPointer(ref JitHelpers.GetArrayData(array));
+            _pointer = new ByReference<T>(ref JitHelpers.GetArrayData(array));
             _length = array.Length;
+        }
+
+        /// <summary>
+        /// Creates a new span over the portion of the target array beginning
+        /// at 'start' index and covering the remainder of the array.
+        /// </summary>
+        /// <param name="array">The target array.</param>
+        /// <param name="start">The index at which to begin the span.</param>
+        /// <exception cref="System.ArgumentNullException">Thrown when <paramref name="array"/> is a null
+        /// reference (Nothing in Visual Basic).</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">
+        /// Thrown when the specified <paramref name="start"/> is not in the range (&lt;0 or &gt;&eq;Length).
+        /// </exception>
+        public ReadOnlySpan(T[] array, int start)
+        {
+            if (array == null)
+                ThrowHelper.ThrowArgumentNullException(ExceptionArgument.array);
+            if ((uint)start > (uint)array.Length)
+                ThrowHelper.ThrowArgumentOutOfRangeException();
+
+            _pointer = new ByReference<T>(ref Unsafe.Add(ref JitHelpers.GetArrayData(array), start));
+            _length = array.Length - start;
         }
 
         /// <summary>
@@ -46,7 +70,7 @@ namespace System
         /// <exception cref="System.ArgumentNullException">Thrown when <paramref name="array"/> is a null
         /// reference (Nothing in Visual Basic).</exception>
         /// <exception cref="System.ArgumentOutOfRangeException">
-        /// Thrown when the specified <paramref name="start"/> or end index is not in range (&lt;0 or &gt;&eq;Length).
+        /// Thrown when the specified <paramref name="start"/> or end index is not in the range (&lt;0 or &gt;&eq;Length).
         /// </exception>
         public ReadOnlySpan(T[] array, int start, int length)
         {
@@ -55,8 +79,7 @@ namespace System
             if ((uint)start > (uint)array.Length || (uint)length > (uint)(array.Length - start))
                 ThrowHelper.ThrowArgumentOutOfRangeException();
 
-            // TODO-SPAN: This has GC hole. It needs to be JIT intrinsic instead
-            _rawPointer = (IntPtr)Unsafe.AsPointer(ref Unsafe.Add(ref JitHelpers.GetArrayData(array), start));
+            _pointer = new ByReference<T>(ref Unsafe.Add(ref JitHelpers.GetArrayData(array), start));
             _length = length;
         }
 
@@ -82,7 +105,7 @@ namespace System
             if (length < 0)
                 ThrowHelper.ThrowArgumentOutOfRangeException();
 
-            _rawPointer = (IntPtr)pointer;
+            _pointer = new ByReference<T>(ref Unsafe.As<byte, T>(ref *(byte*)pointer));
             _length = length;
         }
 
@@ -91,18 +114,71 @@ namespace System
         /// </summary>
         internal ReadOnlySpan(ref T ptr, int length)
         {
-            // TODO-SPAN: This has GC hole. It needs to be JIT intrinsic instead
-            _rawPointer = (IntPtr)Unsafe.AsPointer(ref ptr);
+            _pointer = new ByReference<T>(ref ptr);
             _length = length;
         }
 
         /// <summary>
-        /// An internal helper for accessing spans.
+        /// Returns a reference to the 0th element of the Span. If the Span is empty, returns a reference to the location where the 0th element
+        /// would have been stored. Such a reference can be used for pinning but must never be dereferenced.
         /// </summary>
-        internal unsafe ref T GetRawPointer()
+        public ref T DangerousGetPinnableReference()
         {
-            // TODO-SPAN: This has GC hole. It needs to be JIT intrinsic instead
-            return ref Unsafe.As<IntPtr, T>(ref *(IntPtr *)_rawPointer);
+            return ref _pointer.Value;
+        }
+
+        /// <summary>
+        /// This method is not supported as spans cannot be boxed. To compare two spans, use operator==.
+        /// <exception cref="System.NotSupportedException">
+        /// Always thrown by this method.
+        /// </exception>
+        /// </summary>
+        [Obsolete("Equals() on Span will always throw an exception. Use == instead.")]
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public override bool Equals(object obj)
+        {
+            ThrowHelper.ThrowNotSupportedException_CannotCallEqualsOnSpan();
+            // Prevent compiler error CS0161: 'Span<T>.Equals(object)': not all code paths return a value
+            return default(bool);
+        }
+
+        /// <summary>
+        /// This method is not supported as spans cannot be boxed.
+        /// <exception cref="System.NotSupportedException">
+        /// Always thrown by this method.
+        /// </exception>
+        /// </summary>
+        [Obsolete("GetHashCode() on Span will always throw an exception.")]
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public override int GetHashCode()
+        {
+            ThrowHelper.ThrowNotSupportedException_CannotCallGetHashCodeOnSpan();
+            // Prevent compiler error CS0161: 'Span<T>.GetHashCode()': not all code paths return a value
+            return default(int);
+        }
+
+        /// <summary>
+        /// Create a new read-only span over a portion of a regular managed object. This can be useful
+        /// if part of a managed object represents a "fixed array." This is dangerous because
+        /// "length" is not checked, nor is the fact that "rawPointer" actually lies within the object.
+        /// </summary>
+        /// <param name="obj">The managed object that contains the data to span over.</param>
+        /// <param name="objectData">A reference to data within that object.</param>
+        /// <param name="length">The number of <typeparamref name="T"/> elements the memory contains.</param>
+        /// <exception cref="System.ArgumentNullException">
+        /// Thrown when the specified object is null.
+        /// </exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">
+        /// Thrown when the specified <paramref name="length"/> is negative.
+        /// </exception>
+        public static ReadOnlySpan<T> DangerousCreate(object obj, ref T objectData, int length)
+        {
+            if (obj == null)
+                ThrowHelper.ThrowArgumentNullException(ExceptionArgument.obj);
+            if (length < 0)
+                ThrowHelper.ThrowArgumentOutOfRangeException(ExceptionArgument.length);
+
+            return new ReadOnlySpan<T>(ref objectData, length);
         }
 
         /// <summary>
@@ -110,7 +186,7 @@ namespace System
         /// </summary>
         public static implicit operator ReadOnlySpan<T>(Span<T> slice)
         {
-            return new ReadOnlySpan<T>(ref slice.GetRawPointer(), slice.Length);
+            return new ReadOnlySpan<T>(ref slice.DangerousGetPinnableReference(), slice.Length);
         }
 
         /// <summary>
@@ -166,7 +242,7 @@ namespace System
                 if ((uint)index >= (uint)_length)
                     ThrowHelper.ThrowIndexOutOfRangeException();
 
-                return Unsafe.Add(ref GetRawPointer(), index);
+                return Unsafe.Add(ref DangerousGetPinnableReference(), index);
             }
         }
 
@@ -181,7 +257,7 @@ namespace System
                 return Array.Empty<T>();
 
             var destination = new T[_length];
-            SpanHelper.CopyTo<T>(ref JitHelpers.GetArrayData(destination), ref GetRawPointer(), _length);
+            SpanHelper.CopyTo<T>(ref JitHelpers.GetArrayData(destination), ref DangerousGetPinnableReference(), _length);
             return destination;
         }
 
@@ -198,7 +274,7 @@ namespace System
             if ((uint)start > (uint)_length)
                 ThrowHelper.ThrowArgumentOutOfRangeException();
 
-            return new ReadOnlySpan<T>(ref Unsafe.Add(ref GetRawPointer(), start), _length - start);
+            return new ReadOnlySpan<T>(ref Unsafe.Add(ref DangerousGetPinnableReference(), start), _length - start);
         }
 
         /// <summary>
@@ -215,17 +291,23 @@ namespace System
             if ((uint)start > (uint)_length || (uint)length > (uint)(_length - start))
                 ThrowHelper.ThrowArgumentOutOfRangeException();
 
-            return new ReadOnlySpan<T>(ref Unsafe.Add(ref GetRawPointer(), start), length);
+            return new ReadOnlySpan<T>(ref Unsafe.Add(ref DangerousGetPinnableReference(), start), length);
         }
 
         /// <summary>
-        /// Checks to see if two spans point at the same memory.  Note that
-        /// this does *not* check to see if the *contents* are equal.
+        /// Copies the contents of this read-only span into destination span. If the source
+        /// and destinations overlap, this method behaves as if the original values in
+        /// a temporary location before the destination is overwritten.
+        ///
+        /// <param name="destination">The span to copy items into.</param>
+        /// <exception cref="System.ArgumentException">
+        /// Thrown when the destination Span is shorter than the source Span.
+        /// </exception>
         /// </summary>
-        public bool Equals(ReadOnlySpan<T> other)
+        public void CopyTo(Span<T> destination)
         {
-            return (_length == other.Length) &&
-                (_length == 0 || Unsafe.AreSame(ref GetRawPointer(), ref other.GetRawPointer()));
+            if (!TryCopyTo(destination))
+                ThrowHelper.ThrowArgumentException_DestinationTooShort();
         }
 
         /// <summary>
@@ -238,9 +320,24 @@ namespace System
             if ((uint)_length > (uint)destination.Length)
                 return false;
 
-            SpanHelper.CopyTo<T>(ref destination.GetRawPointer(), ref GetRawPointer(), _length);
+            SpanHelper.CopyTo<T>(ref destination.DangerousGetPinnableReference(), ref DangerousGetPinnableReference(), _length);
             return true;
         }
+
+        /// <summary>
+        /// Returns true if left and right point at the same memory and have the same length.  Note that
+        /// this does *not* check to see if the *contents* are equal.
+        /// </summary>
+        public static bool operator ==(ReadOnlySpan<T> left, ReadOnlySpan<T> right)
+        {
+            return left._length == right._length && Unsafe.AreSame<T>(ref left.DangerousGetPinnableReference(), ref right.DangerousGetPinnableReference());
+        }
+
+        /// <summary>
+        /// Returns false if left and right point at the same memory and have the same length.  Note that
+        /// this does *not* check to see if the *contents* are equal.
+        /// </summary>
+        public static bool operator !=(ReadOnlySpan<T> left, ReadOnlySpan<T> right) => !(left == right);
     }
 
     public static class ReadOnlySpanExtensions

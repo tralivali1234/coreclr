@@ -39,6 +39,7 @@ namespace System {
     using Collections.Generic;
     using System.Runtime.CompilerServices;
     using System.Runtime.Serialization;
+    using System.Diagnostics;
     using System.Diagnostics.Contracts;
 
     [Pure]
@@ -58,6 +59,18 @@ namespace System {
 
         internal static void ThrowArgumentOutOfRangeException() {
             throw new ArgumentOutOfRangeException();
+        }
+
+        internal static void ThrowArgumentException_DestinationTooShort() {
+            throw new ArgumentException(Environment.GetResourceString("Argument_DestinationTooShort"));
+        }
+
+        internal static void ThrowNotSupportedException_CannotCallEqualsOnSpan() {
+            throw new NotSupportedException(Environment.GetResourceString("NotSupported_CannotCallEqualsOnSpan"));
+        }
+
+        internal static void ThrowNotSupportedException_CannotCallGetHashCodeOnSpan() {
+            throw new NotSupportedException(Environment.GetResourceString("NotSupported_CannotCallGetHashCodeOnSpan"));
         }
 #endif
 
@@ -94,8 +107,6 @@ namespace System {
             throw GetWrongValueTypeArgumentException(value, targetType);
         }
 
-
-#if FEATURE_CORECLR
         private static ArgumentException GetAddingDuplicateWithKeyArgumentException(object key) {
             return new ArgumentException(Environment.GetResourceString("Argument_AddingDuplicateWithKey", key));
         }
@@ -103,7 +114,6 @@ namespace System {
         internal static void ThrowAddingDuplicateWithKeyArgumentException(object key) {
             throw GetAddingDuplicateWithKeyArgumentException(key);
         }
-#endif
 
         internal static void ThrowKeyNotFoundException() {
             throw new System.Collections.Generic.KeyNotFoundException();
@@ -252,7 +262,7 @@ namespace System {
         // Second function in chain so as to not propergate the non-inlining to outside caller
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static string GetArgumentNameInner(ExceptionArgument argument) {
-            Contract.Assert(Enum.IsDefined(typeof(ExceptionArgument), argument),
+            Debug.Assert(Enum.IsDefined(typeof(ExceptionArgument), argument),
                 "The enum value is not defined, please check the ExceptionArgument Enum.");
 
             return argument.ToString();
@@ -271,7 +281,7 @@ namespace System {
         // Second function in chain so as to not propergate the non-inlining to outside caller
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static string GetResourceStringInner(ExceptionResource resource) {
-            Contract.Assert(Enum.IsDefined(typeof(ExceptionResource), resource),
+            Debug.Assert(Enum.IsDefined(typeof(ExceptionResource), resource),
                 "The enum value is not defined, please check the ExceptionResource Enum.");
 
             return Environment.GetResourceString(resource.ToString());

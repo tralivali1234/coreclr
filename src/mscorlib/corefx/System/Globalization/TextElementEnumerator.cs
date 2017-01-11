@@ -11,7 +11,7 @@
 ////////////////////////////////////////////////////////////////////////////
 
 using System.Collections;
-using System.Diagnostics.Contracts;
+using System.Diagnostics;
 using System.Runtime.Serialization;
 
 namespace System.Globalization
@@ -42,9 +42,9 @@ namespace System.Globalization
 
         internal TextElementEnumerator(String str, int startIndex, int strLen)
         {
-            Contract.Assert(str != null, "TextElementEnumerator(): str != null");
-            Contract.Assert(startIndex >= 0 && strLen >= 0, "TextElementEnumerator(): startIndex >= 0 && strLen >= 0");
-            Contract.Assert(strLen >= startIndex, "TextElementEnumerator(): strLen >= startIndex");
+            Debug.Assert(str != null, "TextElementEnumerator(): str != null");
+            Debug.Assert(startIndex >= 0 && strLen >= 0, "TextElementEnumerator(): startIndex >= 0 && strLen >= 0");
+            Debug.Assert(strLen >= startIndex, "TextElementEnumerator(): strLen >= startIndex");
             _str = str;
             _startIndex = startIndex;
             _strLen = strLen;
@@ -125,7 +125,7 @@ namespace System.Globalization
         }
 
         //
-        // Get the starting _index of the current text element.
+        // Get the starting index of the current text element.
         //
 
         public int ElementIndex

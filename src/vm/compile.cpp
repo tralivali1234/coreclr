@@ -5453,7 +5453,7 @@ static BOOL CanSatisfyConstraints(Instantiation typicalInst, Instantiation candi
             StackScratchBuffer buffer;
             thArg.GetName(candidateInstName);
             char output[1024];
-            sprintf(output, "Generics TypeDependencyAttribute processing: Couldn't satisfy a constraint.  Class with Attribute: %s  Bad candidate instantiated type: %s\r\n", pMT->GetDebugClassName(), candidateInstName.GetANSI(buffer));
+            _snprintf_s(output, _countof(output), _TRUNCATE, "Generics TypeDependencyAttribute processing: Couldn't satisfy a constraint.  Class with Attribute: %s  Bad candidate instantiated type: %s\r\n", pMT->GetDebugClassName(), candidateInstName.GetANSI(buffer));
             OutputDebugStringA(output);
             */
 #endif
@@ -6603,7 +6603,9 @@ void CEEPreloader::PrePrepareMethodIfNecessary(CORINFO_METHOD_HANDLE hMethod)
 {
     STANDARD_VM_CONTRACT;
 
+#ifdef FEATURE_CER
     ::PrePrepareMethodIfNecessary(hMethod);
+#endif
 }
 
 static void SetStubMethodDescOnInteropMethodDesc(MethodDesc* pInteropMD, MethodDesc* pStubMD, bool fReverseStub)

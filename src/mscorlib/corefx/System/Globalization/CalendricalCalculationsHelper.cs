@@ -2,8 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Diagnostics.Contracts;
+using System.Diagnostics;
 
 namespace System.Globalization
 {
@@ -126,7 +125,7 @@ namespace System.Globalization
             return longitude;
         }
 
-        static public double AsDayFraction(double longitude)
+        public static double AsDayFraction(double longitude)
         {
             return longitude / FullCircleOfArc;
         }
@@ -153,7 +152,7 @@ namespace System.Globalization
         // the following formulas defines a polynomial function which gives us the amount that the earth is slowing down for specific year ranges
         private static double DefaultEphemerisCorrection(int gregorianYear)
         {
-            Contract.Assert(gregorianYear < 1620 || 2020 <= gregorianYear);
+            Debug.Assert(gregorianYear < 1620 || 2020 <= gregorianYear);
             long january1stOfYear = GetNumberOfDays(new DateTime(gregorianYear, 1, 1));
             double daysSinceStartOf1810 = january1stOfYear - StartOf1810;
             double x = TwelveHours + daysSinceStartOf1810;
@@ -162,34 +161,34 @@ namespace System.Globalization
 
         private static double EphemerisCorrection1988to2019(int gregorianYear)
         {
-            Contract.Assert(1988 <= gregorianYear && gregorianYear <= 2019);
+            Debug.Assert(1988 <= gregorianYear && gregorianYear <= 2019);
             return (double)(gregorianYear - 1933) / SecondsPerDay;
         }
 
         private static double EphemerisCorrection1900to1987(int gregorianYear)
         {
-            Contract.Assert(1900 <= gregorianYear && gregorianYear <= 1987);
+            Debug.Assert(1900 <= gregorianYear && gregorianYear <= 1987);
             double centuriesFrom1900 = CenturiesFrom1900(gregorianYear);
             return PolynomialSum(s_coefficients1900to1987, centuriesFrom1900);
         }
 
         private static double EphemerisCorrection1800to1899(int gregorianYear)
         {
-            Contract.Assert(1800 <= gregorianYear && gregorianYear <= 1899);
+            Debug.Assert(1800 <= gregorianYear && gregorianYear <= 1899);
             double centuriesFrom1900 = CenturiesFrom1900(gregorianYear);
             return PolynomialSum(s_coefficients1800to1899, centuriesFrom1900);
         }
 
         private static double EphemerisCorrection1700to1799(int gregorianYear)
         {
-            Contract.Assert(1700 <= gregorianYear && gregorianYear <= 1799);
+            Debug.Assert(1700 <= gregorianYear && gregorianYear <= 1799);
             double yearsSince1700 = gregorianYear - 1700;
             return PolynomialSum(s_coefficients1700to1799, yearsSince1700) / SecondsPerDay;
         }
 
         private static double EphemerisCorrection1620to1699(int gregorianYear)
         {
-            Contract.Assert(1620 <= gregorianYear && gregorianYear <= 1699);
+            Debug.Assert(1620 <= gregorianYear && gregorianYear <= 1699);
             double yearsSince1600 = gregorianYear - 1600;
             return PolynomialSum(s_coefficients1620to1699, yearsSince1600) / SecondsPerDay;
         }
@@ -216,11 +215,11 @@ namespace System.Globalization
                 }
             }
 
-            Contract.Assert(false, "Not expected to come here");
+            Debug.Assert(false, "Not expected to come here");
             return DefaultEphemerisCorrection(year);
         }
 
-        static public double JulianCenturies(double moment)
+        public static double JulianCenturies(double moment)
         {
             double dynamicalMoment = moment + EphemerisCorrection(moment);
             return (dynamicalMoment - Noon2000Jan01) / DaysInUniformLengthCentury;
@@ -274,7 +273,7 @@ namespace System.Globalization
         }
 
         // midday
-        static public double Midday(double date, double longitude)
+        public static double Midday(double date, double longitude)
         {
             return AsLocalTime(date + TwelveHours, longitude) - AsDayFraction(longitude);
         }
@@ -285,7 +284,7 @@ namespace System.Globalization
         }
 
         // midday-in-tehran
-        static public double MiddayAtPersianObservationSite(double date)
+        public static double MiddayAtPersianObservationSite(double date)
         {
             return Midday(date, InitLongitude(52.5)); // 52.5 degrees east - longitude of UTC+3:30 which defines Iranian Standard Time
         }
@@ -362,7 +361,7 @@ namespace System.Globalization
             return (-0.004778 * SinOfDegree(a)) - (0.0003667 * SinOfDegree(b));
         }
 
-        static public double Compute(double time)
+        public static double Compute(double time)
         {
             double julianCenturies = JulianCenturies(time);
             double lambda = 282.7771834
@@ -373,7 +372,7 @@ namespace System.Globalization
             return InitLongitude(longitude);
         }
 
-        static public double AsSeason(double longitude)
+        public static double AsSeason(double longitude)
         {
             return (longitude < 0) ? (longitude + FullCircleOfArc) : longitude;
         }
@@ -405,7 +404,7 @@ namespace System.Globalization
                     break;
                 }
             }
-            Contract.Assert(day != upperBoundNewYearDay);
+            Debug.Assert(day != upperBoundNewYearDay);
 
             return day - 1;
         }

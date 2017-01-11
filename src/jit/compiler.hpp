@@ -473,10 +473,17 @@ inline unsigned Compiler::funGetFuncIdx(BasicBlock* block)
 
 #endif // !FEATURE_EH_FUNCLETS
 
-/*****************************************************************************
- *
- *  Map a register mask to a register number
- */
+//------------------------------------------------------------------------------
+// genRegNumFromMask : Maps a single register mask to a register number.
+//
+// Arguments:
+//    mask - the register mask
+//
+// Return Value:
+//    The number of the register contained in the mask.
+//
+// Assumptions:
+//    The mask contains one and only one register.
 
 inline regNumber genRegNumFromMask(regMaskTP mask)
 {
@@ -4619,7 +4626,6 @@ inline void BasicBlock::InitVarSets(Compiler* comp)
 {
     VarSetOps::AssignNoCopy(comp, bbVarUse, VarSetOps::MakeEmpty(comp));
     VarSetOps::AssignNoCopy(comp, bbVarDef, VarSetOps::MakeEmpty(comp));
-    VarSetOps::AssignNoCopy(comp, bbVarTmp, VarSetOps::MakeEmpty(comp));
     VarSetOps::AssignNoCopy(comp, bbLiveIn, VarSetOps::MakeEmpty(comp));
     VarSetOps::AssignNoCopy(comp, bbLiveOut, VarSetOps::MakeEmpty(comp));
     VarSetOps::AssignNoCopy(comp, bbScope, VarSetOps::MakeEmpty(comp));

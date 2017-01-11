@@ -16,12 +16,12 @@ namespace System.Reflection.Emit
     using System.Collections.Generic;
     using System.Security.Permissions;
     using System.Runtime.InteropServices;
+    using System.Diagnostics;
     using System.Diagnostics.Contracts;
 
-    [HostProtection(MayLeakOnAbort = true)]
     [ClassInterface(ClassInterfaceType.None)]
     [ComDefaultInterface(typeof(_MethodBuilder))]
-[System.Runtime.InteropServices.ComVisible(true)]
+    [System.Runtime.InteropServices.ComVisible(true)]
     public sealed class MethodBuilder : MethodInfo, _MethodBuilder
     {
         #region Private Data Members
@@ -196,7 +196,6 @@ namespace System.Reflection.Emit
             m_module.CheckContext(types);
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         internal void CreateMethodBodyHelper(ILGenerator il)
         {
             // Sets the IL of the method.  An ILGenerator is passed as an argument and the method
@@ -367,7 +366,7 @@ namespace System.Reflection.Emit
             }
             else
             {
-                Contract.Assert(false, "We should never get here!");
+                Debug.Assert(false, "We should never get here!");
                 return null;
             }
         }
@@ -389,7 +388,6 @@ namespace System.Reflection.Emit
             return m_mdMethodFixups;
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         internal SignatureHelper GetMethodSignature()
         {
             if (m_parameterTypes == null)
@@ -480,7 +478,6 @@ namespace System.Reflection.Emit
         #endregion
 
         #region Object Overrides
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public override bool Equals(Object obj) {
             if (!(obj is MethodBuilder)) {
                 return false;
@@ -505,7 +502,6 @@ namespace System.Reflection.Emit
             return this.m_strName.GetHashCode();
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public override String ToString()
         {
             StringBuilder sb = new StringBuilder(1000);
@@ -599,29 +595,17 @@ namespace System.Reflection.Emit
 
         public override bool IsSecurityCritical
         {
-#if FEATURE_CORECLR
             get { return true; }
-#else
-            get { throw new NotSupportedException(Environment.GetResourceString("NotSupported_DynamicModule")); }
-#endif
         }
 
         public override bool IsSecuritySafeCritical
         {
-#if FEATURE_CORECLR
             get { return false; }
-#else
-            get { throw new NotSupportedException(Environment.GetResourceString("NotSupported_DynamicModule")); }
-#endif
         }
 
         public override bool IsSecurityTransparent
         {
-#if FEATURE_CORECLR
             get { return false; }
-#else
-            get { throw new NotSupportedException(Environment.GetResourceString("NotSupported_DynamicModule")); }
-#endif
         }
         #endregion
 
@@ -733,7 +717,6 @@ namespace System.Reflection.Emit
         #endregion
 
         #region Public Members
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public MethodToken GetToken()
         {
             // We used to always "tokenize" a MethodBuilder when it is constructed. After change list 709498
@@ -779,16 +762,15 @@ namespace System.Reflection.Emit
                 m_containingType.m_lastTokenizedMethod = i;
             }
 
-            Contract.Assert(currentMethod == this, "We should have found this method in m_containingType.m_listMethods");
-            Contract.Assert(currentToken.Token != 0, "The token should not be 0");
+            Debug.Assert(currentMethod == this, "We should have found this method in m_containingType.m_listMethods");
+            Debug.Assert(currentToken.Token != 0, "The token should not be 0");
 
             return currentToken;
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         private MethodToken GetTokenNoLock()
         {
-            Contract.Assert(m_tkMethod.Token == 0, "m_tkMethod should not have been initialized");
+            Debug.Assert(m_tkMethod.Token == 0, "m_tkMethod should not have been initialized");
 
             int sigLength;
             byte[] sigBytes = GetMethodSignature().InternalGetSignature(out sigLength);
@@ -853,7 +835,6 @@ namespace System.Reflection.Emit
         }
 
        
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public ParameterBuilder DefineParameter(int position, ParameterAttributes attributes, String strParamName)
         {
             if (position < 0)
@@ -870,7 +851,6 @@ namespace System.Reflection.Emit
             return new ParameterBuilder(this, position, attributes, strParamName);
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [Obsolete("An alternate API is available: Emit the MarshalAs custom attribute instead. http://go.microsoft.com/fwlink/?linkid=14202")]
         public void SetMarshal(UnmanagedMarshal unmanagedMarshal)
         {
@@ -927,46 +907,6 @@ namespace System.Reflection.Emit
             m_symCustomAttrs.Add(new SymCustomAttr(name, data));
         }
 
-#if FEATURE_CAS_POLICY
-        [System.Security.SecuritySafeCritical]  // auto-generated
-        public void AddDeclarativeSecurity(SecurityAction action, PermissionSet pset)
-        {
-            if (pset == null)
-                throw new ArgumentNullException(nameof(pset));
-            Contract.EndContractBlock();
-
-            ThrowIfGeneric ();
-
-#pragma warning disable 618
-            if (!Enum.IsDefined(typeof(SecurityAction), action) ||
-                action == SecurityAction.RequestMinimum ||
-                action == SecurityAction.RequestOptional ||
-                action == SecurityAction.RequestRefuse)
-            {
-                throw new ArgumentOutOfRangeException(nameof(action));
-            }
-#pragma warning restore 618
-
-            // cannot declarative security after type is created
-            m_containingType.ThrowIfCreated();
-
-            // Translate permission set into serialized format (uses standard binary serialization format).
-            byte[] blob = null;
-            int length = 0;
-            if (!pset.IsEmpty())
-            {
-                blob = pset.EncodeXml();
-                length = blob.Length;
-            }
-
-            // Write the blob into the metadata.
-            TypeBuilder.AddDeclarativeSecurity(m_module.GetNativeHandle(), MetadataTokenInternal, action, blob, length);
-        }
-#endif // FEATURE_CAS_POLICY
-
-        #if FEATURE_CORECLR
-        [System.Security.SecurityCritical] // auto-generated
-        #endif
         public void SetMethodBody(byte[] il, int maxStack, byte[] localSignature, IEnumerable<ExceptionHandler> exceptionHandlers, IEnumerable<int> tokenFixups)
         {
             if (il == null)
@@ -1068,9 +1008,6 @@ namespace System.Reflection.Emit
         /// <summary>
         /// Obsolete.
         /// </summary>
-        #if FEATURE_CORECLR
-        [System.Security.SecurityCritical] // auto-generated
-        #endif
         public void CreateMethodBody(byte[] il, int count)
         {
             ThrowIfGeneric();
@@ -1107,7 +1044,6 @@ namespace System.Reflection.Emit
             m_bIsBaked = true;
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public void SetImplementationFlags(MethodImplAttributes attributes) 
         {
             ThrowIfGeneric ();
@@ -1170,7 +1106,6 @@ namespace System.Reflection.Emit
 
         public String Signature 
         { 
-            [System.Security.SecuritySafeCritical]  // auto-generated
             get 
             { 
                 return GetMethodSignature().ToString(); 
@@ -1178,11 +1113,6 @@ namespace System.Reflection.Emit
         }
 
 
-#if FEATURE_CORECLR
-[System.Security.SecurityCritical] // auto-generated
-#else
-[System.Security.SecuritySafeCritical]
-#endif
 [System.Runtime.InteropServices.ComVisible(true)]
         public void SetCustomAttribute(ConstructorInfo con, byte[] binaryAttribute)
         {
@@ -1203,7 +1133,6 @@ namespace System.Reflection.Emit
                 ParseCA(con, binaryAttribute);
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public void SetCustomAttribute(CustomAttributeBuilder customBuilder)
         {
             if (customBuilder == null)
@@ -1251,29 +1180,6 @@ namespace System.Reflection.Emit
         internal bool m_isDllImport = false;
 
         #endregion
-
-#if !FEATURE_CORECLR
-        void _MethodBuilder.GetTypeInfoCount(out uint pcTInfo)
-        {
-            throw new NotImplementedException();
-        }
-
-        void _MethodBuilder.GetTypeInfo(uint iTInfo, uint lcid, IntPtr ppTInfo)
-        {
-            throw new NotImplementedException();
-        }
-
-        void _MethodBuilder.GetIDsOfNames([In] ref Guid riid, IntPtr rgszNames, uint cNames, uint lcid, IntPtr rgDispId)
-        {
-            throw new NotImplementedException();
-        }
-
-        void _MethodBuilder.Invoke(uint dispIdMember, [In] ref Guid riid, uint lcid, short wFlags, IntPtr pDispParams, IntPtr pVarResult, IntPtr pExcepInfo, IntPtr puArgErr)
-        {
-            throw new NotImplementedException();
-        }
-#endif
-
     }
 
     internal class LocalSymInfo
@@ -1378,9 +1284,6 @@ namespace System.Reflection.Emit
             checked { m_iNameSpaceCount++; }
         }
 
-        #if FEATURE_CORECLR
-        [System.Security.SecurityCritical] // auto-generated
-        #endif
         internal virtual void EmitLocalSymInfo(ISymbolWriter symWriter)
         {
             int         i;
@@ -1539,13 +1442,13 @@ namespace System.Reflection.Emit
         internal ExceptionHandler(int tryStartOffset, int tryEndOffset, int filterOffset, int handlerStartOffset, int handlerEndOffset,
             int kind, int exceptionTypeToken)
         {
-            Contract.Assert(tryStartOffset >= 0);
-            Contract.Assert(tryEndOffset >= 0);
-            Contract.Assert(filterOffset >= 0);
-            Contract.Assert(handlerStartOffset >= 0);
-            Contract.Assert(handlerEndOffset >= 0);
-            Contract.Assert(IsValidKind((ExceptionHandlingClauseOptions)kind));
-            Contract.Assert(kind != (int)ExceptionHandlingClauseOptions.Clause || (exceptionTypeToken & 0x00FFFFFF) != 0);
+            Debug.Assert(tryStartOffset >= 0);
+            Debug.Assert(tryEndOffset >= 0);
+            Debug.Assert(filterOffset >= 0);
+            Debug.Assert(handlerStartOffset >= 0);
+            Debug.Assert(handlerEndOffset >= 0);
+            Debug.Assert(IsValidKind((ExceptionHandlingClauseOptions)kind));
+            Debug.Assert(kind != (int)ExceptionHandlingClauseOptions.Clause || (exceptionTypeToken & 0x00FFFFFF) != 0);
 
             m_tryStartOffset = tryStartOffset;
             m_tryEndOffset = tryEndOffset;

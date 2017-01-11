@@ -11,6 +11,7 @@ namespace System.Text
     using System;
     using System.Runtime.Serialization;
     using System.Security.Permissions;
+    using System.Diagnostics;
     using System.Diagnostics.Contracts;
 
     /*=================================CodePageEncoding==================================
@@ -74,7 +75,6 @@ namespace System.Text
         }
 
         // Just get it from GetEncoding
-        [System.Security.SecurityCritical]  // auto-generated
         public Object GetRealObject(StreamingContext context)
         {
             // Get our encoding (Note: This has default fallbacks for readonly and everett cases)
@@ -93,11 +93,10 @@ namespace System.Text
         }
 
         // ISerializable implementation
-        [System.Security.SecurityCritical]  // auto-generated_required
         void ISerializable.GetObjectData(SerializationInfo info, StreamingContext context)
         {
             // We cannot ever call this.
-            Contract.Assert(false, "Didn't expect to make it to CodePageEncoding ISerializable.GetObjectData");
+            Debug.Assert(false, "Didn't expect to make it to CodePageEncoding ISerializable.GetObjectData");
             throw new ArgumentException(Environment.GetResourceString("Arg_ExecutionEngineException"));
         }
 
@@ -120,18 +119,16 @@ namespace System.Text
             }
 
             // Just get it from GetDecider
-            [System.Security.SecurityCritical]  // auto-generated
             public Object GetRealObject(StreamingContext context)
             {
                 return this.realEncoding.GetDecoder();
             }
 
             // ISerializable implementation, get data for this object
-            [System.Security.SecurityCritical]  // auto-generated_required
             void ISerializable.GetObjectData(SerializationInfo info, StreamingContext context)
             {
                 // We cannot ever call this.
-                Contract.Assert(false, "Didn't expect to make it to CodePageEncoding.Decoder.GetObjectData");
+                Debug.Assert(false, "Didn't expect to make it to CodePageEncoding.Decoder.GetObjectData");
                 throw new ArgumentException(Environment.GetResourceString("Arg_ExecutionEngineException"));
             }
         }

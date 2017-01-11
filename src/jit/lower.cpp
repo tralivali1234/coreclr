@@ -205,7 +205,6 @@ GenTree* Lowering::LowerNode(GenTree* node)
         case GT_STORE_LCL_VAR:
             if (node->TypeGet() == TYP_SIMD12)
             {
-#ifdef _TARGET_64BIT_
                 // Assumption 1:
                 // RyuJit backend depends on the assumption that on 64-Bit targets Vector3 size is rounded off
                 // to TARGET_POINTER_SIZE and hence Vector3 locals on stack can be treated as TYP_SIMD16 for
@@ -228,10 +227,29 @@ GenTree* Lowering::LowerNode(GenTree* node)
                 // Vector3 return values are returned two return registers and Caller assembles them into a
                 // single xmm reg. Hence RyuJIT explicitly generates code to clears upper 4-bytes of Vector3
                 // type args in prolog and Vector3 type return value of a call
+                //
+                // RyuJIT x86 Windows: all non-param Vector3 local vars are allocated as 16 bytes. Vector3 arguments
+                // are pushed as 12 bytes. For return values, a 16-byte local is allocated and the address passed
+                // as a return buffer pointer. The callee doesn't write the high 4 bytes, and we don't need to clear
+                // it either.
+
+                unsigned   varNum = node->AsLclVarCommon()->GetLclNum();
+                LclVarDsc* varDsc = &comp->lvaTable[varNum];
+
+#if defined(_TARGET_64BIT_)
+                assert(varDsc->lvSize() == 16);
                 node->gtType = TYP_SIMD16;
-#else
-                NYI("Lowering of TYP_SIMD12 locals");
-#endif // _TARGET_64BIT_
+#else  // !_TARGET_64BIT_
+                if (varDsc->lvSize() == 16)
+                {
+                    node->gtType = TYP_SIMD16;
+                }
+                else
+                {
+                    // The following assert is guaranteed by lvSize().
+                    assert(varDsc->lvIsParam);
+                }
+#endif // !_TARGET_64BIT_
             }
 #endif // FEATURE_SIMD
             __fallthrough;
@@ -710,7 +728,7 @@ void Lowering::ReplaceArgWithPutArgOrCopy(GenTree** argSlot, GenTree* putArgOrCo
 // Arguments:
 //    call - the call whose arg is being rewritten.
 //    arg  - the arg being rewritten.
-//    info - the ArgTabEntry information for the argument.
+//    info - the fgArgTabEntry information for the argument.
 //    type - the type of the argument.
 //
 // Return Value:
@@ -726,7 +744,7 @@ void Lowering::ReplaceArgWithPutArgOrCopy(GenTree** argSlot, GenTree* putArgOrCo
 //    for two eightbyte structs.
 //
 //    For STK passed structs the method generates GT_PUTARG_STK tree. For System V systems with native struct passing
-//    (i.e. FEATURE_UNIX_AMD64_STRUCT_PASSING defined) this method also sets the GP pointers count and the pointers
+//    (i.e. FEATURE_UNIX_AMD64_STRUCT_PASSING defined) this method also sets the GC pointers count and the pointers
 //    layout object, so the codegen of the GT_PUTARG_STK could use this for optimizing copying to the stack by value.
 //    (using block copy primitives for non GC pointers and a single TARGET_POINTER_SIZE copy with recording GC info.)
 //
@@ -738,16 +756,6 @@ GenTreePtr Lowering::NewPutArg(GenTreeCall* call, GenTreePtr arg, fgArgTabEntryP
 
     GenTreePtr putArg         = nullptr;
     bool       updateArgTable = true;
-
-#if !defined(_TARGET_64BIT_)
-    if (varTypeIsLong(type))
-    {
-        // For TYP_LONG, we leave the GT_LONG as the arg, and put the putArg below it.
-        // Therefore, we don't update the arg table entry.
-        updateArgTable = false;
-        type           = TYP_INT;
-    }
-#endif // !defined(_TARGET_64BIT_)
 
     bool isOnStack = true;
 #ifdef FEATURE_UNIX_AMD64_STRUCT_PASSING
@@ -946,8 +954,6 @@ GenTreePtr Lowering::NewPutArg(GenTreeCall* call, GenTreePtr arg, fgArgTabEntryP
         // pair copying using XMM registers or rep mov instructions.
         if (info->isStruct)
         {
-            unsigned numRefs  = 0;
-            BYTE*    gcLayout = new (comp, CMK_Codegen) BYTE[info->numSlots];
             // We use GT_OBJ for non-SIMD struct arguments. However, for
             // SIMD arguments the GT_OBJ has already been transformed.
             if (arg->gtOper != GT_OBJ)
@@ -956,11 +962,12 @@ GenTreePtr Lowering::NewPutArg(GenTreeCall* call, GenTreePtr arg, fgArgTabEntryP
             }
             else
             {
+                unsigned numRefs  = 0;
+                BYTE*    gcLayout = new (comp, CMK_Codegen) BYTE[info->numSlots];
                 assert(!varTypeIsSIMD(arg));
                 numRefs = comp->info.compCompHnd->getClassGClayout(arg->gtObj.gtClass, gcLayout);
+                putArg->AsPutArgStk()->setGcPointers(numRefs, gcLayout);
             }
-
-            putArg->AsPutArgStk()->setGcPointers(numRefs, gcLayout);
         }
 #endif // FEATURE_PUT_STRUCT_ARG_STK
     }
@@ -1038,6 +1045,22 @@ void Lowering::LowerArg(GenTreeCall* call, GenTreePtr* ppArg)
         type = TYP_INT;
     }
 
+#if defined(FEATURE_SIMD) && defined(_TARGET_X86_)
+    // Non-param TYP_SIMD12 local var nodes are massaged in Lower to TYP_SIMD16 to match their
+    // allocated size (see lvSize()). However, when passing the variables as arguments, and
+    // storing the variables to the outgoing argument area on the stack, we must use their
+    // actual TYP_SIMD12 type, so exactly 12 bytes is allocated and written.
+    if (type == TYP_SIMD16)
+    {
+        if ((arg->OperGet() == GT_LCL_VAR) || (arg->OperGet() == GT_STORE_LCL_VAR))
+        {
+            unsigned   varNum = arg->AsLclVarCommon()->GetLclNum();
+            LclVarDsc* varDsc = &comp->lvaTable[varNum];
+            type              = varDsc->lvType;
+        }
+    }
+#endif // defined(FEATURE_SIMD) && defined(_TARGET_X86_)
+
     GenTreePtr putArg;
 
     // If we hit this we are probably double-lowering.
@@ -1051,25 +1074,22 @@ void Lowering::LowerArg(GenTreeCall* call, GenTreePtr* ppArg)
             NYI("Lowering of long register argument");
         }
 
-        // For longs, we will create two PUTARG_STKs below the GT_LONG. The hi argument needs to
-        // be pushed first, so the hi PUTARG_STK will precede the lo PUTARG_STK in execution order.
+        // For longs, we will replace the GT_LONG with a GT_FIELD_LIST, and put that under a PUTARG_STK.
+        // Although the hi argument needs to be pushed first, that will be handled by the general case,
+        // in which the fields will be reversed.
         noway_assert(arg->OperGet() == GT_LONG);
-        GenTreePtr argLo = arg->gtGetOp1();
-        GenTreePtr argHi = arg->gtGetOp2();
+        assert(info->numSlots == 2);
+        GenTreePtr        argLo     = arg->gtGetOp1();
+        GenTreePtr        argHi     = arg->gtGetOp2();
+        GenTreeFieldList* fieldList = new (comp, GT_FIELD_LIST) GenTreeFieldList(argLo, 0, TYP_INT, nullptr);
+        // Only the first fieldList node (GTF_FIELD_LIST_HEAD) is in the instruction sequence.
+        (void)new (comp, GT_FIELD_LIST) GenTreeFieldList(argHi, 4, TYP_INT, fieldList);
+        putArg = NewPutArg(call, fieldList, info, TYP_VOID);
 
-        GenTreePtr putArgLo = NewPutArg(call, argLo, info, type);
-        GenTreePtr putArgHi = NewPutArg(call, argHi, info, type);
-
-        arg->gtOp.gtOp1 = putArgLo;
-        arg->gtOp.gtOp2 = putArgHi;
-
-        BlockRange().InsertBefore(arg, putArgHi, putArgLo);
-
-        // The execution order now looks like this:
-        // argLoPrev <-> argLoFirst ... argLo <-> argHiFirst ... argHi <-> putArgHi <-> putArgLo <-> arg(GT_LONG)
-
-        assert((arg->gtFlags & GTF_REVERSE_OPS) == 0);
-        arg->gtFlags |= GTF_REVERSE_OPS; // We consume the high arg (op2) first.
+        // We can't call ReplaceArgWithPutArgOrCopy here because it presumes that we are keeping the original arg.
+        BlockRange().InsertBefore(arg, fieldList, putArg);
+        BlockRange().Remove(arg);
+        *ppArg = putArg;
     }
     else
 #endif // !defined(_TARGET_64BIT_)
@@ -2930,7 +2950,7 @@ void Lowering::InsertPInvokeCallEpilog(GenTreeCall* call)
     BlockRange().InsertBefore(insertionPoint, LIR::SeqTree(comp, tree));
 
     // Pop the frame if necessary. On 32-bit targets this only happens in the method epilog; on 64-bit targets thi
-    // happens after every PInvoke call in non-stubs.
+    // happens after every PInvoke call in non-stubs. 32-bit targets instead mark the frame as inactive.
     CLANG_FORMAT_COMMENT_ANCHOR;
 
 #ifdef _TARGET_64BIT_
@@ -2939,6 +2959,21 @@ void Lowering::InsertPInvokeCallEpilog(GenTreeCall* call)
         tree = CreateFrameLinkUpdate(PopFrame);
         BlockRange().InsertBefore(insertionPoint, LIR::SeqTree(comp, tree));
     }
+#else
+    const CORINFO_EE_INFO::InlinedCallFrameInfo& callFrameInfo = comp->eeGetEEInfo()->inlinedCallFrameInfo;
+
+    // ----------------------------------------------------------------------------------
+    // InlinedCallFrame.m_pCallerReturnAddress = nullptr
+
+    GenTreeLclFld* const storeCallSiteTracker =
+        new (comp, GT_STORE_LCL_FLD) GenTreeLclFld(GT_STORE_LCL_FLD, TYP_I_IMPL, comp->lvaInlinedPInvokeFrameVar,
+                                                   callFrameInfo.offsetOfReturnAddress);
+
+    GenTreeIntCon* const constantZero = new (comp, GT_CNS_INT) GenTreeIntCon(TYP_I_IMPL, 0);
+
+    storeCallSiteTracker->gtOp1 = constantZero;
+
+    BlockRange().InsertBefore(insertionPoint, constantZero, storeCallSiteTracker);
 #endif // _TARGET_64BIT_
 }
 
@@ -3609,6 +3644,91 @@ void Lowering::LowerUnsignedDivOrMod(GenTree* node)
 }
 
 //------------------------------------------------------------------------
+// GetSignedMagicNumberForDivide: Generates a magic number and shift amount for
+// the magic number division optimization.
+//
+// Arguments:
+//    denom - The denominator
+//    shift - Pointer to the shift value to be returned
+//
+// Returns:
+//    The magic number.
+//
+// Notes:
+//    This code is previously from UTC where it notes it was taken from
+//   _The_PowerPC_Compiler_Writer's_Guide_, pages 57-58. The paper is is based on
+//   is "Division by invariant integers using multiplication" by Torbjorn Granlund
+//   and Peter L. Montgomery in PLDI 94
+
+template <typename T>
+T GetSignedMagicNumberForDivide(T denom, int* shift /*out*/)
+{
+    // static SMAG smag;
+    const int bits         = sizeof(T) * 8;
+    const int bits_minus_1 = bits - 1;
+
+    typedef typename jitstd::make_unsigned<T>::type UT;
+
+    const UT two_nminus1 = UT(1) << bits_minus_1;
+
+    int p;
+    UT  absDenom;
+    UT  absNc;
+    UT  delta;
+    UT  q1;
+    UT  r1;
+    UT  r2;
+    UT  q2;
+    UT  t;
+    T   result_magic;
+    int result_shift;
+    int iters = 0;
+
+    absDenom = abs(denom);
+    t        = two_nminus1 + ((unsigned int)denom >> 31);
+    absNc    = t - 1 - (t % absDenom);        // absolute value of nc
+    p        = bits_minus_1;                  // initialize p
+    q1       = two_nminus1 / absNc;           // initialize q1 = 2^p / abs(nc)
+    r1       = two_nminus1 - (q1 * absNc);    // initialize r1 = rem(2^p, abs(nc))
+    q2       = two_nminus1 / absDenom;        // initialize q1 = 2^p / abs(denom)
+    r2       = two_nminus1 - (q2 * absDenom); // initialize r1 = rem(2^p, abs(denom))
+
+    do
+    {
+        iters++;
+        p++;
+        q1 *= 2; // update q1 = 2^p / abs(nc)
+        r1 *= 2; // update r1 = rem(2^p / abs(nc))
+
+        if (r1 >= absNc)
+        { // must be unsigned comparison
+            q1++;
+            r1 -= absNc;
+        }
+
+        q2 *= 2; // update q2 = 2^p / abs(denom)
+        r2 *= 2; // update r2 = rem(2^p / abs(denom))
+
+        if (r2 >= absDenom)
+        { // must be unsigned comparison
+            q2++;
+            r2 -= absDenom;
+        }
+
+        delta = absDenom - r2;
+    } while (q1 < delta || (q1 == delta && r1 == 0));
+
+    result_magic = q2 + 1; // resulting magic number
+    if (denom < 0)
+    {
+        result_magic = -result_magic;
+    }
+    *shift = p - bits; // resulting shift
+
+    return result_magic;
+}
+
+//------------------------------------------------------------------------
 // LowerSignedDivOrMod: transform integer GT_DIV/GT_MOD nodes with a power of 2
 // const divisor into equivalent but faster sequences.
 //
@@ -3646,8 +3766,10 @@ GenTree* Lowering::LowerSignedDivOrMod(GenTreePtr node)
 
     ssize_t divisorValue = divisor->gtIntCon.IconValue();
 
-    if (divisorValue == -1)
+    if (divisorValue == -1 || divisorValue == 0)
     {
+        // x / 0 and x % 0 can't be optimized because they are required to throw an exception.
+
         // x / -1 can't be optimized because INT_MIN / -1 is required to throw an exception.
 
         // x % -1 is always 0 and the IL spec says that the rem instruction "can" throw an exception if x is
@@ -3676,14 +3798,122 @@ GenTree* Lowering::LowerSignedDivOrMod(GenTreePtr node)
 
     if (!isPow2(absDivisorValue))
     {
+#ifdef _TARGET_XARCH_
+        ssize_t magic;
+        int     shift;
+
+        if (type == TYP_INT)
+        {
+            magic = GetSignedMagicNumberForDivide<int32_t>(static_cast<int32_t>(divisorValue), &shift);
+        }
+        else
+        {
+#ifdef _TARGET_64BIT_
+            magic = GetSignedMagicNumberForDivide<int64_t>(static_cast<int64_t>(divisorValue), &shift);
+#else
+            unreached();
+#endif
+        }
+
+        divisor->gtIntConCommon.SetIconValue(magic);
+
+        // Insert a new GT_MULHI node in front of the existing GT_DIV/GT_MOD node.
+        // The existing node will later be transformed into a GT_ADD/GT_SUB that
+        // computes the final result. This way don't need to find and change the
+        // use of the existing node.
+        GenTree* mulhi = comp->gtNewOperNode(GT_MULHI, type, divisor, dividend);
+        BlockRange().InsertBefore(divMod, mulhi);
+
+        // mulhi was the easy part. Now we need to generate different code depending
+        // on the divisor value:
+        // For 3 we need:
+        //     div = signbit(mulhi) + mulhi
+        // For 5 we need:
+        //     div = signbit(mulhi) + sar(mulhi, 1) ; requires shift adjust
+        // For 7 we need:
+        //     mulhi += dividend                    ; requires add adjust
+        //     div = signbit(mulhi) + sar(mulhi, 2) ; requires shift adjust
+        // For -3 we need:
+        //     mulhi -= dividend                    ; requires sub adjust
+        //     div = signbit(mulhi) + sar(mulhi, 1) ; requires shift adjust
+        bool     requiresAddSubAdjust     = signum(divisorValue) != signum(magic);
+        bool     requiresShiftAdjust      = shift != 0;
+        bool     requiresDividendMultiuse = requiresAddSubAdjust || !isDiv;
+        unsigned curBBWeight              = comp->compCurBB->getBBWeight(comp);
+        unsigned dividendLclNum           = BAD_VAR_NUM;
+
+        if (requiresDividendMultiuse)
+        {
+            LIR::Use dividendUse(BlockRange(), &mulhi->gtOp.gtOp2, mulhi);
+            dividendLclNum = dividendUse.ReplaceWithLclVar(comp, curBBWeight);
+        }
+
+        GenTree* adjusted;
+
+        if (requiresAddSubAdjust)
+        {
+            dividend = comp->gtNewLclvNode(dividendLclNum, type);
+            comp->lvaTable[dividendLclNum].incRefCnts(curBBWeight, comp);
+
+            adjusted = comp->gtNewOperNode(divisorValue > 0 ? GT_ADD : GT_SUB, type, mulhi, dividend);
+            BlockRange().InsertBefore(divMod, dividend, adjusted);
+        }
+        else
+        {
+            adjusted = mulhi;
+        }
+
+        GenTree* shiftBy = comp->gtNewIconNode(genTypeSize(type) * 8 - 1, type);
+        GenTree* signBit = comp->gtNewOperNode(GT_RSZ, type, adjusted, shiftBy);
+        BlockRange().InsertBefore(divMod, shiftBy, signBit);
+
+        LIR::Use adjustedUse(BlockRange(), &signBit->gtOp.gtOp1, signBit);
+        unsigned adjustedLclNum = adjustedUse.ReplaceWithLclVar(comp, curBBWeight);
+        adjusted                = comp->gtNewLclvNode(adjustedLclNum, type);
+        comp->lvaTable[adjustedLclNum].incRefCnts(curBBWeight, comp);
+        BlockRange().InsertBefore(divMod, adjusted);
+
+        if (requiresShiftAdjust)
+        {
+            shiftBy  = comp->gtNewIconNode(shift, TYP_INT);
+            adjusted = comp->gtNewOperNode(GT_RSH, type, adjusted, shiftBy);
+            BlockRange().InsertBefore(divMod, shiftBy, adjusted);
+        }
+
+        if (isDiv)
+        {
+            divMod->SetOperRaw(GT_ADD);
+            divMod->gtOp.gtOp1 = adjusted;
+            divMod->gtOp.gtOp2 = signBit;
+        }
+        else
+        {
+            GenTree* div = comp->gtNewOperNode(GT_ADD, type, adjusted, signBit);
+
+            dividend = comp->gtNewLclvNode(dividendLclNum, type);
+            comp->lvaTable[dividendLclNum].incRefCnts(curBBWeight, comp);
+
+            // divisor % dividend = dividend - divisor x div
+            GenTree* divisor = comp->gtNewIconNode(divisorValue, type);
+            GenTree* mul     = comp->gtNewOperNode(GT_MUL, type, div, divisor);
+            BlockRange().InsertBefore(divMod, dividend, div, divisor, mul);
+
+            divMod->SetOperRaw(GT_SUB);
+            divMod->gtOp.gtOp1 = dividend;
+            divMod->gtOp.gtOp2 = mul;
+        }
+
+        return mulhi;
+#else
+        // Currently there's no GT_MULHI for ARM32/64
         return next;
+#endif
     }
 
-    // We're committed to the conversion now. Go find the use.
+    // We're committed to the conversion now. Go find the use if any.
     LIR::Use use;
     if (!BlockRange().TryGetUse(node, &use))
     {
-        assert(!"signed DIV/MOD node is unused");
         return next;
     }
 
@@ -3783,8 +4013,6 @@ void Lowering::LowerStoreInd(GenTree* node)
 void Lowering::LowerBlockStore(GenTreeBlk* blkNode)
 {
     GenTree* src = blkNode->Data();
-    // TODO-1stClassStructs: Don't require this.
-    assert(blkNode->OperIsInitBlkOp() || !src->OperIsLocal());
     TryCreateAddrMode(LIR::Use(BlockRange(), &blkNode->Addr(), blkNode), false);
 }
 

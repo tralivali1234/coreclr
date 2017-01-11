@@ -16,6 +16,10 @@ void genCodeForTreeNode(GenTreePtr treeNode);
 
 void genCodeForBinary(GenTreePtr treeNode);
 
+#if defined(_TARGET_X86_)
+void genCodeForLongUMod(GenTreeOp* node);
+#endif // _TARGET_X86_
+
 void genCodeForDivMod(GenTreeOp* treeNode);
 
 void genCodeForMulHi(GenTreeOp* treeNode);
@@ -64,7 +68,8 @@ enum SIMDScalarMoveType
 };
 
 instruction getOpForSIMDIntrinsic(SIMDIntrinsicID intrinsicId, var_types baseType, unsigned* ival = nullptr);
-void genSIMDScalarMove(var_types type, regNumber target, regNumber src, SIMDScalarMoveType moveType);
+void genSIMDScalarMove(
+    var_types targetType, var_types type, regNumber target, regNumber src, SIMDScalarMoveType moveType);
 void genSIMDZero(var_types targetType, var_types baseType, regNumber targetReg);
 void genSIMDIntrinsicInit(GenTreeSIMD* simdNode);
 void genSIMDIntrinsicInitN(GenTreeSIMD* simdNode);
@@ -90,7 +95,10 @@ void genSIMDCheck(GenTree* treeNode);
 void genStoreIndTypeSIMD12(GenTree* treeNode);
 void genStoreLclFldTypeSIMD12(GenTree* treeNode);
 void genLoadIndTypeSIMD12(GenTree* treeNode);
-void genLoadLclFldTypeSIMD12(GenTree* treeNode);
+void genLoadLclTypeSIMD12(GenTree* treeNode);
+#ifdef _TARGET_X86_
+void genPutArgStkSIMD12(GenTree* treeNode);
+#endif // _TARGET_X86_
 #endif // FEATURE_SIMD
 
 #if !defined(_TARGET_64BIT_)
@@ -163,7 +171,9 @@ void genCodeForCpBlkUnroll(GenTreeBlk* cpBlkNode);
 
 #ifdef FEATURE_PUT_STRUCT_ARG_STK
 #ifdef _TARGET_X86_
-bool genAdjustStackForPutArgStk(GenTreePutArgStk* putArgStk, bool isSrcInMemory);
+bool genAdjustStackForPutArgStk(GenTreePutArgStk* putArgStk);
+void genPushReg(var_types type, regNumber srcReg);
+void genPutArgStkFieldList(GenTreePutArgStk* putArgStk);
 #endif // _TARGET_X86_
 
 void genPutStructArgStk(GenTreePutArgStk* treeNode);
@@ -247,7 +257,8 @@ unsigned m_stkArgOffset;
 
 #ifdef DEBUG
 GenTree* lastConsumedNode;
-void genCheckConsumeNode(GenTree* treeNode);
+void genNumberOperandUse(GenTree* const operand, int& useNum) const;
+void genCheckConsumeNode(GenTree* const node);
 #else  // !DEBUG
 inline void genCheckConsumeNode(GenTree* treeNode)
 {

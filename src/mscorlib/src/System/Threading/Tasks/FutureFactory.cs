@@ -15,6 +15,7 @@ using System.Security;
 using System.Security.Permissions;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Diagnostics;
 using System.Diagnostics.Contracts;
 using System.Runtime.Versioning;
 
@@ -38,7 +39,6 @@ namespace System.Threading.Tasks
     /// <see cref="System.Threading.Tasks.Task{TResult}.Factory">Task{TResult}.Factory</see> property.
     /// </para>
     /// </remarks>
-    [HostProtection(Synchronization = true, ExternalThreading = true)]
     public class TaskFactory<TResult>
     {
         // Member variables, DefaultScheduler, other properties and ctors 
@@ -832,32 +832,17 @@ namespace System.Threading.Tasks
 
             try
             {
-                // Do NOT change the code below. 
-                // 4.5 relies on the fact that IAsyncResult CompletedSynchronously flag needs to be set correctly,
-                // sadly this has not been the case that is why the behaviour from 4.5 broke 4.0 buggy apps. Any other
-                // change will likely brake 4.5 behavior so if possible never touch this code again.
-                if (BinaryCompatibility.TargetsAtLeast_Desktop_V4_5)
+                //This is 4.5 behaviour
+                //if we don't require synchronization, a faster set result path is taken
+                var asyncResult = beginMethod(iar =>
                 {
-                    //This is 4.5 behaviour
-                    //if we don't require synchronization, a faster set result path is taken
-                    var asyncResult = beginMethod(iar =>
-                    {
-                        if (!iar.CompletedSynchronously)
-                            FromAsyncCoreLogic(iar, endFunction, endAction, promise, requiresSynchronization: true);
-                    }, state);
-                    if (asyncResult.CompletedSynchronously)
-                    {
-                        Contract.Assert(asyncResult.IsCompleted, "If the operation completed synchronously, it must be completed.");
-                        FromAsyncCoreLogic(asyncResult, endFunction, endAction, promise, requiresSynchronization: false);
-                    }
-                }
-                else
-                {
-                    //This is the original 4.0 behaviour
-                    var asyncResult = beginMethod(iar =>
-                    {
+                    if (!iar.CompletedSynchronously)
                         FromAsyncCoreLogic(iar, endFunction, endAction, promise, requiresSynchronization: true);
-                    }, state);
+                }, state);
+                if (asyncResult.CompletedSynchronously)
+                {
+                    Debug.Assert(asyncResult.IsCompleted, "If the operation completed synchronously, it must be completed.");
+                    FromAsyncCoreLogic(asyncResult, endFunction, endAction, promise, requiresSynchronization: false);
                 }
             }
             catch
@@ -969,31 +954,16 @@ namespace System.Threading.Tasks
 
             try
             {
-                // Do NOT change the code below. 
-                // 4.5 relies on the fact that IAsyncResult CompletedSynchronously flag needs to be set correctly,
-                // sadly this has not been the case that is why the behaviour from 4.5 broke 4.0 buggy apps. Any other
-                // change will likely brake 4.5 behavior so if possible never touch this code again.
-                if (BinaryCompatibility.TargetsAtLeast_Desktop_V4_5)
+                //if we don't require synchronization, a faster set result path is taken
+                var asyncResult = beginMethod(arg1, iar =>
                 {
-                    //if we don't require synchronization, a faster set result path is taken
-                    var asyncResult = beginMethod(arg1, iar =>
-                    {
-                        if (!iar.CompletedSynchronously)
-                            FromAsyncCoreLogic(iar, endFunction, endAction, promise, requiresSynchronization: true);
-                    }, state);
-                    if (asyncResult.CompletedSynchronously)
-                    {
-                        Contract.Assert(asyncResult.IsCompleted, "If the operation completed synchronously, it must be completed.");
-                        FromAsyncCoreLogic(asyncResult, endFunction, endAction, promise, requiresSynchronization: false);
-                    }
-                }
-                else
-                {
-                    //quirk for previous versions
-                    var asyncResult = beginMethod(arg1, iar =>
-                    {
+                    if (!iar.CompletedSynchronously)
                         FromAsyncCoreLogic(iar, endFunction, endAction, promise, requiresSynchronization: true);
-                    }, state);
+                }, state);
+                if (asyncResult.CompletedSynchronously)
+                {
+                    Debug.Assert(asyncResult.IsCompleted, "If the operation completed synchronously, it must be completed.");
+                    FromAsyncCoreLogic(asyncResult, endFunction, endAction, promise, requiresSynchronization: false);
                 }
             }
             catch
@@ -1114,31 +1084,16 @@ namespace System.Threading.Tasks
 
             try
             {
-                // Do NOT change the code below. 
-                // 4.5 relies on the fact that IAsyncResult CompletedSynchronously flag needs to be set correctly,
-                // sadly this has not been the case that is why the behaviour from 4.5 broke 4.0 buggy apps. Any other
-                // change will likely brake 4.5 behavior so if possible never touch this code again.
-                if (BinaryCompatibility.TargetsAtLeast_Desktop_V4_5)
+                //if we don't require synchronization, a faster set result path is taken
+                var asyncResult = beginMethod(arg1, arg2, iar =>
                 {
-                    //if we don't require synchronization, a faster set result path is taken
-                    var asyncResult = beginMethod(arg1, arg2, iar =>
-                    {
-                        if (!iar.CompletedSynchronously)
-                            FromAsyncCoreLogic(iar, endFunction, endAction, promise, requiresSynchronization: true);
-                    }, state);
-                    if (asyncResult.CompletedSynchronously)
-                    {
-                        Contract.Assert(asyncResult.IsCompleted, "If the operation completed synchronously, it must be completed.");
-                        FromAsyncCoreLogic(asyncResult, endFunction, endAction, promise, requiresSynchronization: false);
-                    }
-                }
-                else
-                {
-                    //quirk for previous versions
-                    var asyncResult = beginMethod(arg1, arg2, iar =>
-                    {
+                    if (!iar.CompletedSynchronously)
                         FromAsyncCoreLogic(iar, endFunction, endAction, promise, requiresSynchronization: true);
-                    }, state);
+                }, state);
+                if (asyncResult.CompletedSynchronously)
+                {
+                    Debug.Assert(asyncResult.IsCompleted, "If the operation completed synchronously, it must be completed.");
+                    FromAsyncCoreLogic(asyncResult, endFunction, endAction, promise, requiresSynchronization: false);
                 }
             }
             catch
@@ -1266,31 +1221,16 @@ namespace System.Threading.Tasks
 
             try
             {
-                // Do NOT change the code below. 
-                // 4.5 relies on the fact that IAsyncResult CompletedSynchronously flag needs to be set correctly,
-                // sadly this has not been the case that is why the behaviour from 4.5 broke 4.0 buggy apps. Any other
-                // change will likely brake 4.5 behavior so if possible never touch this code again.
-                if (BinaryCompatibility.TargetsAtLeast_Desktop_V4_5)
+                //if we don't require synchronization, a faster set result path is taken
+                var asyncResult = beginMethod(arg1, arg2, arg3, iar =>
                 {
-                    //if we don't require synchronization, a faster set result path is taken
-                    var asyncResult = beginMethod(arg1, arg2, arg3, iar =>
-                    {
-                        if (!iar.CompletedSynchronously)
-                            FromAsyncCoreLogic(iar, endFunction, endAction, promise, requiresSynchronization: true);
-                    }, state);
-                    if (asyncResult.CompletedSynchronously)
-                    {
-                        Contract.Assert(asyncResult.IsCompleted, "If the operation completed synchronously, it must be completed.");
-                        FromAsyncCoreLogic(asyncResult, endFunction, endAction, promise, requiresSynchronization: false);
-                    }
-                }
-                else
-                {
-                    //quirk for previous versions
-                    var asyncResult = beginMethod(arg1, arg2, arg3, iar =>
-                    {
+                    if (!iar.CompletedSynchronously)
                         FromAsyncCoreLogic(iar, endFunction, endAction, promise, requiresSynchronization: true);
-                    }, state);
+                }, state);
+                if (asyncResult.CompletedSynchronously)
+                {
+                    Debug.Assert(asyncResult.IsCompleted, "If the operation completed synchronously, it must be completed.");
+                    FromAsyncCoreLogic(asyncResult, endFunction, endAction, promise, requiresSynchronization: false);
                 }
             }
             catch
@@ -1330,9 +1270,9 @@ namespace System.Threading.Tasks
             where TInstance : class
         {
             // Validate arguments, but only with asserts, as this is an internal only implementation.
-            Contract.Assert(thisRef != null, "Expected a non-null thisRef");
-            Contract.Assert(beginMethod != null, "Expected a non-null beginMethod");
-            Contract.Assert(endMethod != null, "Expected a non-null endMethod");
+            Debug.Assert(thisRef != null, "Expected a non-null thisRef");
+            Debug.Assert(beginMethod != null, "Expected a non-null beginMethod");
+            Debug.Assert(endMethod != null, "Expected a non-null endMethod");
 
             // Create the promise and start the operation.
             // No try/catch is necessary here as we want exceptions to bubble out, and because
@@ -1345,7 +1285,7 @@ namespace System.Threading.Tasks
             // If it completed synchronously, we'll handle that here.
             if (asyncResult.CompletedSynchronously)
             {
-                Contract.Assert(asyncResult.IsCompleted, "If the operation completed synchronously, it must be completed.");
+                Debug.Assert(asyncResult.IsCompleted, "If the operation completed synchronously, it must be completed.");
                 promise.Complete(thisRef, endMethod, asyncResult, requiresSynchronization: false);
             }
 
@@ -1425,7 +1365,7 @@ namespace System.Threading.Tasks
                 TInstance thisRef, Func<TInstance, IAsyncResult, TResult> endMethod, IAsyncResult asyncResult,
                 bool requiresSynchronization)
             {
-                Contract.Assert(!IsCompleted, "The task should not have been completed yet.");
+                Debug.Assert(!IsCompleted, "The task should not have been completed yet.");
 
                 // Run the end method and complete the task
                 bool successfullySet = false;
@@ -1454,7 +1394,7 @@ namespace System.Threading.Tasks
                 {
                     successfullySet = TrySetException(exc);
                 }
-                Contract.Assert(successfullySet, "Expected the task to not yet be completed");
+                Debug.Assert(successfullySet, "Expected the task to not yet be completed");
             }
         }
 
@@ -1801,7 +1741,7 @@ namespace System.Threading.Tasks
             }
             else
             {
-                Contract.Assert(continuationAction != null);
+                Debug.Assert(continuationAction != null);
 
                 return starter.ContinueWith<TResult>(
                    // use a cached delegate
@@ -1854,7 +1794,7 @@ namespace System.Threading.Tasks
             }
             else
             {
-                Contract.Assert(continuationAction != null);
+                Debug.Assert(continuationAction != null);
                 return starter.ContinueWith<TResult>(
                     //the following delegate avoids closure capture as much as possible
                     //completedTasks.Result == tasksCopy;
@@ -2200,7 +2140,7 @@ namespace System.Threading.Tasks
             }
             else
             {
-                Contract.Assert(continuationAction != null);
+                Debug.Assert(continuationAction != null);
                 return starter.ContinueWith<TResult>(
                     //the following delegate avoids closure capture as much as possible
                     //completedTask.Result is the winning task; state == continuationAction
@@ -2246,7 +2186,7 @@ namespace System.Threading.Tasks
             }
             else
             {
-                Contract.Assert(continuationAction != null);
+                Debug.Assert(continuationAction != null);
                 return starter.ContinueWith<TResult>(
                     // Use a cached delegate
                     GenericDelegateCache<TAntecedentResult,TResult>.CWAnyActionDelegate,

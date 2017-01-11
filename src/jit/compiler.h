@@ -691,6 +691,17 @@ public:
         // is now TYP_INT in the local variable table. It's not really unused, because it's in the tree.
 
         assert(varTypeIsStruct(lvType) || (lvType == TYP_BLK) || (lvPromoted && lvUnusedStruct));
+
+#if defined(FEATURE_SIMD) && !defined(_TARGET_64BIT_)
+        // For 32-bit architectures, we make local variable SIMD12 types 16 bytes instead of just 12. We can't do
+        // this for arguments, which must be passed according the defined ABI.
+        if ((lvType == TYP_SIMD12) && !lvIsParam)
+        {
+            assert(lvExactSize == 12);
+            return 16;
+        }
+#endif // defined(FEATURE_SIMD) && !defined(_TARGET_64BIT_)
+
         return (unsigned)(roundUp(lvExactSize, TARGET_POINTER_SIZE));
     }
 
@@ -1925,6 +1936,11 @@ public:
 
     GenTreePtr gtNewOneConNode(var_types type);
 
+#ifdef FEATURE_SIMD
+    GenTreePtr gtNewSIMDVectorZero(var_types simdType, var_types baseType, unsigned size);
+    GenTreePtr gtNewSIMDVectorOne(var_types simdType, var_types baseType, unsigned size);
+#endif
+
     GenTreeBlk* gtNewBlkOpNode(
         genTreeOps oper, GenTreePtr dst, GenTreePtr srcOrFillVal, GenTreePtr sizeOrClsTok, bool isVolatile);
 
@@ -2334,7 +2350,8 @@ public:
         DNER_VMNeedsStackAddr,
         DNER_LiveInOutOfHandler,
         DNER_LiveAcrossUnmanagedCall,
-        DNER_BlockOp, // Is read or written via a block operation that explicitly takes the address.
+        DNER_BlockOp,     // Is read or written via a block operation that explicitly takes the address.
+        DNER_IsStructArg, // Is a struct passed as an argument in a way that requires a stack location.
 #ifdef JIT32_GCENCODER
         DNER_PinningRef,
 #endif
@@ -2496,7 +2513,6 @@ public:
 
     void lvaInit();
 
-    unsigned lvaArgSize(const void* argTok);
     unsigned lvaLclSize(unsigned varNum);
     unsigned lvaLclExactSize(unsigned varNum);
 
@@ -2769,9 +2785,10 @@ protected:
 
     void impImportNewObjArray(CORINFO_RESOLVED_TOKEN* pResolvedToken, CORINFO_CALL_INFO* pCallInfo);
 
-    bool impCanPInvokeInline(var_types callRetTyp);
-    bool impCanPInvokeInlineCallSite(var_types callRetTyp);
-    void impCheckForPInvokeCall(GenTreePtr call, CORINFO_METHOD_HANDLE methHnd, CORINFO_SIG_INFO* sig, unsigned mflags);
+    bool impCanPInvokeInline();
+    bool impCanPInvokeInlineCallSite(BasicBlock* block);
+    void impCheckForPInvokeCall(
+        GenTreePtr call, CORINFO_METHOD_HANDLE methHnd, CORINFO_SIG_INFO* sig, unsigned mflags, BasicBlock* block);
     GenTreePtr impImportIndirectCall(CORINFO_SIG_INFO* sig, IL_OFFSETX ilOffset = BAD_IL_OFFSET);
     void impPopArgsForUnmanagedCall(GenTreePtr call, CORINFO_SIG_INFO* sig);
 
@@ -2819,7 +2836,6 @@ protected:
 
     void impImportLeave(BasicBlock* block);
     void impResetLeaveBlock(BasicBlock* block, unsigned jmpAddr);
-    BOOL       impLocAllocOnStack();
     GenTreePtr impIntrinsic(CORINFO_CLASS_HANDLE  clsHnd,
                             CORINFO_METHOD_HANDLE method,
                             CORINFO_SIG_INFO*     sig,
@@ -3510,7 +3526,7 @@ public:
     void fgMorphStmts(BasicBlock* block, bool* mult, bool* lnot, bool* loadw);
     void fgMorphBlocks();
 
-    bool fgMorphBlockStmt(BasicBlock* block, GenTreePtr stmt DEBUGARG(const char* msg));
+    bool fgMorphBlockStmt(BasicBlock* block, GenTreeStmt* stmt DEBUGARG(const char* msg));
 
     void fgCheckArgCnt();
     void fgSetOptions();
@@ -3559,10 +3575,9 @@ public:
     void fgLocalVarLivenessInit();
 
 #ifdef LEGACY_BACKEND
-    GenTreePtr fgLegacyPerStatementLocalVarLiveness(GenTreePtr startNode, GenTreePtr relopNode, GenTreePtr asgdLclVar);
+    GenTreePtr fgLegacyPerStatementLocalVarLiveness(GenTreePtr startNode, GenTreePtr relopNode);
 #else
-    void fgPerNodeLocalVarLiveness(GenTree* node, GenTree* asgdLclVar);
-    void fgPerStatementLocalVarLiveness(GenTree* node, GenTree* asgdLclVar);
+    void fgPerNodeLocalVarLiveness(GenTree* node);
 #endif
     void fgPerBlockLocalVarLiveness();
 
@@ -3769,13 +3784,8 @@ public:
 
     // Utility functions for fgValueNumber.
 
-    // Perform value-numbering for the trees in "blk".  When giving VN's to the SSA
-    // names defined by phi definitions at the start of "blk", "newVNsForPhis" indicates
-    // that these should be given new VN's, irrespective of the values of the LHS.
-    // If "false", then we may assume that all inputs to phi RHS's of such definitions
-    // have already been assigned value numbers; if they are all assigned the *same* value
-    // number, then the LHS SSA name gets the same VN.
-    void fgValueNumberBlock(BasicBlock* blk, bool newVNsForPhis);
+    // Perform value-numbering for the trees in "blk".
+    void fgValueNumberBlock(BasicBlock* blk);
 
     // Requires that "entryBlock" is the entry block of loop "loopNum", and that "loopNum" is the
     // innermost loop of which "entryBlock" is the entry.  Returns the value number that should be
@@ -4570,16 +4580,14 @@ private:
     GenTreePtr fgMorphGetStructAddr(GenTreePtr* pTree, CORINFO_CLASS_HANDLE clsHnd, bool isRValue = false);
     GenTreePtr fgMorphBlkNode(GenTreePtr tree, bool isDest);
     GenTreePtr fgMorphBlockOperand(GenTreePtr tree, var_types asgType, unsigned blockWidth, bool isDest);
+    void fgMorphUnsafeBlk(GenTreeObj* obj);
     GenTreePtr fgMorphCopyBlock(GenTreePtr tree);
     GenTreePtr fgMorphForRegisterFP(GenTreePtr tree);
     GenTreePtr fgMorphSmpOp(GenTreePtr tree, MorphAddrContext* mac = nullptr);
     GenTreePtr fgMorphSmpOpPre(GenTreePtr tree);
-    GenTreePtr fgMorphDivByConst(GenTreeOp* tree);
-    GenTreePtr fgMorphModByConst(GenTreeOp* tree);
     GenTreePtr fgMorphModToSubMulDiv(GenTreeOp* tree);
     GenTreePtr fgMorphSmpOpOptional(GenTreeOp* tree);
     GenTreePtr fgMorphRecognizeBoxNullable(GenTree* compare);
-    bool fgShouldUseMagicNumberDivide(GenTreeOp* tree);
 
     GenTreePtr fgMorphToEmulatedFP(GenTreePtr tree);
     GenTreePtr fgMorphConst(GenTreePtr tree);
@@ -4589,6 +4597,7 @@ public:
 
 private:
 #if LOCAL_ASSERTION_PROP
+    void fgKillDependentAssertionsSingle(unsigned lclNum DEBUGARG(GenTreePtr tree));
     void fgKillDependentAssertions(unsigned lclNum DEBUGARG(GenTreePtr tree));
 #endif
     void fgMorphTreeDone(GenTreePtr tree, GenTreePtr oldTree = nullptr DEBUGARG(int morphNum = 0));
@@ -4607,7 +4616,7 @@ private:
     bool fgCurHeapDef;   // True iff the current basic block defines the heap.
     bool fgCurHeapHavoc; // True if  the current basic block is known to set the heap to a "havoc" value.
 
-    void fgMarkUseDef(GenTreeLclVarCommon* tree, GenTree* asgdLclVar = nullptr);
+    void fgMarkUseDef(GenTreeLclVarCommon* tree);
 
     void fgBeginScopeLife(VARSET_TP* inScope, VarScopeDsc* var);
     void fgEndScopeLife(VARSET_TP* inScope, VarScopeDsc* var);
@@ -6383,10 +6392,19 @@ public:
 #endif
     }
 
+    inline bool IsTargetAbi(CORINFO_RUNTIME_ABI abi)
+    {
+#if COR_JIT_EE_VERSION > 460
+        return eeGetEEInfo()->targetAbi == abi;
+#else
+        return CORINFO_DESKTOP_ABI == abi;
+#endif
+    }
+
     inline bool generateCFIUnwindCodes()
     {
-#if COR_JIT_EE_VERSION > 460 && defined(UNIX_AMD64_ABI)
-        return eeGetEEInfo()->targetAbi == CORINFO_CORERT_ABI;
+#ifdef UNIX_AMD64_ABI
+        return IsTargetAbi(CORINFO_CORERT_ABI);
 #else
         return false;
 #endif
@@ -6881,6 +6899,11 @@ private:
             return InstructionSet_AVX;
         }
 
+        if (CanUseSSE3_4())
+        {
+            return InstructionSet_SSE3_4;
+        }
+
         // min bar is SSE2
         assert(canUseSSE2());
         return InstructionSet_SSE2;
@@ -7096,6 +7119,9 @@ private:
                                  var_types*           baseType,
                                  GenTree**            op1,
                                  GenTree**            op2);
+
+    // Creates a GT_SIMD tree for Abs intrinsic.
+    GenTreePtr impSIMDAbs(CORINFO_CLASS_HANDLE typeHnd, var_types baseType, unsigned simdVectorSize, GenTree* op1);
 
 #if defined(_TARGET_XARCH_) && !defined(LEGACY_BACKEND)
     // Transforms operands and returns the SIMD intrinsic to be applied on
@@ -7313,6 +7339,16 @@ private:
 
     // Returns true if the TYP_SIMD locals on stack are aligned at their
     // preferred byte boundary specified by getSIMDTypeAlignment().
+    //
+    // As per the Intel manual, the preferred alignment for AVX vectors is 32-bytes. On Amd64,
+    // RSP/EBP is aligned at 16-bytes, therefore to align SIMD types at 32-bytes we need even
+    // RSP/EBP to be 32-byte aligned. It is not clear whether additional stack space used in
+    // aligning stack is worth the benefit and for now will use 16-byte alignment for AVX
+    // 256-bit vectors with unaligned load/stores to/from memory. On x86, the stack frame
+    // is aligned to 4 bytes. We need to extend existing support for double (8-byte) alignment
+    // to 16 or 32 byte alignment for frames with local SIMD vars, if that is determined to be
+    // profitable.
+    //
     bool isSIMDTypeLocalAligned(unsigned varNum)
     {
 #if defined(FEATURE_SIMD) && ALIGN_SIMD_TYPES
@@ -7322,8 +7358,7 @@ private:
             int  off = lvaFrameAddress(varNum, &ebpBased);
             // TODO-Cleanup: Can't this use the lvExactSize on the varDsc?
             int  alignment = getSIMDTypeAlignment(lvaTable[varNum].lvType);
-            bool isAligned = ((off % alignment) == 0);
-            noway_assert(isAligned || lvaTable[varNum].lvIsParam);
+            bool isAligned = (alignment <= STACK_ALIGN) && ((off % alignment) == 0);
             return isAligned;
         }
 #endif // FEATURE_SIMD
@@ -7336,6 +7371,16 @@ private:
     {
 #ifdef _TARGET_XARCH_
         return opts.compCanUseSSE2;
+#else
+        return false;
+#endif
+    }
+
+    // Whether SSE3, SSE3, SSE4.1 and SSE4.2 is available
+    bool CanUseSSE3_4() const
+    {
+#ifdef _TARGET_XARCH_
+        return opts.compCanUseSSE3_4;
 #else
         return false;
 #endif
@@ -7453,7 +7498,8 @@ public:
         bool compUseFCOMI;
         bool compUseCMOV;
 #ifdef _TARGET_XARCH_
-        bool compCanUseSSE2; // Allow CodeGen to use "movq XMM" instructions
+        bool compCanUseSSE2;   // Allow CodeGen to use "movq XMM" instructions
+        bool compCanUseSSE3_4; // Allow CodeGen to use SSE3, SSSE3, SSE4.1 and SSE4.2 instructions
 
 #ifdef FEATURE_AVX_SUPPORT
         bool compCanUseAVX; // Allow CodeGen to use AVX 256-bit vectors for SIMD operations
@@ -7578,8 +7624,6 @@ public:
 #else
         static const bool compNoPInvokeInlineCB;
 #endif
-
-        bool compMustInlinePInvokeCalli; // Unmanaged CALLI in IL stubs must be inlined
 
 #ifdef DEBUG
         bool compGcChecks;         // Check arguments and return values to ensure they are sane

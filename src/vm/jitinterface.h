@@ -391,7 +391,10 @@ void ValidateWriteBarrierHelpers();
 
 extern "C"
 {
+#ifdef _TARGET_X86_
+    // UNIXTODO: Disable JIT_EndCatch after revising the jitter not to use this (for x86/Linux)
     void STDCALL JIT_EndCatch();               // JIThelp.asm/JIThelp.s
+#endif // _TARGET_X86_
 
     void STDCALL JIT_ByRefWriteBarrier();      // JIThelp.asm/JIThelp.s
 
@@ -1655,7 +1658,7 @@ struct VirtualFunctionPointerArgs
 
 FCDECL2(CORINFO_MethodPtr, JIT_VirtualFunctionPointer_Dynamic, Object * objectUNSAFE, VirtualFunctionPointerArgs * pArgs);
 
-typedef TADDR (F_CALL_CONV * FnStaticBaseHelper)(TADDR arg0, TADDR arg1);
+typedef HCCALL2_PTR(TADDR, FnStaticBaseHelper, TADDR arg0, TADDR arg1);
 
 struct StaticFieldAddressArgs
 {
@@ -1693,6 +1696,6 @@ public:
 
 CORJIT_FLAGS GetDebuggerCompileFlags(Module* pModule, CORJIT_FLAGS flags);
 
-bool TrackAllocationsEnabled();
+bool __stdcall TrackAllocationsEnabled();
 
 #endif // JITINTERFACE_H

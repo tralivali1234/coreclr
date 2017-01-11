@@ -23,25 +23,46 @@ include_directories(include)
 
 # Compile options
 
-if(CMAKE_SYSTEM_PROCESSOR STREQUAL x86_64 OR CMAKE_SYSTEM_PROCESSOR STREQUAL amd64 OR CMAKE_SYSTEM_PROCESSOR STREQUAL AMD64)
-  set(PAL_CMAKE_PLATFORM_ARCH_AMD64 1)
-  add_definitions(-D_AMD64_)
-elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL armv7l)
-  set(PAL_CMAKE_PLATFORM_ARCH_ARM 1)
-  add_definitions(-D_ARM_)
-elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL aarch64)
-  set(PAL_CMAKE_PLATFORM_ARCH_ARM64 1)
-  add_definitions(-D_ARM64_)
+if(CLR_CROSS_COMPONENTS_BUILD)
+    if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL x86_64 OR CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL amd64)
+        if(CLR_CMAKE_TARGET_ARCH STREQUAL "arm")
+            set(PAL_CMAKE_PLATFORM_ARCH_I386 1)
+            add_definitions(-D_X86_)
+        else()
+            set(PAL_CMAKE_PLATFORM_ARCH_AMD64 1)
+            add_definitions(-D_AMD64_)
+        endif()
+    elseif(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL i686)
+        set(PAL_CMAKE_PLATFORM_ARCH_I386 1)
+        add_definitions(-D_X86_)
+    else()
+        message(FATAL_ERROR "Only AMD64, I386 host for cross-architecture component is supported")
+    endif()
 else()
-  message(FATAL_ERROR "Only ARM and AMD64 is supported")
+    if(CMAKE_SYSTEM_PROCESSOR STREQUAL x86_64 OR CMAKE_SYSTEM_PROCESSOR STREQUAL amd64 OR CMAKE_SYSTEM_PROCESSOR STREQUAL AMD64)
+        set(PAL_CMAKE_PLATFORM_ARCH_AMD64 1)
+        add_definitions(-D_AMD64_)
+    elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL armv7l)
+        set(PAL_CMAKE_PLATFORM_ARCH_ARM 1)
+        add_definitions(-D_ARM_)
+    elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL aarch64)
+        set(PAL_CMAKE_PLATFORM_ARCH_ARM64 1)
+        add_definitions(-D_ARM64_)
+    elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL i686)
+        set(PAL_CMAKE_PLATFORM_ARCH_I386 1)
+        add_definitions(-D_X86_)
+    else()
+        message(FATAL_ERROR "Only ARM, AMD64, ARM64 and I386 is supported")
+    endif()
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
   add_definitions(-D_TARGET_MAC64)
+  add_definitions(-DXSTATE_SUPPORTED)
   set(PLATFORM_SOURCES
-    arch/i386/activationhandlerwrapper.S
-    arch/i386/context.S
-    arch/i386/dispatchexceptionwrapper.S
+    arch/amd64/activationhandlerwrapper.S
+    arch/amd64/context.S
+    arch/amd64/dispatchexceptionwrapper.S
     exception/machexception.cpp
     exception/machmessage.cpp
   )
@@ -61,6 +82,8 @@ elseif(PAL_CMAKE_PLATFORM_ARCH_ARM)
 elseif(PAL_CMAKE_PLATFORM_ARCH_ARM64)
   add_definitions(-DBIT64=1)
   add_definitions(-D_WIN64=1)
+elseif(PAL_CMAKE_PLATFORM_ARCH_I386)
+  add_definitions(-DBIT32=1)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Linux AND NOT CLR_CMAKE_PLATFORM_ALPINE_LINUX)
@@ -80,10 +103,10 @@ add_compile_options(-fPIC)
 
 if(PAL_CMAKE_PLATFORM_ARCH_AMD64)
   set(ARCH_SOURCES
-    arch/i386/context2.S
-    arch/i386/debugbreak.S
-    arch/i386/exceptionhelper.S
-    arch/i386/processor.cpp
+    arch/amd64/context2.S
+    arch/amd64/debugbreak.S
+    arch/amd64/exceptionhelper.S
+    arch/amd64/processor.cpp
   )
 elseif(PAL_CMAKE_PLATFORM_ARCH_ARM)
   set(ARCH_SOURCES
@@ -98,6 +121,13 @@ elseif(PAL_CMAKE_PLATFORM_ARCH_ARM64)
     arch/arm64/debugbreak.S
     arch/arm64/exceptionhelper.S
     arch/arm64/processor.cpp
+  )
+elseif(PAL_CMAKE_PLATFORM_ARCH_I386)
+  set(ARCH_SOURCES
+    arch/i386/context2.S
+    arch/i386/debugbreak.S
+    arch/i386/exceptionhelper.S
+    arch/i386/processor.cpp
   )
 endif()
 
@@ -173,8 +203,8 @@ set(SOURCES
   safecrt/safecrt_winput_s.cpp
   safecrt/safecrt_woutput_s.cpp
   safecrt/splitpath_s.cpp
-  safecrt/sprintf.cpp
-  safecrt/sscanf.cpp
+  safecrt/sprintf_s.cpp
+  safecrt/sscanf_s.cpp
   safecrt/strcat_s.cpp
   safecrt/strcpy_s.cpp
   safecrt/strlen_s.cpp

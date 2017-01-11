@@ -24,7 +24,11 @@ build/
 bld/
 [Bb]in/
 [Oo]bj/
+localpkg/
 msbuild.log
+
+# add back architecture directories ignored in 'Build results'
+!tests/x86
 
 # Visual Studio 2015
 .vs/
@@ -295,6 +299,8 @@ Makefile
 
 # Cross compilation
 cross/rootfs/*
+# add x86 as it is ignored in 'Build results'
+!cross/x86
 
 #python import files
 *.pyc

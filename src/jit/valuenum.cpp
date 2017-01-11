@@ -2082,7 +2082,7 @@ bool ValueNumStore::CanEvalForConstantArgs(VNFunc vnf)
             case GT_ARR_LENGTH:
                 return false;
             case GT_MULHI:
-                // should be rare, not worth the complexity and risk of getting it wrong
+                assert(false && "Unexpected GT_MULHI node encountered before lowering");
                 return false;
             default:
                 return true;
@@ -3781,8 +3781,9 @@ static genTreeOps genTreeOpsIllegalAsVNFunc[] = {GT_IND, // When we do heap memo
                                                  // These need special semantics:
                                                  GT_COMMA, // == second argument (but with exception(s) from first).
                                                  GT_ADDR, GT_ARR_BOUNDS_CHECK,
-                                                 GT_OBJ, // May reference heap memory.
-                                                 GT_BLK, // May reference heap memory.
+                                                 GT_OBJ,      // May reference heap memory.
+                                                 GT_BLK,      // May reference heap memory.
+                                                 GT_INIT_VAL, // Not strictly a pass-through.
 
                                                  // These control-flow operations need no values.
                                                  GT_JTRUE, GT_RETURN, GT_SWITCH, GT_RETFILT, GT_CKFINITE};
@@ -4328,7 +4329,7 @@ void Compiler::fgValueNumber()
         while (vs.m_toDoAllPredsDone.Size() > 0)
         {
             BasicBlock* toDo = vs.m_toDoAllPredsDone.Pop();
-            fgValueNumberBlock(toDo, /*newVNsForPhis*/ false);
+            fgValueNumberBlock(toDo);
             // Record that we've visited "toDo", and add successors to the right sets.
             vs.FinishVisit(toDo);
         }
@@ -4343,7 +4344,7 @@ void Compiler::fgValueNumber()
                 continue; // We may have run out, because of completed blocks on the not-all-preds done list.
             }
 
-            fgValueNumberBlock(toDo, /*newVNsForPhis*/ true);
+            fgValueNumberBlock(toDo);
             // Record that we've visited "toDo", and add successors to the right sest.
             vs.FinishVisit(toDo);
         }
@@ -4356,7 +4357,7 @@ void Compiler::fgValueNumber()
     fgVNPassesCompleted++;
 }
 
-void Compiler::fgValueNumberBlock(BasicBlock* blk, bool newVNsForPhis)
+void Compiler::fgValueNumberBlock(BasicBlock* blk)
 {
     compCurBB = blk;
 
@@ -4940,9 +4941,6 @@ void Compiler::fgValueNumberBlockAssignment(GenTreePtr tree, bool evalAsgLhsInd)
                 }
 #endif // DEBUG
             }
-            // Initblock's are of type void.  Give them the void "value" -- they may occur in argument lists, which we
-            // want to be able to give VN's to.
-            tree->gtVNPair.SetBoth(ValueNumStore::VNForVoid());
         }
         else
         {
@@ -4950,6 +4948,9 @@ void Compiler::fgValueNumberBlockAssignment(GenTreePtr tree, bool evalAsgLhsInd)
             // TODO-CQ: Why not be complete, and get this case right?
             fgMutateHeap(tree DEBUGARG("INITBLK - non local"));
         }
+        // Initblock's are of type void.  Give them the void "value" -- they may occur in argument lists, which we
+        // want to be able to give VN's to.
+        tree->gtVNPair.SetBoth(ValueNumStore::VNForVoid());
     }
     else
     {
@@ -5639,10 +5640,9 @@ void Compiler::fgValueNumberTree(GenTreePtr tree, bool evalAsgLhsInd)
                                 // (we looked in a side table above for its "def" identity).  Look up that value.
                                 ValueNumPair oldLhsVNPair =
                                     lvaTable[lclFld->GetLclNum()].GetPerSsaData(lclFld->GetSsaNum())->m_vnPair;
-                                newLhsVNPair =
-                                    vnStore->VNPairApplySelectorsAssign(oldLhsVNPair, lclFld->gtFieldSeq,
-                                                                        rhsVNPair, // Pre-value.
-                                                                        lvaGetActualType(lclFld->gtLclNum), compCurBB);
+                                newLhsVNPair = vnStore->VNPairApplySelectorsAssign(oldLhsVNPair, lclFld->gtFieldSeq,
+                                                                                   rhsVNPair, // Pre-value.
+                                                                                   lclFld->TypeGet(), compCurBB);
                             }
                         }
                         lvaTable[lclFld->GetLclNum()].GetPerSsaData(lclDefSsaNum)->m_vnPair = newLhsVNPair;
@@ -6282,17 +6282,12 @@ void Compiler::fgValueNumberTree(GenTreePtr tree, bool evalAsgLhsInd)
                     }
                     tree->gtVNPair = vnStore->VNPWithExc(tree->gtVNPair, addrXvnp);
                 }
-                else if (!varTypeIsStruct(tree) && vnStore->GetVNFunc(addrNvnp.GetLiberal(), &funcApp) &&
-                         (funcApp.m_func == VNF_PtrToArrElem))
+                else if (vnStore->GetVNFunc(addrNvnp.GetLiberal(), &funcApp) && (funcApp.m_func == VNF_PtrToArrElem))
                 {
-                    // TODO-1stClassStructs: The above condition need not exclude struct types, but it is
-                    // excluded for now to minimize diffs.
                     fgValueNumberArrIndexVal(tree, &funcApp, addrXvnp.GetLiberal());
                 }
-                else if (!varTypeIsStruct(tree) && addr->IsFieldAddr(this, &obj, &staticOffset, &fldSeq2))
+                else if (addr->IsFieldAddr(this, &obj, &staticOffset, &fldSeq2))
                 {
-                    // TODO-1stClassStructs: The above condition need not exclude struct types, but it is
-                    // excluded for now to minimize diffs.
                     if (fldSeq2 == FieldSeqStore::NotAField())
                     {
                         tree->gtVNPair.SetBoth(vnStore->VNForExpr(compCurBB, tree->TypeGet()));
@@ -6712,7 +6707,7 @@ void Compiler::fgValueNumberCastTree(GenTreePtr tree)
     bool         srcIsUnsigned    = ((tree->gtFlags & GTF_UNSIGNED) != 0);
     bool         hasOverflowCheck = tree->gtOverflowEx();
 
-    assert(genActualType(castToType) == tree->TypeGet()); // Insure that the resultType is correct
+    assert(genActualType(castToType) == genActualType(tree->TypeGet())); // Insure that the resultType is correct
 
     tree->gtVNPair = vnStore->VNPairForCast(srcVNPair, castToType, castFromType, srcIsUnsigned, hasOverflowCheck);
 }

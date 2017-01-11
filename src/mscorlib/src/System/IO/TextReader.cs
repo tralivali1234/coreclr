@@ -14,11 +14,9 @@
 **
 ===========================================================*/
 
-using System;
 using System.Text;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
-using System.Reflection;
 using System.Security.Permissions;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Contracts;
@@ -172,7 +170,6 @@ namespace System.IO {
         }
 
         #region Task based Async APIs
-        [HostProtection(ExternalThreading=true)]
         [ComVisible(false)]
         public virtual Task<String> ReadLineAsync()
         {
@@ -183,7 +180,6 @@ namespace System.IO {
             this, CancellationToken.None, TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
         }
 
-        [HostProtection(ExternalThreading=true)]
         [ComVisible(false)]
         public async virtual Task<String> ReadToEndAsync()
         {
@@ -197,7 +193,6 @@ namespace System.IO {
             return sb.ToString();
         }
 
-        [HostProtection(ExternalThreading=true)]
         [ComVisible(false)]
         public virtual Task<int> ReadAsync(char[] buffer, int index, int count)
         {
@@ -228,7 +223,6 @@ namespace System.IO {
             tuple, CancellationToken.None, TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
         }
 
-        [HostProtection(ExternalThreading=true)]
         [ComVisible(false)]
         public virtual Task<int> ReadBlockAsync(char[] buffer, int index, int count)
         {
@@ -244,7 +238,6 @@ namespace System.IO {
             return ReadBlockAsyncInternal(buffer, index, count);
          }
 
-        [HostProtection(ExternalThreading=true)]
         private async Task<int> ReadBlockAsyncInternal(char[] buffer, int index, int count)
         {
             Contract.Requires(buffer != null);
@@ -263,7 +256,6 @@ namespace System.IO {
         }
         #endregion
 
-        [HostProtection(Synchronization=true)]
         public static TextReader Synchronized(TextReader reader) 
         {
             if (reader==null)

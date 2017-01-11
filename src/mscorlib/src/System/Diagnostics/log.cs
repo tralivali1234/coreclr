@@ -22,7 +22,6 @@ namespace System.Diagnostics {
    // programatically, by registry (specifics....) or environment
    // variables.
     [Serializable]
-    [HostProtection(Synchronization=true, ExternalThreading=true)]
     internal delegate void LogMessageEventHandler(LoggingLevels level, LogSwitch category, 
                                                     String message, 
                                                     StackTrace location);
@@ -240,10 +239,8 @@ namespace System.Diagnostics {
         
     
         // Native method to inform the EE about the creation of a new LogSwitch
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         internal static extern void AddLogSwitch(LogSwitch logSwitch);
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         internal static extern void ModifyLogSwitch (int iNewLevel, String strSwitchName, String strParentName);
     }

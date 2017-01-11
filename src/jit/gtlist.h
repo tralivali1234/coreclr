@@ -93,6 +93,8 @@ GTNODE(SIMD_CHK         , "simdChk"      ,GenTreeBoundsChk   ,0,GTK_SPECIAL|GTK_
 
 GTNODE(ALLOCOBJ         , "allocObj"     ,GenTreeAllocObj    ,0,GTK_UNOP|GTK_EXOP)      // object allocator
 
+GTNODE(INIT_VAL         , "initVal"      ,GenTreeOp          ,0,GTK_UNOP)               // Initialization value for an initBlk
+
 //-----------------------------------------------------------------------------
 //  Binary operators (2 operands):
 //-----------------------------------------------------------------------------
@@ -267,7 +269,7 @@ GTNODE(EMITNOP          , "emitnop"      ,GenTree            ,0,GTK_LEAF|GTK_NOV
 GTNODE(PINVOKE_PROLOG   ,"pinvoke_prolog",GenTree            ,0,GTK_LEAF|GTK_NOVALUE)   // pinvoke prolog seq
 GTNODE(PINVOKE_EPILOG   ,"pinvoke_epilog",GenTree            ,0,GTK_LEAF|GTK_NOVALUE)   // pinvoke epilog seq
 GTNODE(PUTARG_REG       , "putarg_reg"   ,GenTreeOp          ,0,GTK_UNOP)               // operator that places outgoing arg in register
-GTNODE(PUTARG_STK       , "putarg_stk"   ,GenTreePutArgStk   ,0,GTK_UNOP)               // operator that places outgoing arg in stack
+GTNODE(PUTARG_STK       , "putarg_stk"   ,GenTreePutArgStk   ,0,GTK_UNOP|GTK_NOVALUE)   // operator that places outgoing arg in stack
 GTNODE(RETURNTRAP       , "returnTrap"   ,GenTreeOp          ,0,GTK_UNOP|GTK_NOVALUE)   // a conditional call to wait on gc
 GTNODE(SWAP             , "swap"         ,GenTreeOp          ,0,GTK_BINOP|GTK_NOVALUE)  // op1 and op2 swap (registers)
 GTNODE(IL_OFFSET        , "il_offset"    ,GenTreeStmt        ,0,GTK_LEAF|GTK_NOVALUE)   // marks an IL offset for debugging purposes

@@ -130,7 +130,7 @@ inline UINT64 ShiftToHi32Bits(UINT32 x)
     return ret.QuadPart;
 }
 
-#if !defined(_TARGET_X86_)
+#if !defined(_TARGET_X86_) || defined(FEATURE_PAL)
 /*********************************************************************/
 HCIMPL2_VV(INT64, JIT_LMul, INT64 val1, INT64 val2)
 {
@@ -145,7 +145,7 @@ HCIMPL2_VV(INT64, JIT_LMul, INT64 val1, INT64 val2)
     return (val1 * val2);
 }
 HCIMPLEND
-#endif // !defined(_TARGET_X86_)
+#endif // !_TARGET_X86_ || FEATURE_PAL
 
 /*********************************************************************/
 HCIMPL2_VV(INT64, JIT_LMulOvf, INT64 val1, INT64 val2)
@@ -654,7 +654,7 @@ HCIMPL1_V(UINT64, JIT_Dbl2ULngOvf, double val)
 HCIMPLEND
 
 
-#if !defined(_TARGET_X86_)
+#if !defined(_TARGET_X86_) || defined(FEATURE_PAL)
 
 HCIMPL1_V(INT64, JIT_Dbl2Lng, double val)
 {
@@ -755,7 +755,7 @@ HCIMPL2_VV(double, JIT_DblRem, double dividend, double divisor)
 }
 HCIMPLEND
 
-#endif // !defined(_TARGET_X86_)
+#endif // !_TARGET_X86_ || FEATURE_PAL
 
 #include <optdefault.h>
 

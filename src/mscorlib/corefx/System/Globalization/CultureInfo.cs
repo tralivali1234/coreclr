@@ -26,15 +26,10 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-using System;
-using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.Contracts;
-using System.Runtime;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
-using System.Security;
 using System.Threading;
 
 namespace System.Globalization
@@ -434,7 +429,7 @@ namespace System.Globalization
         [OnDeserialized]
         private void OnDeserialized(StreamingContext ctx)
         {
-            Contract.Assert(m_name != null, "[CultureInfo.OnDeserialized] m_name != null");
+            Debug.Assert(m_name != null, "[CultureInfo.OnDeserialized] m_name != null");
             InitializeFromName(m_name, m_useUserOverride);
         }
 
@@ -486,7 +481,7 @@ namespace System.Globalization
                     Init();
                 }
 
-                Contract.Assert(s_userDefaultCulture != null);
+                Debug.Assert(s_userDefaultCulture != null);
                 return s_userDefaultCulture;
             }
 
@@ -534,7 +529,7 @@ namespace System.Globalization
                     Init();
                 }
 
-                Contract.Assert(s_userDefaultCulture != null);
+                Debug.Assert(s_userDefaultCulture != null);
                 return s_userDefaultCulture;
             }
 
@@ -566,7 +561,7 @@ namespace System.Globalization
                 {
                     Init();
                 }
-                Contract.Assert(s_userDefaultCulture != null, "[CultureInfo.InstalledUICulture] s_userDefaultCulture != null");
+                Debug.Assert(s_userDefaultCulture != null, "[CultureInfo.InstalledUICulture] s_userDefaultCulture != null");
                 return s_userDefaultCulture;
             }
         }
@@ -765,7 +760,7 @@ namespace System.Globalization
             get
             {
                 Contract.Ensures(Contract.Result<String>() != null);
-                Contract.Assert(m_name != null, "[CultureInfo.DisplayName] Always expect m_name to be set");
+                Debug.Assert(m_name != null, "[CultureInfo.DisplayName] Always expect m_name to be set");
 
                 return m_cultureData.SLOCALIZEDDISPLAYNAME;
             }
@@ -1108,7 +1103,7 @@ namespace System.Globalization
         //calendars unless they're required.
         internal static Calendar GetCalendarInstanceRare(CalendarId calType)
         {
-            Contract.Assert(calType != CalendarId.GREGORIAN, "calType!=CalendarId.GREGORIAN");
+            Debug.Assert(calType != CalendarId.GREGORIAN, "calType!=CalendarId.GREGORIAN");
 
             switch (calType)
             {
@@ -1152,7 +1147,7 @@ namespace System.Globalization
             {
                 if (calendar == null)
                 {
-                    Contract.Assert(this.m_cultureData.CalendarIds.Length > 0, "this.m_cultureData.CalendarIds.Length > 0");
+                    Debug.Assert(this.m_cultureData.CalendarIds.Length > 0, "this.m_cultureData.CalendarIds.Length > 0");
                     // Get the default calendar for this culture.  Note that the value can be
                     // from registry if this is a user default culture.
                     Calendar newObj = this.m_cultureData.DefaultCalendar;

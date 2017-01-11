@@ -9,6 +9,7 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Diagnostics;
 using System.Diagnostics.Contracts;
 
 namespace System 
@@ -23,7 +24,6 @@ namespace System
         #endregion
 
         #region Private Static Methods
-        [System.Security.SecuritySafeCritical]  // auto-generated
         private static TypeValuesAndNames GetCachedValuesAndNames(RuntimeType enumType, bool getNames)
         {
             TypeValuesAndNames entry = enumType.GenericCache as TypeValuesAndNames;
@@ -47,7 +47,6 @@ namespace System
             return entry;
         }
 
-        [System.Security.SecuritySafeCritical]
         private unsafe String InternalFormattedHexString()
         {
             fixed (void* pValue = &JitHelpers.GetPinningHelper(this).m_data)
@@ -71,7 +70,7 @@ namespace System
                     case CorElementType.U8:
                         return (*(ulong*)pValue).ToString("X16", null);
                     default:
-                        Contract.Assert(false, "Invalid Object type in Format");
+                        Debug.Assert(false, "Invalid Object type in Format");
                         throw new InvalidOperationException(Environment.GetResourceString("InvalidOperation_UnknownEnumType"));
                 }
             }
@@ -106,7 +105,7 @@ namespace System
                     return ((UInt64)(Int64)value).ToString("X16", null);
                 // All unsigned types will be directly cast
                 default:
-                    Contract.Assert(false, "Invalid Object type in Format");
+                    Debug.Assert(false, "Invalid Object type in Format");
                     throw new InvalidOperationException(Environment.GetResourceString("InvalidOperation_UnknownEnumType"));
             }
         }
@@ -157,7 +156,7 @@ namespace System
 
             String[] names = entry.Names;
             ulong[] values = entry.Values;
-            Contract.Assert(names.Length == values.Length);
+            Debug.Assert(names.Length == values.Length);
 
             int index = values.Length - 1;
             StringBuilder retval = new StringBuilder();
@@ -245,27 +244,23 @@ namespace System
                     break;
                 // All unsigned types will be directly cast
                 default:
-                    Contract.Assert(false, "Invalid Object type in ToUInt64");
+                    Debug.Assert(false, "Invalid Object type in ToUInt64");
                     throw new InvalidOperationException(Environment.GetResourceString("InvalidOperation_UnknownEnumType"));
             }
 
             return result;
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         private static extern int InternalCompareTo(Object o1, Object o2);
 
-        [System.Security.SecuritySafeCritical]
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         internal static extern RuntimeType InternalGetUnderlyingType(RuntimeType enumType);
 
-        [System.Security.SecurityCritical]  // auto-generated
         [DllImport(JitHelpers.QCall, CharSet = CharSet.Unicode)]
         [System.Security.SuppressUnmanagedCodeSecurity]
         private static extern void GetEnumValuesAndNames(RuntimeTypeHandle enumType, ObjectHandleOnStack values, ObjectHandleOnStack names, bool getNames);
 
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         private static extern Object InternalBoxEnum(RuntimeType enumType, long value);
         #endregion
@@ -328,7 +323,7 @@ namespace System
                         return m_innerException;
 
                     default:
-                        Contract.Assert(false, "Unknown EnumParseFailure: " + m_failure);
+                        Debug.Assert(false, "Unknown EnumParseFailure: " + m_failure);
                         return new ArgumentException(Environment.GetResourceString("Arg_EnumValueNotFound"));
                 }
             }
@@ -728,7 +723,6 @@ namespace System
         #endregion
 
         #region Private Methods
-        [System.Security.SecuritySafeCritical]
         internal unsafe Object GetValue()
         {
             fixed (void* pValue = &JitHelpers.GetPinningHelper(this).m_data)
@@ -764,13 +758,12 @@ namespace System
                     case CorElementType.U:
                         return *(UIntPtr*)pValue;
                     default:
-                        Contract.Assert(false, "Invalid primitive type");
+                        Debug.Assert(false, "Invalid primitive type");
                         return null;
                 }
             }
         }
 
-        [System.Security.SecuritySafeCritical]
         private unsafe ulong ToUInt64()
         {
             fixed (void* pValue = &JitHelpers.GetPinningHelper(this).m_data)
@@ -817,28 +810,24 @@ namespace System
                             return *(uint*)pValue;
                         }
                     default:
-                        Contract.Assert(false, "Invalid primitive type");
+                        Debug.Assert(false, "Invalid primitive type");
                         return 0;
                 }
             }
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         private extern bool InternalHasFlag(Enum flags);
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         private extern CorElementType InternalGetCorElementType();
 
         #endregion
 
         #region Object Overrides
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         public extern override bool Equals(Object obj);
 
-        [System.Security.SecuritySafeCritical]
         public override unsafe int GetHashCode()
         {
             // CONTRACT with the runtime: GetHashCode of enum types is implemented as GetHashCode of the underlying type.
@@ -878,7 +867,7 @@ namespace System
                     case CorElementType.U:
                         return (*(UIntPtr*)pValue).GetHashCode();
                     default:
-                        Contract.Assert(false, "Invalid primitive type");
+                        Debug.Assert(false, "Invalid primitive type");
                         return 0;
                 }
             }
@@ -907,7 +896,6 @@ namespace System
         #endregion
 
         #region IComparable
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public int CompareTo(Object target)
         {
             const int retIncompatibleMethodTables = 2;  // indicates that the method tables did not match
@@ -935,7 +923,7 @@ namespace System
             else
             {
                 // assert valid return code (3)
-                Contract.Assert(ret == retInvalidEnumType, "Enum.InternalCompareTo return code was invalid");
+                Debug.Assert(ret == retInvalidEnumType, "Enum.InternalCompareTo return code was invalid");
                 
                 throw new InvalidOperationException(Environment.GetResourceString("InvalidOperation_UnknownEnumType"));
             }
@@ -973,7 +961,6 @@ namespace System
             return ToString();
         }
 
-        [System.Security.SecuritySafeCritical]
         public Boolean HasFlag(Enum flag) {
             if (flag == null)
                 throw new ArgumentNullException(nameof(flag));
@@ -1044,7 +1031,7 @@ namespace System
                 return TypeCode.Char;
             }
 
-            Contract.Assert(false, "Unknown underlying type.");
+            Debug.Assert(false, "Unknown underlying type.");
             throw new InvalidOperationException(Environment.GetResourceString("InvalidOperation_UnknownEnumType"));
         }
 
@@ -1140,7 +1127,6 @@ namespace System
         #endregion
     
         #region ToObject
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [CLSCompliant(false)]
         [System.Runtime.InteropServices.ComVisible(true)]
         public static Object ToObject(Type enumType, sbyte value)
@@ -1156,7 +1142,6 @@ namespace System
             return InternalBoxEnum(rtType, value);
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [System.Runtime.InteropServices.ComVisible(true)]
         public static Object ToObject(Type enumType, short value)
         {
@@ -1171,7 +1156,6 @@ namespace System
             return InternalBoxEnum(rtType, value);
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [System.Runtime.InteropServices.ComVisible(true)]
         public static Object ToObject(Type enumType, int value)
         {
@@ -1186,7 +1170,6 @@ namespace System
             return InternalBoxEnum(rtType, value);
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [System.Runtime.InteropServices.ComVisible(true)]
         public static Object ToObject(Type enumType, byte value)
         {
@@ -1201,7 +1184,6 @@ namespace System
             return InternalBoxEnum(rtType, value);
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [CLSCompliant(false)]
         [System.Runtime.InteropServices.ComVisible(true)]
         public static Object ToObject(Type enumType, ushort value)
@@ -1217,7 +1199,6 @@ namespace System
             return InternalBoxEnum(rtType, value);
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [CLSCompliant(false)]
         [System.Runtime.InteropServices.ComVisible(true)]
         public static Object ToObject(Type enumType, uint value)
@@ -1233,7 +1214,6 @@ namespace System
             return InternalBoxEnum(rtType, value);
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [System.Runtime.InteropServices.ComVisible(true)]
         public static Object ToObject(Type enumType, long value)
         {
@@ -1248,7 +1228,6 @@ namespace System
             return InternalBoxEnum(rtType, value);
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [CLSCompliant(false)]
         [System.Runtime.InteropServices.ComVisible(true)]
         public static Object ToObject(Type enumType, ulong value)
@@ -1264,7 +1243,6 @@ namespace System
             return InternalBoxEnum(rtType, unchecked((long)value));
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         private static Object ToObject(Type enumType, char value)
         {
             if (enumType == null)
@@ -1278,7 +1256,6 @@ namespace System
             return InternalBoxEnum(rtType, value);
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         private static Object ToObject(Type enumType, bool value)
         {
             if (enumType == null)
