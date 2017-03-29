@@ -3,8 +3,8 @@
 
   <UsingTask TaskName="PrereleaseResolveNuGetPackageAssets" AssemblyFile="$(BuildToolsTaskDir)Microsoft.DotNet.Build.Tasks.dll"/>
   <ItemGroup>
-    <TestTargetFramework Include=".NETCoreApp,Version=v1.1">
-      <Folder>netcoreapp1.1</Folder>
+    <TestTargetFramework Include=".NETCoreApp,Version=v2.0">
+      <Folder>netcoreapp2.0</Folder>
     </TestTargetFramework>
   </ItemGroup>
 
@@ -42,7 +42,6 @@
   <PropertyGroup>
     <ProductDestination>$(ProjectDir)\..\bin\Product\$(BuildOS).$(BuildArch).$(BuildType)</ProductDestination>
     <RefDestination>$(ProductDestination)\ref</RefDestination>
-    <CoreOverlay>$(CORE_ROOT)\..\coreoverlay</CoreOverlay>
   </PropertyGroup>
 
   <Target Name="CopyDependecyToCoreRoot"
@@ -76,6 +75,7 @@
       </AllResolvedRuntimeDependencies>
       <RunTimeDependecyCopyLocalFile Include="@(AllResolvedRuntimeDependencies)"  Exclude="@(RunTimeDependecyExcludeFiles)"/>
       <RunTimeDependecyCopyLocal Include="@(RunTimeDependecyCopyLocalFile -> '%(File)')"  />
+      <RunTimeDependecyCopyLocal Include="$(TargetingPackPath)/*" />
     </ItemGroup>
     
     <Copy
@@ -92,7 +92,7 @@
 
   <Target Name="CopyNonWindowsDependecyToCoreRoot"
     Inputs="@(NonWindowsProjectLockJsonFiles)"
-    Outputs="$(CoreOverlay)\*.*">
+    Outputs="$(CORE_OVERLAY)\*.*">
 
     <MSBuild Projects="$(SourceDir)Common\test_runtime\test_runtime.csproj"/>
 
@@ -114,7 +114,7 @@
       <Output TaskParameter="ResolvedCopyLocalItems" ItemName="RunTimeCopyLocal" />
     </PrereleaseResolveNuGetPackageAssets>
     <ItemGroup>
-      <RunTimeDependecyExclude Include="$(CoreOverlay)\**\*.*"  />
+      <RunTimeDependecyExclude Include="$(CORE_OVERLAY)\**\*.*"  />
       <RunTimeDependecyExcludeFiles Include="@(RunTimeDependecyExclude -> '%(FileName)%(Extension)')" />
       <RunTimeDependecyExcludeFiles Include="@(RunTimeDependecyExclude -> '%(FileName).ni%(Extension)')" />
       <RunTimeDependecyExcludeFiles Include="@(RunTimeDependecyExclude -> '%(FileName).pdb')" />
@@ -123,11 +123,12 @@
       </AllResolvedRuntimeDependencies>
       <RunTimeDependecyCopyLocalFile Include="@(AllResolvedRuntimeDependencies)"  Exclude="@(RunTimeDependecyExcludeFiles)"/>
       <RunTimeDependecyCopyLocal Include="@(RunTimeDependecyCopyLocalFile -> '%(File)')"  />
+      <RunTimeDependecyCopyLocal Include="$(TargetingPackPath)/*" />
     </ItemGroup>
     
     <Copy
       SourceFiles="@(RunTimeDependecyCopyLocal)"
-      DestinationFolder="$(CoreOverlay)"
+      DestinationFolder="$(CORE_OVERLAY)"
       SkipUnchangedFiles="$(SkipCopyUnchangedFiles)"
       OverwriteReadOnlyFiles="$(OverwriteReadOnlyFiles)"
       Retries="$(CopyRetryCount)"
@@ -142,7 +143,7 @@
 
     <Copy
       SourceFiles="@(NonWindowsCrossGenFiles)"
-      DestinationFolder="$(CoreOverlay)"
+      DestinationFolder="$(CORE_OVERLAY)"
       SkipUnchangedFiles="$(SkipCopyUnchangedFiles)"
       OverwriteReadOnlyFiles="$(OverwriteReadOnlyFiles)"
       Retries="$(CopyRetryCount)"
@@ -218,7 +219,7 @@
   </Target>
 
   <Target Name="CopyCrossgenToProduct"
-    Outputs="$(ProductDestination)\crossgen.exe;$(CoreOverlay)\crossgen.exe">
+    Outputs="$(ProductDestination)\crossgen.exe;$(CORE_OVERLAY)\crossgen.exe">
 
     <Copy
       SourceFiles="@(CrossGenFiles)"

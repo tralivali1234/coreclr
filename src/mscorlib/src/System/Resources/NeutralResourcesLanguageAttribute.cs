@@ -21,13 +21,13 @@
 ** through an internal runtime call.
 ===========================================================*/
 
-namespace System.Resources {
-    using System;
-    using System.Diagnostics.Contracts;
-    
-    [AttributeUsage(AttributeTargets.Assembly, AllowMultiple=false)]  
-    [System.Runtime.InteropServices.ComVisible(true)]
-    public sealed class NeutralResourcesLanguageAttribute : Attribute 
+using System;
+using System.Diagnostics.Contracts;
+
+namespace System.Resources
+{
+    [AttributeUsage(AttributeTargets.Assembly, AllowMultiple = false)]
+    public sealed class NeutralResourcesLanguageAttribute : Attribute
     {
         private String _culture;
         private UltimateResourceFallbackLocation _fallbackLoc;
@@ -47,18 +47,20 @@ namespace System.Resources {
             if (cultureName == null)
                 throw new ArgumentNullException(nameof(cultureName));
             if (!Enum.IsDefined(typeof(UltimateResourceFallbackLocation), location))
-                throw new ArgumentException(Environment.GetResourceString("Arg_InvalidNeutralResourcesLanguage_FallbackLoc", location));
+                throw new ArgumentException(SR.Format(SR.Arg_InvalidNeutralResourcesLanguage_FallbackLoc, location));
             Contract.EndContractBlock();
 
             _culture = cultureName;
             _fallbackLoc = location;
         }
 
-        public String CultureName {
+        public String CultureName
+        {
             get { return _culture; }
         }
 
-        public UltimateResourceFallbackLocation Location {
+        public UltimateResourceFallbackLocation Location
+        {
             get { return _fallbackLoc; }
         }
     }

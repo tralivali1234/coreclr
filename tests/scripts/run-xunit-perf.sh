@@ -12,7 +12,6 @@ function print_usage {
     echo '    --coreClrBinDir="coreclr/bin/Product/Linux.x64.Debug"'
     echo '    --mscorlibDir="windows/coreclr/bin/Product/Linux.x64.Debug"'
     echo '    --coreFxBinDir="corefx/bin/Linux.AnyCPU.Debug"'
-    echo '    --coreFxNativeBinDir="corefx/bin/Linux.x64.Debug"'
     echo ''
     echo 'Required arguments:'
     echo '  --testRootDir=<path>             : Root directory of the test build (e.g. coreclr/bin/tests/Windows_NT.x64.Debug).'
@@ -22,14 +21,11 @@ function print_usage {
     echo 'Optional arguments:'
     echo '  --coreOverlayDir=<path>          : Directory containing core binaries and test dependencies. If not specified, the'
     echo '                                     default is testRootDir/Tests/coreoverlay. This switch overrides --coreClrBinDir,'
-    echo '                                     --mscorlibDir, --coreFxBinDir, and --coreFxNativeBinDir.'
+    echo '                                     --mscorlibDir, and --coreFxBinDir.'
     echo '  --coreClrBinDir=<path>           : Directory of the CoreCLR build (e.g. coreclr/bin/Product/Linux.x64.Debug).'
     echo '  --mscorlibDir=<path>             : Directory containing the built mscorlib.dll. If not specified, it is expected to be'
     echo '                                       in the directory specified by --coreClrBinDir.'
-    echo '  --coreFxBinDir="<path>[;<path>]" : List of one or more directories with CoreFX build outputs (semicolon-delimited)'
-    echo '                                     (e.g. "corefx/bin/Linux.AnyCPU.Debug;corefx/bin/Unix.AnyCPU.Debug;corefx/bin/AnyOS.AnyCPU.Debug").'
-    echo '                                     If files with the same name are present in multiple directories, the first one wins.'
-    echo '  --coreFxNativeBinDir=<path>      : Directory of the CoreFX native build (e.g. corefx/bin/Linux.x64.Debug).'
+    echo '  --coreFxBinDir="<path>"          : The path to the unpacked runtime folder that is produced as part of a CoreFX build'
 	echo '  --uploadToBenchview              : Specify this flag in order to have the results of the run uploaded to Benchview.'
 	echo '                                     This also requires that the os flag and runtype flag to be set.  Lastly you must'
 	echo '                                     also have the BV_UPLOAD_SAS_TOKEN set to a SAS token for the Benchview upload container'
@@ -204,17 +200,8 @@ function create_core_overlay {
     if [ ! -d "$coreClrBinDir" ]; then
         exit_with_error "$errorSource" "Directory specified by --coreClrBinDir does not exist: $coreClrBinDir"
     fi
-    if [ ! -f "$mscorlibDir/mscorlib.dll" ]; then
-        exit_with_error "$errorSource" "mscorlib.dll was not found in: $mscorlibDir"
-    fi
     if [ -z "$coreFxBinDir" ]; then
         exit_with_error "$errorSource" "One of --coreOverlayDir or --coreFxBinDir must be specified." "$printUsage"
-    fi
-    if [ -z "$coreFxNativeBinDir" ]; then
-        exit_with_error "$errorSource" "One of --coreOverlayDir or --coreFxBinDir must be specified." "$printUsage"
-    fi
-    if [ ! -d "$coreFxNativeBinDir/Native" ]; then
-        exit_with_error "$errorSource" "Directory specified by --coreNativeFxBinDir does not exist: $coreFxNativeBinDir/Native"
     fi
 
     # Create the overlay
@@ -225,33 +212,14 @@ function create_core_overlay {
     fi
     mkdir "$coreOverlayDir"
 
-    while IFS=';' read -ra coreFxBinDirectories; do
-        for currDir in "${coreFxBinDirectories[@]}"; do
-            if [ ! -d "$currDir" ]; then
-                exit_with_error "$errorSource" "Directory specified in --coreFxBinDir does not exist: $currDir"
-            fi
-            pushd $currDir > /dev/null
-            for dirName in $(find . -iname '*.dll' \! -iwholename '*test*' \! -iwholename '*/ToolRuntime/*' \! -iwholename '*/RemoteExecutorConsoleApp/*' \! -iwholename '*/net*' \! -iwholename '*aot*' -exec dirname {} \; | uniq | sed 's/\.\/\(.*\)/\1/g'); do
-                cp -n -v "$currDir/$dirName/$dirName.dll" "$coreOverlayDir/"
-            done
-            popd $currDur > /dev/null
-        done
-    done <<< $coreFxBinDir
-
-    cp -f -v "$coreFxNativeBinDir/Native/"*."$libExtension" "$coreOverlayDir/" 2>/dev/null
-
+	cp -f -v "$coreFxBinDir"/* "$coreOverlayDir/" 2>/dev/null
     cp -f -v "$coreClrBinDir/"* "$coreOverlayDir/" 2>/dev/null
-    cp -f -v "$mscorlibDir/mscorlib.dll" "$coreOverlayDir/"
     cp -n -v "$testDependenciesDir"/* "$coreOverlayDir/" 2>/dev/null
-    if [ -f "$coreOverlayDir/mscorlib.ni.dll" ]; then
-        # Test dependencies come from a Windows build, and mscorlib.ni.dll would be the one from Windows
-        rm -f "$coreOverlayDir/mscorlib.ni.dll"
-    fi
 }
 
 function precompile_overlay_assemblies {
 
-    if [ $doCrossgen == 1 ]; then
+    if [ "$doCrossgen" == "1" ]; then
 
         local overlayDir=$CORE_ROOT
 
@@ -259,20 +227,15 @@ function precompile_overlay_assemblies {
         for fileToPrecompile in ${filesToPrecompile}
         do
             local filename=${fileToPrecompile}
-            # Precompile any assembly except mscorlib since we already have its NI image available.
-            if [[ "$filename" != *"mscorlib.dll"* ]]; then
-                if [[ "$filename" != *"mscorlib.ni.dll"* ]]; then
-                    echo Precompiling $filename
-                    $overlayDir/crossgen /Platform_Assemblies_Paths $overlayDir $filename 2>/dev/null
-                    local exitCode=$?
-                    if [ $exitCode == -2146230517 ]; then
-                        echo $filename is not a managed assembly.
-                    elif [ $exitCode != 0 ]; then
-                        echo Unable to precompile $filename.
-                    else
-                        echo Successfully precompiled $filename
-                    fi
-                fi
+            echo Precompiling $filename
+            $overlayDir/crossgen /Platform_Assemblies_Paths $overlayDir $filename 2>/dev/null
+            local exitCode=$?
+            if [ $exitCode == -2146230517 ]; then
+                echo $filename is not a managed assembly.
+            elif [ $exitCode != 0 ]; then
+                echo Unable to precompile $filename.
+            else
+                echo Successfully precompiled $filename
             fi
         done
     else
@@ -315,7 +278,6 @@ coreOverlayDir=
 coreClrBinDir=
 mscorlibDir=
 coreFxBinDir=
-coreFxNativeBinDir=
 uploadToBenchview=
 benchViewOS=
 runType=
@@ -344,9 +306,6 @@ do
             ;;
         --coreFxBinDir=*)
             coreFxBinDir=${i#*=}
-            ;;
-        --coreFxNativeBinDir=*)
-            coreFxNativeBinDir=${i#*=}
             ;;
 		--benchViewOS=*)
             benchViewOS=${i#*=}
@@ -421,6 +380,7 @@ test=$(basename $testcase)
 testname=$(basename $testcase .exe)
 echo "....Running $testname"
 cp $testcase .
+cp $testcase-*.txt .
 
 chmod u+x ./corerun
 echo "./corerun Microsoft.DotNet.xunit.performance.runner.cli.dll $test -runner xunit.console.netcore.exe -runnerhost ./corerun -verbose -runid perf-$testname"

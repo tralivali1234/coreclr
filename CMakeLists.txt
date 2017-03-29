@@ -102,7 +102,7 @@ else (WIN32)
 
       # Ensure that objcopy is present
       if (DEFINED ENV{CROSSCOMPILE} AND NOT DEFINED CLR_CROSS_COMPONENTS_BUILD)
-        if (CMAKE_SYSTEM_PROCESSOR STREQUAL armv7l OR CMAKE_SYSTEM_PROCESSOR STREQUAL aarch64)
+        if (CMAKE_SYSTEM_PROCESSOR STREQUAL armv7l OR CMAKE_SYSTEM_PROCESSOR STREQUAL aarch64 OR CMAKE_SYSTEM_PROCESSOR STREQUAL arm)
           find_program(OBJCOPY ${TOOLCHAIN}-objcopy)
         elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL i686)
           find_program(OBJCOPY objcopy)
@@ -148,6 +148,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL Linux)
         if(CMAKE_SYSTEM_PROCESSOR STREQUAL x86_64 OR CMAKE_SYSTEM_PROCESSOR STREQUAL amd64)
             set(CLR_CMAKE_PLATFORM_UNIX_AMD64 1)
         elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL armv7l)
+            set(CLR_CMAKE_PLATFORM_UNIX_ARM 1)
+        elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL arm)
             set(CLR_CMAKE_PLATFORM_UNIX_ARM 1)
         elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL aarch64)
             set(CLR_CMAKE_PLATFORM_UNIX_ARM64 1)
@@ -292,7 +294,6 @@ set(CMAKE_CXX_FLAGS_CHECKED ${CLR_CXX_FLAGS_CHECKED_INIT} CACHE STRING "Flags us
 set(CMAKE_EXE_LINKER_FLAGS_CHECKED "")
 set(CMAKE_SHARED_LINKER_FLAGS_CHECKED "")
 
-# Disable the following line for UNIX altjit on Windows
 set(CMAKE_CXX_STANDARD_LIBRARIES "") # do not link against standard win32 libs i.e. kernel32, uuid, user32, etc.
 
 if (WIN32)
@@ -313,7 +314,6 @@ if (WIN32)
 
   # Linker flags
   #
-  # Disable the following line for UNIX altjit on Windows
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /MANIFEST:NO") #Do not create Side-by-Side Assembly Manifest
 
   if (CLR_CMAKE_PLATFORM_ARCH_ARM)
@@ -519,9 +519,6 @@ else ()
     clr_unknown_arch()
 endif ()
 
-# Enable for UNIX altjit on Windows - set(CLR_CMAKE_PLATFORM_UNIX_AMD64 1)
-# Enable for UNIX altjit on Windows - add_definitions(-DCLR_CMAKE_PLATFORM_UNIX=1)
-
 #--------------------------------------
 # Compile Options
 #--------------------------------------
@@ -544,9 +541,9 @@ include(pgosupport.cmake)
 #     - project which require platform header not clr's
 #     - do not depend on clr's compile definitions
 #-----------------------------------------
-if(CLR_CMAKE_PLATFORM_UNIX)
-  add_subdirectory(src/corefx)
-endif(CLR_CMAKE_PLATFORM_UNIX)
+if(CLR_CMAKE_PLATFORM_UNIX AND NOT DEFINED CLR_CROSS_COMPONENTS_BUILD)
+    add_subdirectory(src/corefx)
+endif()
 
 if(CLR_CMAKE_PLATFORM_UNIX)
     add_subdirectory(src/ToolBox/SOS/lldbplugin)
@@ -578,6 +575,14 @@ endif(WIN32)
 # Include the basic prebuilt headers - required for getting fileversion resource details.
 include_directories("src/pal/prebuilt/inc")
 include_directories("bin/obj")
+
+if(FEATURE_STANDALONE_GC)
+  add_definitions(-DFEATURE_STANDALONE_GC)
+
+  if(CLR_CMAKE_PLATFORM_UNIX)
+    add_subdirectory(src/gc/unix)
+  endif(CLR_CMAKE_PLATFORM_UNIX)
+endif(FEATURE_STANDALONE_GC)
 
 if (CLR_CMAKE_PLATFORM_UNIX)
   include_directories("src/pal/inc")

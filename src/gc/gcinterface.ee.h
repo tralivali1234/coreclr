@@ -128,6 +128,15 @@ public:
     // barrier if it needs to be updated.
     virtual
     void StompWriteBarrier(WriteBarrierParameters* args) = 0;
+
+    // Signals to the finalizer thread that there are objects ready to
+    // be finalized.
+    virtual
+    void EnableFinalization(bool foundFinalizers) = 0;
+
+    // Signals to the EE that the GC encountered a fatal error and can't recover.
+    virtual
+    void HandleFatalError(unsigned int exitCode) = 0;
 };
 
 #endif // _GCINTERFACE_EE_H_

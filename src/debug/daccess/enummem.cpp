@@ -21,7 +21,6 @@
 #include "ipcmanagerinterface.h"
 #include "binder.h"
 #include "win32threadpool.h"
-#include "gcscan.h"
 
 #ifdef FEATURE_APPX
 #include "appxutil.h"
@@ -266,6 +265,12 @@ HRESULT ClrDataAccess::EnumMemCLRStatic(IN CLRDataEnumMemoryFlags flags)
 
         ReportMem( m_globalBase + g_dacGlobals.dac__g_FCDynamicallyAssignedImplementations,
                   sizeof(TADDR)*ECall::NUM_DYNAMICALLY_ASSIGNED_FCALL_IMPLEMENTATIONS);
+
+        // We need all of the dac variables referenced by the GC DAC global struct.
+        // This struct contains pointers to pointers, so we first dereference the pointers
+        // to obtain the location of the variable that's reported.
+#define GC_DAC_VAR(type, name) ReportMem(g_gcDacGlobals->name.GetAddr(), sizeof(type));
+#include "../../gc/gcinterface.dacvars.def"
     }
     EX_CATCH_RETHROW_ONLY_COR_E_OPERATIONCANCELLED
 
@@ -292,9 +297,6 @@ HRESULT ClrDataAccess::EnumMemCLRStatic(IN CLRDataEnumMemoryFlags flags)
     CATCH_ALL_EXCEPT_RETHROW_COR_E_OPERATIONCANCELLED( g_pValueTypeClass.EnumMem(); )
     CATCH_ALL_EXCEPT_RETHROW_COR_E_OPERATIONCANCELLED( g_pEnumClass.EnumMem(); )
     CATCH_ALL_EXCEPT_RETHROW_COR_E_OPERATIONCANCELLED( g_pThreadClass.EnumMem(); )
-#ifdef FEATURE_CER
-    CATCH_ALL_EXCEPT_RETHROW_COR_E_OPERATIONCANCELLED( g_pCriticalFinalizerObjectClass.EnumMem(); )
-#endif
     CATCH_ALL_EXCEPT_RETHROW_COR_E_OPERATIONCANCELLED( g_pFreeObjectMethodTable.EnumMem(); )
     CATCH_ALL_EXCEPT_RETHROW_COR_E_OPERATIONCANCELLED( g_pObjectCtorMD.EnumMem(); )
     CATCH_ALL_EXCEPT_RETHROW_COR_E_OPERATIONCANCELLED( g_fHostConfig.EnumMem(); )
@@ -404,7 +406,7 @@ HRESULT ClrDataAccess::DumpManagedObject(CLRDataEnumMemoryFlags flags, OBJECTREF
         return status;
     }
     
-    if (!GCScan::GetGcRuntimeStructuresValid ())
+    if (*g_gcDacGlobals->gc_structures_invalid_cnt != 0)
     {
         // GC is in progress, don't dump this object
         return S_OK;
@@ -462,7 +464,7 @@ HRESULT ClrDataAccess::DumpManagedExcepObject(CLRDataEnumMemoryFlags flags, OBJE
         return S_OK;
     }
 
-    if (!GCScan::GetGcRuntimeStructuresValid ())
+    if (*g_gcDacGlobals->gc_structures_invalid_cnt != 0)
     {
         // GC is in progress, don't dump this object
         return S_OK;
@@ -1734,11 +1736,7 @@ HRESULT ClrDataAccess::EnumMemoryRegionsWorkerCustom()
     
     ECustomDumpFlavor eFlavor;
 
-#ifdef FEATURE_INCLUDE_ALL_INTERFACES
-    eFlavor = CCLRErrorReportingManager::g_ECustomDumpFlavor;
-#else
     eFlavor = DUMP_FLAVOR_Default;
-#endif
 
     m_enumMemFlags = CLRDATA_ENUM_MEM_MINI;
 

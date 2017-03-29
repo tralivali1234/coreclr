@@ -75,7 +75,7 @@ extern "C" {
 
 #endif  // !defined(__i386__)
 
-#define CALLBACK __stdcall
+#define CALLBACK __cdecl
 
 #if !defined(_declspec)
 #define _declspec(e)  __declspec(e)
@@ -105,7 +105,7 @@ extern "C" {
 
 #endif
 
-#define PALAPI      __stdcall
+#define PALAPI      __cdecl
 #define PALAPIV     __cdecl
 
 ////////////////////////////////////////////////////////////////////////
@@ -235,13 +235,8 @@ typedef long double LONG_DOUBLE;
 
 typedef void VOID;
 
-#ifndef PLATFORM_UNIX
-typedef long LONG;
-typedef unsigned long ULONG;
-#else
 typedef int LONG;       // NOTE: diff from windows.h, for LP64 compat
 typedef unsigned int ULONG; // NOTE: diff from windows.h, for LP64 compat
-#endif
 
 typedef __int64 LONGLONG;
 typedef unsigned __int64 ULONGLONG;
@@ -260,12 +255,7 @@ typedef UCHAR *PUCHAR;
 typedef char *PSZ;
 typedef ULONGLONG DWORDLONG;
 
-#ifndef PLATFORM_UNIX
-typedef unsigned long DWORD;
-#else
 typedef unsigned int DWORD; // NOTE: diff from  windows.h, for LP64 compat
-#endif
-
 typedef unsigned int DWORD32, *PDWORD32;
 
 typedef int BOOL;

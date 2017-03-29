@@ -557,6 +557,8 @@ private:
     void OutputEntrypointsTableForReadyToRun();
     void OutputDebugInfoForReadyToRun();
     void OutputTypesTableForReadyToRun(IMDInternalImport * pMDImport);
+    void OutputInliningTableForReadyToRun();
+    void OutputProfileDataForReadyToRun();
 
     void CopyDebugDirEntry();
     void CopyWin32VersionResource();

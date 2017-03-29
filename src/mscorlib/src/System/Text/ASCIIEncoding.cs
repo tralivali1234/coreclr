@@ -2,14 +2,13 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System;
+using System.Runtime.Serialization;
+using System.Diagnostics;
+using System.Diagnostics.Contracts;
+
 namespace System.Text
 {
-    using System;
-    using System.Runtime.Serialization;
-    using System.Security.Permissions;
-    using System.Diagnostics;
-    using System.Diagnostics.Contracts;
-
     // ASCIIEncoding
     //
     // Note that ASCIIEncoding is optomized with no best fit and ? for fallback.
@@ -22,12 +21,15 @@ namespace System.Text
     //
 
     [Serializable]
-[System.Runtime.InteropServices.ComVisible(true)]
     public class ASCIIEncoding : Encoding
     {
+        // Allow for devirtualization (see https://github.com/dotnet/coreclr/pull/9230)
+        [Serializable]
+        internal sealed class ASCIIEncodingSealed : ASCIIEncoding { }
+
         // Used by Encoding.ASCII for lazy initialization
         // The initialization code will not be run until a static member of the class is referenced
-        internal static readonly ASCIIEncoding s_default = new ASCIIEncoding();
+        internal static readonly ASCIIEncodingSealed s_default = new ASCIIEncodingSealed();
 
         public ASCIIEncoding() : base(Encoding.CodePageASCII)
         {
@@ -57,7 +59,7 @@ namespace System.Text
         // At the same time, C# doesn't allow a public class subclassing an
         // internal/private one, so we end up having to re-override these
         // methods in all of the public Encodings + EncodingNLS.
-        
+
         // Returns the number of bytes required to encode a range of characters in
         // a character array.
 
@@ -72,7 +74,6 @@ namespace System.Text
         }
 
         [CLSCompliant(false)]
-        [System.Runtime.InteropServices.ComVisible(false)]
         public override unsafe int GetByteCount(char* chars, int count)
         {
             return EncodingForwarder.GetByteCount(this, chars, count);
@@ -100,7 +101,6 @@ namespace System.Text
         }
 
         [CLSCompliant(false)]
-        [System.Runtime.InteropServices.ComVisible(false)]
         public override unsafe int GetBytes(char* chars, int charCount, byte* bytes, int byteCount)
         {
             return EncodingForwarder.GetBytes(this, chars, charCount, bytes, byteCount);
@@ -115,7 +115,6 @@ namespace System.Text
         }
 
         [CLSCompliant(false)]
-        [System.Runtime.InteropServices.ComVisible(false)]
         public override unsafe int GetCharCount(byte* bytes, int count)
         {
             return EncodingForwarder.GetCharCount(this, bytes, count);
@@ -128,7 +127,6 @@ namespace System.Text
         }
 
         [CLSCompliant(false)]
-        [System.Runtime.InteropServices.ComVisible(false)]
         public unsafe override int GetChars(byte* bytes, int byteCount, char* chars, int charCount)
         {
             return EncodingForwarder.GetChars(this, bytes, byteCount, chars, charCount);
@@ -141,7 +139,7 @@ namespace System.Text
         {
             return EncodingForwarder.GetString(this, bytes, byteIndex, byteCount);
         }
-        
+
         // End of overridden methods which use EncodingForwarder
 
         // GetByteCount
@@ -164,6 +162,7 @@ namespace System.Text
 
             // For fallback we may need a fallback buffer, we know we aren't default fallback.
             EncoderFallbackBuffer fallbackBuffer = null;
+            char* charsForFallback;
 
             if (encoder != null)
             {
@@ -179,8 +178,7 @@ namespace System.Text
                     // We always need the fallback buffer in get bytes so we can flush any remaining ones if necessary
                     fallbackBuffer = encoder.FallbackBuffer;
                     if (fallbackBuffer.Remaining > 0 && encoder.m_throwOnOverflow)
-                        throw new ArgumentException(Environment.GetResourceString("Argument_EncoderFallbackNotEmpty",
-                        this.EncodingName, encoder.Fallback.GetType()));
+                        throw new ArgumentException(SR.Format(SR.Argument_EncoderFallbackNotEmpty, this.EncodingName, encoder.Fallback.GetType()));
 
                     // Set our internal fallback interesting things.
                     fallbackBuffer.InternalInitialize(chars, charEnd, encoder, false);
@@ -190,9 +188,9 @@ namespace System.Text
                 Debug.Assert(!encoder.m_throwOnOverflow || !encoder.InternalHasFallbackBuffer ||
                     encoder.FallbackBuffer.Remaining == 0,
                     "[ASCIICodePageEncoding.GetByteCount]Expected empty fallback buffer");
-//                if (encoder.InternalHasFallbackBuffer && encoder.FallbackBuffer.Remaining > 0)
-//                    throw new ArgumentException(Environment.GetResourceString("Argument_EncoderFallbackNotEmpty",
-//                    this.EncodingName, encoder.Fallback.GetType()));
+                //                if (encoder.InternalHasFallbackBuffer && encoder.FallbackBuffer.Remaining > 0)
+                //                    throw new ArgumentException(Environment.GetResourceString("Argument_EncoderFallbackNotEmpty",
+                //                    this.EncodingName, encoder.Fallback.GetType()));
             }
             else
             {
@@ -233,7 +231,9 @@ namespace System.Text
                 fallbackBuffer.InternalInitialize(chars, charEnd, encoder, false);
 
                 // This will fallback a pair if *chars is a low surrogate
-                fallbackBuffer.InternalFallback(charLeftOver, ref chars);
+                charsForFallback = chars; // Avoid passing chars by reference to allow it to be enregistered
+                fallbackBuffer.InternalFallback(charLeftOver, ref charsForFallback);
+                chars = charsForFallback;
             }
 
             // Now we may have fallback char[] already from the encoder
@@ -243,7 +243,6 @@ namespace System.Text
             while ((ch = (fallbackBuffer == null) ? '\0' : fallbackBuffer.InternalGetNextChar()) != 0 ||
                     chars < charEnd)
             {
-
                 // First unwind any fallback
                 if (ch == 0)
                 {
@@ -267,7 +266,9 @@ namespace System.Text
                     }
 
                     // Get Fallback
-                    fallbackBuffer.InternalFallback(ch, ref chars);
+                    charsForFallback = chars; // Avoid passing chars by reference to allow it to be enregistered
+                    fallbackBuffer.InternalFallback(ch, ref charsForFallback);
+                    chars = charsForFallback;
                     continue;
                 }
 
@@ -299,6 +300,7 @@ namespace System.Text
 
             // For fallback we may need a fallback buffer, we know we aren't default fallback.
             EncoderFallbackBuffer fallbackBuffer = null;
+            char* charsForFallback;
 
             // prepare our end
             char* charEnd = chars + charCount;
@@ -316,8 +318,7 @@ namespace System.Text
                     // We always need the fallback buffer in get bytes so we can flush any remaining ones if necessary
                     fallbackBuffer = encoder.FallbackBuffer;
                     if (fallbackBuffer.Remaining > 0 && encoder.m_throwOnOverflow)
-                        throw new ArgumentException(Environment.GetResourceString("Argument_EncoderFallbackNotEmpty",
-                        this.EncodingName, encoder.Fallback.GetType()));
+                        throw new ArgumentException(SR.Format(SR.Argument_EncoderFallbackNotEmpty, this.EncodingName, encoder.Fallback.GetType()));
 
                     // Set our internal fallback interesting things.
                     fallbackBuffer.InternalInitialize(charStart, charEnd, encoder, true);
@@ -330,10 +331,10 @@ namespace System.Text
                 Debug.Assert(!encoder.m_throwOnOverflow || !encoder.InternalHasFallbackBuffer ||
                     encoder.FallbackBuffer.Remaining == 0,
                     "[ASCIICodePageEncoding.GetBytes]Expected empty fallback buffer");
-//                if (encoder.m_throwOnOverflow && encoder.InternalHasFallbackBuffer &&
-//                  encoder.FallbackBuffer.Remaining > 0)
-//                  throw new ArgumentException(Environment.GetResourceString("Argument_EncoderFallbackNotEmpty",
-//                        this.EncodingName, encoder.Fallback.GetType()));
+                //                if (encoder.m_throwOnOverflow && encoder.InternalHasFallbackBuffer &&
+                //                  encoder.FallbackBuffer.Remaining > 0)
+                //                  throw new ArgumentException(Environment.GetResourceString("Argument_EncoderFallbackNotEmpty",
+                //                        this.EncodingName, encoder.Fallback.GetType()));
             }
             else
             {
@@ -390,7 +391,7 @@ namespace System.Text
                     if (encoder != null)
                     {
                         encoder.charLeftOver = (char)0;
-                        encoder.m_charsUsed = (int)(chars-charStart);
+                        encoder.m_charsUsed = (int)(chars - charStart);
                     }
 
                     return (int)(bytes - byteStart);
@@ -414,7 +415,9 @@ namespace System.Text
                 // Since left over char was a surrogate, it'll have to be fallen back.
                 // Get Fallback
                 // This will fallback a pair if *chars is a low surrogate
-                fallbackBuffer.InternalFallback(charLeftOver, ref chars);
+                charsForFallback = chars; // Avoid passing chars by reference to allow it to be enregistered
+                fallbackBuffer.InternalFallback(charLeftOver, ref charsForFallback);
+                chars = charsForFallback;
             }
 
             // Now we may have fallback char[] already from the encoder
@@ -447,7 +450,9 @@ namespace System.Text
                     }
 
                     // Get Fallback
-                    fallbackBuffer.InternalFallback(ch, ref chars);
+                    charsForFallback = chars; // Avoid passing chars by reference to allow it to be enregistered
+                    fallbackBuffer.InternalFallback(ch, ref charsForFallback);
+                    chars = charsForFallback;
 
                     // Go ahead & continue (& do the fallback)
                     continue;
@@ -490,7 +495,7 @@ namespace System.Text
             }
 
             Debug.Assert(fallbackBuffer == null || fallbackBuffer.Remaining == 0 ||
-                (encoder != null && !encoder.m_throwOnOverflow ),
+                (encoder != null && !encoder.m_throwOnOverflow),
                 "[ASCIIEncoding.GetBytes]Expected Empty fallback buffer at end");
 
             return (int)(bytes - byteStart);
@@ -587,6 +592,7 @@ namespace System.Text
             // Only need decoder fallback buffer if not using ? fallback.
             // ASCII doesn't do best fit, so don't have to check for it, find out which decoder fallback we're using
             DecoderReplacementFallback fallback = null;
+            char* charsForFallback;
 
             if (decoder == null)
                 fallback = this.DecoderFallback as DecoderReplacementFallback;
@@ -633,7 +639,7 @@ namespace System.Text
             // Slower way's going to need a fallback buffer
             DecoderFallbackBuffer fallbackBuffer = null;
             byte[] byteBuffer = new byte[1];
-            char*   charEnd = chars + charCount;
+            char* charEnd = chars + charCount;
 
             // Not quite so fast loop
             while (bytes < byteEnd)
@@ -658,7 +664,11 @@ namespace System.Text
                     byteBuffer[0] = b;
 
                     // Note that chars won't get updated unless this succeeds
-                    if (!fallbackBuffer.InternalFallback(byteBuffer, bytes, ref chars))
+                    charsForFallback = chars; // Avoid passing chars by reference to allow it to be enregistered
+                    bool fallbackResult = fallbackBuffer.InternalFallback(byteBuffer, bytes, ref charsForFallback);
+                    chars = charsForFallback;
+
+                    if (!fallbackResult)
                     {
                         // May or may not throw, but we didn't get this byte
                         Debug.Assert(bytes > byteStart || chars == charStart,
@@ -701,8 +711,8 @@ namespace System.Text
         public override int GetMaxByteCount(int charCount)
         {
             if (charCount < 0)
-               throw new ArgumentOutOfRangeException(nameof(charCount),
-                    Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegNum"));
+                throw new ArgumentOutOfRangeException(nameof(charCount),
+                     SR.ArgumentOutOfRange_NeedNonNegNum);
             Contract.EndContractBlock();
 
             // Characters would be # of characters + 1 in case high surrogate is ? * max fallback
@@ -714,7 +724,7 @@ namespace System.Text
             // 1 to 1 for most characters.  Only surrogates with fallbacks have less.
 
             if (byteCount > 0x7fffffff)
-                throw new ArgumentOutOfRangeException(nameof(charCount), Environment.GetResourceString("ArgumentOutOfRange_GetByteCountOverflow"));
+                throw new ArgumentOutOfRangeException(nameof(charCount), SR.ArgumentOutOfRange_GetByteCountOverflow);
             return (int)byteCount;
         }
 
@@ -722,8 +732,8 @@ namespace System.Text
         public override int GetMaxCharCount(int byteCount)
         {
             if (byteCount < 0)
-               throw new ArgumentOutOfRangeException(nameof(byteCount),
-                    Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegNum"));
+                throw new ArgumentOutOfRangeException(nameof(byteCount),
+                     SR.ArgumentOutOfRange_NeedNonNegNum);
             Contract.EndContractBlock();
 
             // Just return length, SBCS stay the same length because they don't map to surrogate
@@ -734,14 +744,13 @@ namespace System.Text
                 charCount *= DecoderFallback.MaxCharCount;
 
             if (charCount > 0x7fffffff)
-                throw new ArgumentOutOfRangeException(nameof(byteCount), Environment.GetResourceString("ArgumentOutOfRange_GetCharCountOverflow"));
+                throw new ArgumentOutOfRangeException(nameof(byteCount), SR.ArgumentOutOfRange_GetCharCountOverflow);
 
             return (int)charCount;
         }
 
         // True if and only if the encoding only uses single byte code points.  (Ie, ASCII, 1252, etc)
 
-        [System.Runtime.InteropServices.ComVisible(false)]
         public override bool IsSingleByte
         {
             get
@@ -750,14 +759,12 @@ namespace System.Text
             }
         }
 
-        [System.Runtime.InteropServices.ComVisible(false)]
         public override Decoder GetDecoder()
         {
             return new DecoderNLS(this);
         }
 
 
-        [System.Runtime.InteropServices.ComVisible(false)]
         public override Encoder GetEncoder()
         {
             return new EncoderNLS(this);

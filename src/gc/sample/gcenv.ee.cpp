@@ -13,9 +13,9 @@ MethodTable * g_pFreeObjectMethodTable;
 
 int32_t g_TrapReturningThreads;
 
-bool g_fFinalizerRunOnShutDown;
-
 EEConfig * g_pConfig;
+
+gc_alloc_context g_global_alloc_context;
 
 bool CLREventStatic::CreateManualEventNoThrow(bool bInitialState)
 {
@@ -137,7 +137,7 @@ void ThreadStore::AttachCurrentThread()
 
 void GCToEEInterface::SuspendEE(SUSPEND_REASON reason)
 {
-    g_theGCHeap->SetGCInProgress(TRUE);
+    g_theGCHeap->SetGCInProgress(true);
 
     // TODO: Implement
 }
@@ -146,7 +146,7 @@ void GCToEEInterface::RestartEE(bool bFinishedGC)
 {
     // TODO: Implement
 
-    g_theGCHeap->SetGCInProgress(FALSE);
+    g_theGCHeap->SetGCInProgress(false);
 }
 
 void GCToEEInterface::GcScanRoots(promote_func* fn,  int condemned, int max_gen, ScanContext* sc)
@@ -259,15 +259,15 @@ void GCToEEInterface::StompWriteBarrier(WriteBarrierParameters* args)
 {
 }
 
-void FinalizerThread::EnableFinalization()
+void GCToEEInterface::EnableFinalization(bool foundFinalizers)
 {
     // Signal to finalizer thread that there are objects to finalize
     // TODO: Implement for finalization
 }
 
-bool FinalizerThread::HaveExtraWorkForFinalizer()
+void GCToEEInterface::HandleFatalError(unsigned int exitCode)
 {
-    return false;
+    abort();
 }
 
 bool IsGCSpecialThread()

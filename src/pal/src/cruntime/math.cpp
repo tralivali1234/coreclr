@@ -66,11 +66,7 @@ int __cdecl _finite(double x)
     PERF_ENTRY(_finite);
     ENTRY("_finite (x=%f)\n", x);
 
-#if defined(_IA64_) && defined (_HPUX_)
-    ret = !isnan(x) && (x != PAL_POSINF_DBL) && (x != PAL_NEGINF_DBL);
-#else
     ret = isfinite(x);
-#endif
 
     LOGEXIT("_finite returns int %d\n", ret);
     PERF_EXIT(_finite);
@@ -347,7 +343,7 @@ PALIMPORT double __cdecl PAL_pow(double x, double y)
         }
         else if (x == -1.0)
         {
-            ret = PAL_NAN_DBL;    // NaN
+            ret = 1.0;
         }
         else if ((x > -1.0) && (x < 1.0))
         {
@@ -366,7 +362,7 @@ PALIMPORT double __cdecl PAL_pow(double x, double y)
         }
         else if (x == -1.0)
         {
-            ret = PAL_NAN_DBL;    // NaN
+            ret = 1.0;
         }
         else if ((x > -1.0) && (x < 1.0))
         {
@@ -388,17 +384,7 @@ PALIMPORT double __cdecl PAL_pow(double x, double y)
     else
 #endif  // !HAVE_COMPATIBLE_POW
 
-    if ((y == 0.0) && isnan(x))
-    {
-        // Windows returns NaN for pow(NaN, 0), but POSIX specifies
-        // a return value of 1 for that case.  We need to return
-        // the same result as Windows.
-        ret = PAL_NAN_DBL;
-    }
-    else
-    {
-        ret = pow(x, y);
-    }
+    ret = pow(x, y);
 
 #if !HAVE_VALID_NEGATIVE_INF_POW
     if ((ret == PAL_POSINF_DBL) && (x < 0) && isfinite(x) && (ceil(y / 2) != floor(y / 2)))
@@ -452,11 +438,7 @@ int __cdecl _finitef(float x)
     PERF_ENTRY(_finitef);
     ENTRY("_finitef (x=%f)\n", x);
 
-#if defined(_IA64_) && defined (_HPUX_)
-    ret = !isnan(x) && (x != PAL_POSINF_FLT) && (x != PAL_NEGINF_FLT);
-#else
     ret = isfinite(x);
-#endif
 
     LOGEXIT("_finitef returns int %d\n", ret);
     PERF_EXIT(_finitef);
@@ -714,7 +696,7 @@ PALIMPORT float __cdecl PAL_powf(float x, float y)
         }
         else if (x == -1.0f)
         {
-            ret = PAL_NAN_FLT;    // NaN
+            ret = 1.0f;
         }
         else if ((x > -1.0f) && (x < 1.0f))
         {
@@ -733,7 +715,7 @@ PALIMPORT float __cdecl PAL_powf(float x, float y)
         }
         else if (x == -1.0f)
         {
-            ret = PAL_NAN_FLT;    // NaN
+            ret = 1.0f;
         }
         else if ((x > -1.0f) && (x < 1.0f))
         {
@@ -755,18 +737,8 @@ PALIMPORT float __cdecl PAL_powf(float x, float y)
     else
 #endif  // !HAVE_COMPATIBLE_POW
 
-    if ((y == 0.0f) && isnan(x))
-    {
-        // Windows returns NaN for powf(NaN, 0), but POSIX specifies
-        // a return value of 1 for that case.  We need to return
-        // the same result as Windows.
-        ret = PAL_NAN_FLT;
-    }
-    else
-    {
-        ret = powf(x, y);
-    }
-    
+    ret = powf(x, y);
+		
 #if !HAVE_VALID_NEGATIVE_INF_POW
     if ((ret == PAL_POSINF_FLT) && (x < 0) && isfinite(x) && (ceilf(y / 2) != floorf(y / 2)))
     {

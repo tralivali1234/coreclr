@@ -48,6 +48,15 @@ bool IsSSEOrAVXInstruction(instruction ins)
 #endif // !FEATURE_AVX_SUPPORT
 }
 
+bool IsAVXOnlyInstruction(instruction ins)
+{
+#ifdef FEATURE_AVX_SUPPORT
+    return (ins >= INS_FIRST_AVX_INSTRUCTION && ins <= INS_LAST_AVX_INSTRUCTION);
+#else
+    return false;
+#endif
+}
+
 bool emitter::IsAVXInstruction(instruction ins)
 {
 #ifdef FEATURE_AVX_SUPPORT
@@ -56,10 +65,6 @@ bool emitter::IsAVXInstruction(instruction ins)
     return false;
 #endif
 }
-
-#ifdef _TARGET_AMD64_
-#define REX_PREFIX_MASK 0xFF00000000LL
-#endif // _TARGET_AMD64_
 
 #ifdef FEATURE_AVX_SUPPORT
 // Returns true if the AVX instruction is a binary operator that requires 3 operands.
@@ -85,9 +90,11 @@ bool emitter::IsThreeOperandBinaryAVXInstruction(instruction ins)
             ins == INS_minsd || ins == INS_divps || ins == INS_divpd || ins == INS_maxps || ins == INS_maxpd ||
             ins == INS_maxss || ins == INS_maxsd || ins == INS_andnps || ins == INS_andnpd || ins == INS_paddb ||
             ins == INS_paddw || ins == INS_paddd || ins == INS_paddq || ins == INS_psubb || ins == INS_psubw ||
-            ins == INS_psubd || ins == INS_psubq || ins == INS_pmuludq || ins == INS_pxor || ins == INS_pmaxub ||
-            ins == INS_pminub || ins == INS_pmaxsw || ins == INS_pminsw || ins == INS_insertps ||
-            ins == INS_vinsertf128 || ins == INS_punpckldq || ins == INS_phaddd);
+            ins == INS_psubd || ins == INS_psubq || ins == INS_pmuludq || ins == INS_pxor || ins == INS_insertps ||
+            ins == INS_vinsertf128 || ins == INS_punpckldq || ins == INS_phaddd || ins == INS_pminub ||
+            ins == INS_pminsw || ins == INS_pminsb || ins == INS_pminsd || ins == INS_pminuw || ins == INS_pminud ||
+            ins == INS_pmaxub || ins == INS_pmaxsw || ins == INS_pmaxsb || ins == INS_pmaxsd || ins == INS_pmaxuw ||
+            ins == INS_pmaxud);
 }
 
 // Returns true if the AVX instruction is a move operator that requires 3 operands.
@@ -110,16 +117,9 @@ bool emitter::IsThreeOperandMoveAVXInstruction(instruction ins)
 //
 // Note that this should be true for any of the instructions in instrsXArch.h
 // that use the SSE38 or SSE3A macro.
-//
-// TODO-XArch-Cleanup: This is a temporary solution for now. Eventually this
-// needs to be addressed by expanding instruction encodings.
 bool emitter::Is4ByteAVXInstruction(instruction ins)
 {
-    return UseAVX() &&
-           (ins == INS_dpps || ins == INS_dppd || ins == INS_insertps || ins == INS_pcmpeqq || ins == INS_pcmpgtq ||
-            ins == INS_vbroadcastss || ins == INS_vbroadcastsd || ins == INS_vpbroadcastb || ins == INS_vpbroadcastw ||
-            ins == INS_vpbroadcastd || ins == INS_vpbroadcastq || ins == INS_vextractf128 || ins == INS_vinsertf128 ||
-            ins == INS_pmulld || ins == INS_ptest || ins == INS_phaddd);
+    return UseAVX() && (IsSSE4Instruction(ins) || IsAVXOnlyInstruction(ins)) && EncodedBySSE38orSSE3A(ins);
 }
 #endif // FEATURE_AVX_SUPPORT
 
@@ -138,8 +138,7 @@ bool emitter::Is4ByteSSE4Instruction(instruction ins)
     // On legacy backend SSE3_4 is not enabled.
     return false;
 #else
-    return UseSSE3_4() && (ins == INS_dpps || ins == INS_dppd || ins == INS_insertps || ins == INS_pcmpeqq ||
-                           ins == INS_pcmpgtq || ins == INS_pmulld || ins == INS_ptest || ins == INS_phaddd);
+    return UseSSE3_4() && IsSSE4Instruction(ins) && EncodedBySSE38orSSE3A(ins);
 #endif
 }
 
@@ -717,12 +716,10 @@ unsigned emitter::emitGetPrefixSize(code_t code)
         return 3;
     }
 
-#ifdef _TARGET_AMD64_
-    if (code & REX_PREFIX_MASK)
+    if (hasRexPrefix(code))
     {
         return 1;
     }
-#endif // _TARGET_AMD64_
 
     return 0;
 }
@@ -745,7 +742,10 @@ void emitter::emitMarkStackLvl(unsigned stackLevel)
     emitCurStackLvl = emitCurIG->igStkLvl = stackLevel;
 
     if (emitMaxStackDepth < emitCurStackLvl)
+    {
+        JITDUMP("Upping emitMaxStackDepth from %d to %d\n", emitMaxStackDepth, emitCurStackLvl);
         emitMaxStackDepth = emitCurStackLvl;
+    }
 }
 #endif
 
@@ -898,7 +898,8 @@ bool emitter::emitInsCanOnlyWriteSSE2OrAVXReg(instrDesc* id)
     // The following SSE2 instructions write to a general purpose integer register.
     if (!IsSSEOrAVXInstruction(ins) || ins == INS_mov_xmm2i || ins == INS_cvttsd2si
 #ifndef LEGACY_BACKEND
-        || ins == INS_cvttss2si || ins == INS_cvtsd2si || ins == INS_cvtss2si
+        || ins == INS_cvttss2si || ins == INS_cvtsd2si || ins == INS_cvtss2si || ins == INS_pmovmskb ||
+        ins == INS_pextrw
 #endif // !LEGACY_BACKEND
         )
     {
@@ -939,72 +940,6 @@ inline size_t insCode(instruction ins)
     assert((insCodes[ins] != BAD_CODE));
 
     return insCodes[ins];
-}
-
-/*****************************************************************************
- *
- *  Returns the "[r/m], 32-bit icon" encoding of the given CPU instruction.
- */
-
-inline size_t insCodeMI(instruction ins)
-{
-    // clang-format off
-    const static
-    size_t          insCodesMI[] =
-    {
-        #define INST0(id, nm, fp, um, rf, wf, mr                )
-        #define INST1(id, nm, fp, um, rf, wf, mr                )
-        #define INST2(id, nm, fp, um, rf, wf, mr, mi            ) mi,
-        #define INST3(id, nm, fp, um, rf, wf, mr, mi, rm        ) mi,
-        #define INST4(id, nm, fp, um, rf, wf, mr, mi, rm, a4    ) mi,
-        #define INST5(id, nm, fp, um, rf, wf, mr, mi, rm, a4, rr) mi,
-        #include "instrs.h"
-        #undef  INST0
-        #undef  INST1
-        #undef  INST2
-        #undef  INST3
-        #undef  INST4
-        #undef  INST5
-    };
-    // clang-format on
-
-    assert((unsigned)ins < sizeof(insCodesMI) / sizeof(insCodesMI[0]));
-    assert((insCodesMI[ins] != BAD_CODE));
-
-    return insCodesMI[ins];
-}
-
-/*****************************************************************************
- *
- *  Returns the "reg, [r/m]" encoding of the given CPU instruction.
- */
-
-inline size_t insCodeRM(instruction ins)
-{
-    // clang-format off
-    const static
-    size_t          insCodesRM[] =
-    {
-        #define INST0(id, nm, fp, um, rf, wf, mr                )
-        #define INST1(id, nm, fp, um, rf, wf, mr                )
-        #define INST2(id, nm, fp, um, rf, wf, mr, mi            )
-        #define INST3(id, nm, fp, um, rf, wf, mr, mi, rm        ) rm,
-        #define INST4(id, nm, fp, um, rf, wf, mr, mi, rm, a4    ) rm,
-        #define INST5(id, nm, fp, um, rf, wf, mr, mi, rm, a4, rr) rm,
-        #include "instrs.h"
-        #undef  INST0
-        #undef  INST1
-        #undef  INST2
-        #undef  INST3
-        #undef  INST4
-        #undef  INST5
-    };
-    // clang-format on
-
-    assert((unsigned)ins < sizeof(insCodesRM) / sizeof(insCodesRM[0]));
-    assert((insCodesRM[ins] != BAD_CODE));
-
-    return insCodesRM[ins];
 }
 
 /*****************************************************************************
@@ -1075,6 +1010,86 @@ inline size_t insCodeRR(instruction ins)
 
 // clang-format off
 const static
+size_t          insCodesRM[] =
+{
+    #define INST0(id, nm, fp, um, rf, wf, mr                )
+    #define INST1(id, nm, fp, um, rf, wf, mr                )
+    #define INST2(id, nm, fp, um, rf, wf, mr, mi            )
+    #define INST3(id, nm, fp, um, rf, wf, mr, mi, rm        ) rm,
+    #define INST4(id, nm, fp, um, rf, wf, mr, mi, rm, a4    ) rm,
+    #define INST5(id, nm, fp, um, rf, wf, mr, mi, rm, a4, rr) rm,
+    #include "instrs.h"
+    #undef  INST0
+    #undef  INST1
+    #undef  INST2
+    #undef  INST3
+    #undef  INST4
+    #undef  INST5
+};
+// clang-format on
+
+// Returns true iff the give CPU instruction has an RM encoding.
+inline bool hasCodeRM(instruction ins)
+{
+    assert((unsigned)ins < sizeof(insCodesRM) / sizeof(insCodesRM[0]));
+    return ((insCodesRM[ins] != BAD_CODE));
+}
+
+/*****************************************************************************
+ *
+ *  Returns the "reg, [r/m]" encoding of the given CPU instruction.
+ */
+
+inline size_t insCodeRM(instruction ins)
+{
+    assert((unsigned)ins < sizeof(insCodesRM) / sizeof(insCodesRM[0]));
+    assert((insCodesRM[ins] != BAD_CODE));
+
+    return insCodesRM[ins];
+}
+
+// clang-format off
+const static
+size_t          insCodesMI[] =
+{
+    #define INST0(id, nm, fp, um, rf, wf, mr                )
+    #define INST1(id, nm, fp, um, rf, wf, mr                )
+    #define INST2(id, nm, fp, um, rf, wf, mr, mi            ) mi,
+    #define INST3(id, nm, fp, um, rf, wf, mr, mi, rm        ) mi,
+    #define INST4(id, nm, fp, um, rf, wf, mr, mi, rm, a4    ) mi,
+    #define INST5(id, nm, fp, um, rf, wf, mr, mi, rm, a4, rr) mi,
+    #include "instrs.h"
+    #undef  INST0
+    #undef  INST1
+    #undef  INST2
+    #undef  INST3
+    #undef  INST4
+    #undef  INST5
+};
+// clang-format on
+
+// Returns true iff the give CPU instruction has an MI encoding.
+inline bool hasCodeMI(instruction ins)
+{
+    assert((unsigned)ins < sizeof(insCodesMI) / sizeof(insCodesMI[0]));
+    return ((insCodesMI[ins] != BAD_CODE));
+}
+
+/*****************************************************************************
+ *
+ *  Returns the "[r/m], 32-bit icon" encoding of the given CPU instruction.
+ */
+
+inline size_t insCodeMI(instruction ins)
+{
+    assert((unsigned)ins < sizeof(insCodesMI) / sizeof(insCodesMI[0]));
+    assert((insCodesMI[ins] != BAD_CODE));
+
+    return insCodesMI[ins];
+}
+
+// clang-format off
+const static
 size_t          insCodesMR[] =
 {
     #define INST0(id, nm, fp, um, rf, wf, mr                )
@@ -1111,6 +1126,32 @@ inline size_t insCodeMR(instruction ins)
     assert((insCodesMR[ins] != BAD_CODE));
 
     return insCodesMR[ins];
+}
+
+// Return true if the instruction uses the SSE38 or SSE3A macro in instrsXArch.h.
+bool emitter::EncodedBySSE38orSSE3A(instruction ins)
+{
+    const size_t SSE38 = 0x0F660038;
+    const size_t SSE3A = 0x0F66003A;
+    const size_t MASK  = 0xFFFF00FF;
+
+    size_t insCode = 0;
+
+    if (hasCodeRM(ins))
+    {
+        insCode = insCodeRM(ins);
+    }
+    else if (hasCodeMI(ins))
+    {
+        insCode = insCodeMI(ins);
+    }
+    else if (hasCodeMR(ins))
+    {
+        insCode = insCodeMR(ins);
+    }
+
+    insCode &= MASK;
+    return insCode == SSE38 || insCode == SSE3A;
 }
 
 /*****************************************************************************
@@ -1627,7 +1668,7 @@ inline UNATIVE_OFFSET emitter::emitInsSizeSV(code_t code, int var, int dsp)
 
             if (EBPbased)
             {
-#if defined(_TARGET_AMD64_) && !defined(PLATFORM_UNIX)
+#if defined(_TARGET_AMD64_) && !defined(UNIX_AMD64_ABI)
                 // If localloc is not used, then ebp chaining is done and hence
                 // offset of locals will be at negative offsets, Otherwise offsets
                 // will be positive.  In future, when RBP gets positioned in the
@@ -1881,10 +1922,9 @@ UNATIVE_OFFSET emitter::emitInsSizeAM(instrDesc* id, code_t code)
         }
     }
 
-#ifdef _TARGET_AMD64_
     size += emitGetVexPrefixAdjustedSize(ins, attrSize, code);
 
-    if (code & REX_PREFIX_MASK)
+    if (hasRexPrefix(code))
     {
         // REX prefix
         size += emitGetRexPrefixSize(ins);
@@ -1899,7 +1939,6 @@ UNATIVE_OFFSET emitter::emitInsSizeAM(instrDesc* id, code_t code)
         // Should have a REX byte
         size += emitGetRexPrefixSize(ins);
     }
-#endif // _TARGET_AMD64_
 
     if (rgx == REG_NA)
     {
@@ -2302,9 +2341,7 @@ void emitter::emitIns(instruction ins)
     }
 #endif // DEBUG
 
-#ifdef _TARGET_AMD64_
-    assert((code & REX_PREFIX_MASK) == 0); // Can't have a REX bit with no operands, right?
-#endif                                     // _TARGET_AMD64_
+    assert(!hasRexPrefix(code)); // Can't have a REX bit with no operands, right?
 
     if (code & 0xFF000000)
     {
@@ -2324,11 +2361,8 @@ void emitter::emitIns(instruction ins)
     }
 
 #ifndef LEGACY_BACKEND
-    // Account for 2-byte VEX prefix in case of vzeroupper
-    if (ins == INS_vzeroupper)
-    {
-        sz += 2;
-    }
+    // vzeroupper includes its 2-byte VEX prefix in its MR code.
+    assert((ins != INS_vzeroupper) || (sz == 3));
 #endif
 
     insFormat fmt = IF_NONE;
@@ -2786,20 +2820,19 @@ CORINFO_FIELD_HANDLE emitter::emitFltOrDblConst(GenTreeDblCon* tree, emitAttr at
 regNumber emitter::emitInsBinary(instruction ins, emitAttr attr, GenTree* dst, GenTree* src)
 {
     // dst can only be a reg or modrm
-    assert(!dst->isContained() || dst->isContainedMemoryOp() ||
-           instrIs3opImul(ins)); // dst on these isn't really the dst
+    assert(!dst->isContained() || dst->isUsedFromMemory() || instrIs3opImul(ins)); // dst on these isn't really the dst
 
 #ifdef DEBUG
     // src can be anything but both src and dst cannot be addr modes
     // or at least cannot be contained addr modes
-    if (dst->isContainedMemoryOp())
+    if (dst->isUsedFromMemory())
     {
-        assert(!src->isContainedMemoryOp());
+        assert(!src->isUsedFromMemory());
     }
 
-    if (src->isContainedMemoryOp())
+    if (src->isUsedFromMemory())
     {
-        assert(!dst->isContainedMemoryOp());
+        assert(!dst->isUsedFromMemory());
     }
 #endif
 
@@ -2837,7 +2870,7 @@ regNumber emitter::emitInsBinary(instruction ins, emitAttr attr, GenTree* dst, G
 
     // find local field if any
     GenTreeLclFld* lclField = nullptr;
-    if (src->isContainedLclField())
+    if (src->isLclFldUsedFromMemory())
     {
         lclField = src->AsLclFld();
     }
@@ -2848,12 +2881,12 @@ regNumber emitter::emitInsBinary(instruction ins, emitAttr attr, GenTree* dst, G
 
     // find contained lcl var if any
     GenTreeLclVar* lclVar = nullptr;
-    if (src->isContainedLclVar())
+    if (src->isLclVarUsedFromMemory())
     {
         assert(src->IsRegOptional());
         lclVar = src->AsLclVar();
     }
-    else if (dst->isContainedLclVar())
+    if (dst->isLclVarUsedFromMemory())
     {
         assert(dst->IsRegOptional());
         lclVar = dst->AsLclVar();
@@ -2861,12 +2894,12 @@ regNumber emitter::emitInsBinary(instruction ins, emitAttr attr, GenTree* dst, G
 
     // find contained spill tmp if any
     TempDsc* tmpDsc = nullptr;
-    if (src->isContainedSpillTemp())
+    if (src->isUsedFromSpillTemp())
     {
         assert(src->IsRegOptional());
         tmpDsc = codeGen->getSpillTempDsc(src);
     }
-    else if (dst->isContainedSpillTemp())
+    else if (dst->isUsedFromSpillTemp())
     {
         assert(dst->IsRegOptional());
         tmpDsc = codeGen->getSpillTempDsc(dst);
@@ -2952,7 +2985,7 @@ regNumber emitter::emitInsBinary(instruction ins, emitAttr attr, GenTree* dst, G
     if (varNum != BAD_VAR_NUM || tmpDsc != nullptr)
     {
         // Is the memory op in the source position?
-        if (src->isContainedMemoryOp())
+        if (src->isUsedFromMemory())
         {
             if (instrHasImplicitRegPairDest(ins))
             {
@@ -3997,16 +4030,14 @@ void emitter::emitIns_C_I(instruction ins, emitAttr attr, CORINFO_FIELD_HANDLE f
     code_t         code = insCodeMI(ins);
     UNATIVE_OFFSET sz   = emitInsSizeCV(id, code, val);
 
-#ifdef _TARGET_AMD64_
     // Vex prefix
     sz += emitGetVexPrefixAdjustedSize(ins, attr, insCodeMI(ins));
 
     // REX prefix, if not already included in "code"
-    if (TakesRexWPrefix(ins, attr) && (code & REX_PREFIX_MASK) == 0)
+    if (TakesRexWPrefix(ins, attr) && !hasRexPrefix(code))
     {
         sz += emitGetRexPrefixSize(ins);
     }
-#endif // _TARGET_AMD64_
 
     id->idAddr()->iiaFieldHnd = fldHnd;
     id->idCodeSize(sz);
@@ -5109,7 +5140,10 @@ void emitter::emitAdjustStackDepthPushPop(instruction ins)
         emitCurStackLvl += emitCntStackDepth;
 
         if (emitMaxStackDepth < emitCurStackLvl)
+        {
+            JITDUMP("Upping emitMaxStackDepth from %d to %d\n", emitMaxStackDepth, emitCurStackLvl);
             emitMaxStackDepth = emitCurStackLvl;
+        }
     }
     else if (ins == INS_pop)
     {
@@ -5145,7 +5179,10 @@ void emitter::emitAdjustStackDepth(instruction ins, ssize_t val)
         emitCurStackLvl = newStackLvl.Value();
 
         if (emitMaxStackDepth < emitCurStackLvl)
+        {
+            JITDUMP("Upping emitMaxStackDepth from %d to %d\n", emitMaxStackDepth, emitCurStackLvl);
             emitMaxStackDepth = emitCurStackLvl;
+        }
     }
     else if (ins == INS_add)
     {
@@ -5179,22 +5216,25 @@ void emitter::emitAdjustStackDepth(instruction ins, ssize_t val)
  *
  */
 
+// clang-format off
 void emitter::emitIns_Call(EmitCallType          callType,
                            CORINFO_METHOD_HANDLE methHnd,
                            INDEBUG_LDISASM_COMMA(CORINFO_SIG_INFO* sigInfo) // used to report call sites to the EE
-                           void*    addr,
-                           ssize_t  argSize,
-                           emitAttr retSize MULTIREG_HAS_SECOND_GC_RET_ONLY_ARG(emitAttr secondRetSize),
-                           VARSET_VALARG_TP ptrVars,
-                           regMaskTP        gcrefRegs,
-                           regMaskTP        byrefRegs,
-                           IL_OFFSETX       ilOffset, // = BAD_IL_OFFSET
-                           regNumber        ireg,     // = REG_NA
-                           regNumber        xreg,     // = REG_NA
-                           unsigned         xmul,     // = 0
-                           ssize_t          disp,     // = 0
-                           bool             isJump,   // = false
-                           bool             isNoGC)   // = false
+                           void*                 addr,
+                           ssize_t               argSize,
+                           emitAttr              retSize
+                           MULTIREG_HAS_SECOND_GC_RET_ONLY_ARG(emitAttr secondRetSize),
+                           VARSET_VALARG_TP      ptrVars,
+                           regMaskTP             gcrefRegs,
+                           regMaskTP             byrefRegs,
+                           IL_OFFSETX            ilOffset, // = BAD_IL_OFFSET
+                           regNumber             ireg,     // = REG_NA
+                           regNumber             xreg,     // = REG_NA
+                           unsigned              xmul,     // = 0
+                           ssize_t               disp,     // = 0
+                           bool                  isJump,   // = false
+                           bool                  isNoGC)   // = false
+// clang-format on
 {
     /* Sanity check the arguments depending on callType */
 
@@ -8055,10 +8095,7 @@ DONE:
     }
     else
     {
-        if (emitInsCanOnlyWriteSSE2OrAVXReg(id))
-        {
-        }
-        else
+        if (!emitInsCanOnlyWriteSSE2OrAVXReg(id))
         {
             switch (id->idInsFmt())
             {
@@ -8450,10 +8487,7 @@ BYTE* emitter::emitOutputSV(BYTE* dst, instrDesc* id, code_t code, CnsVal* addc)
     }
     else
     {
-        if (emitInsCanOnlyWriteSSE2OrAVXReg(id))
-        {
-        }
-        else
+        if (!emitInsCanOnlyWriteSSE2OrAVXReg(id))
         {
             switch (id->idInsFmt())
             {
@@ -8883,10 +8917,7 @@ BYTE* emitter::emitOutputCV(BYTE* dst, instrDesc* id, code_t code, CnsVal* addc)
     }
     else
     {
-        if (emitInsCanOnlyWriteSSE2OrAVXReg(id))
-        {
-        }
-        else
+        if (!emitInsCanOnlyWriteSSE2OrAVXReg(id))
         {
             switch (id->idInsFmt())
             {
@@ -9428,10 +9459,7 @@ BYTE* emitter::emitOutputRR(BYTE* dst, instrDesc* id)
     }
     else
     {
-        if (emitInsCanOnlyWriteSSE2OrAVXReg(id))
-        {
-        }
-        else
+        if (!emitInsCanOnlyWriteSSE2OrAVXReg(id))
         {
             switch (id->idInsFmt())
             {
@@ -10832,6 +10860,12 @@ size_t emitter::emitOutputInstr(insGroup* ig, instrDesc* id, BYTE** dp)
 
             dst += emitOutputByte(dst, emitGetInsSC(id));
             sz = emitSizeOfInsDsc(id);
+
+            // Kill any GC ref in the destination register if necessary.
+            if (!emitInsCanOnlyWriteSSE2OrAVXReg(id))
+            {
+                emitGCregDeadUpd(id->idReg1(), dst);
+            }
             break;
 
         /********************************************************************/
@@ -11202,9 +11236,14 @@ size_t emitter::emitOutputInstr(insGroup* ig, instrDesc* id, BYTE** dp)
     assert(sz == emitSizeOfInsDsc(id));
 
 #if !FEATURE_FIXED_OUT_ARGS
+    bool updateStackLevel = !emitIGisInProlog(ig) && !emitIGisInEpilog(ig);
+
+#if FEATURE_EH_FUNCLETS
+    updateStackLevel = updateStackLevel && !emitIGisInFuncletProlog(ig) && !emitIGisInFuncletEpilog(ig);
+#endif // FEATURE_EH_FUNCLETS
 
     // Make sure we keep the current stack level up to date
-    if (!emitIGisInProlog(ig) && !emitIGisInEpilog(ig))
+    if (updateStackLevel)
     {
         switch (ins)
         {

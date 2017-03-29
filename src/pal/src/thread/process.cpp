@@ -18,6 +18,9 @@ Abstract:
 
 --*/
 
+#include "pal/dbgmsg.h"
+SET_DEFAULT_DEBUG_CHANNEL(PROCESS); // some headers have code with asserts, so do this first
+
 #include "pal/procobj.hpp"
 #include "pal/thread.hpp"
 #include "pal/file.hpp"
@@ -29,7 +32,6 @@ Abstract:
 #include "pal/init.h"
 #include "pal/critsect.h"
 #include "pal/debug.h"
-#include "pal/dbgmsg.h"
 #include "pal/utils.h"
 #include "pal/environ.h"
 #include "pal/virtual.h"
@@ -66,8 +68,6 @@ Abstract:
 #endif
 
 using namespace CorUnix;
-
-SET_DEFAULT_DEBUG_CHANNEL(PROCESS);
 
 CObjectType CorUnix::otProcess(
                 otiProcess,
@@ -1453,7 +1453,7 @@ static uint64_t HashSemaphoreName(uint64_t a, uint64_t b)
 #define HashSemaphoreName(a,b) a,b
 #endif
 
-static const char* PipeNameFormat = "/tmp/clr-debug-pipe-%d-%llu-%s";
+static const char* PipeNameFormat = TEMP_DIRECTORY_PATH "clr-debug-pipe-%d-%llu-%s";
 
 class PAL_RuntimeStartupHelper
 {
@@ -1879,7 +1879,7 @@ Parameters:
     None
 
 Return value:
-    TRUE - succeeded, FALSE - failed
+    TRUE - successfully launched by debugger, FALSE - not launched or some failure in the handshake
 --*/
 BOOL
 PALAPI
@@ -1889,7 +1889,7 @@ PAL_NotifyRuntimeStarted()
     char continueSemName[CLR_SEM_MAX_NAMELEN];
     sem_t *startupSem = SEM_FAILED;
     sem_t *continueSem = SEM_FAILED;
-    BOOL result = TRUE;
+    BOOL launched = FALSE;
 
     UINT64 processIdDisambiguationKey = 0;
     GetProcessIdDisambiguationKey(gPID, &processIdDisambiguationKey);
@@ -1899,9 +1899,7 @@ PAL_NotifyRuntimeStarted()
 
     TRACE("PAL_NotifyRuntimeStarted opening continue '%s' startup '%s'\n", continueSemName, startupSemName);
 
-
-    // Open the debugger startup semaphore. If it doesn't exists, then we do nothing and
-    // the function is successful.
+    // Open the debugger startup semaphore. If it doesn't exists, then we do nothing and return
     startupSem = sem_open(startupSemName, 0);
     if (startupSem == SEM_FAILED)
     {
@@ -1913,7 +1911,6 @@ PAL_NotifyRuntimeStarted()
     if (continueSem == SEM_FAILED)
     {
         ASSERT("sem_open(%s) failed: %d (%s)\n", continueSemName, errno, strerror(errno));
-        result = FALSE;
         goto exit;
     }
 
@@ -1921,7 +1918,6 @@ PAL_NotifyRuntimeStarted()
     if (sem_post(startupSem) != 0)
     {
         ASSERT("sem_post(startupSem) failed: errno is %d (%s)\n", errno, strerror(errno));
-        result = FALSE;
         goto exit;
     }
 
@@ -1929,9 +1925,11 @@ PAL_NotifyRuntimeStarted()
     if (sem_wait(continueSem) != 0)
     {
         ASSERT("sem_wait(continueSem) failed: errno is %d (%s)\n", errno, strerror(errno));
-        result = FALSE;
         goto exit;
     }
+
+    // Returns that the runtime was successfully launched for debugging
+    launched = TRUE;
 
 exit:
     if (startupSem != SEM_FAILED)
@@ -1942,7 +1940,7 @@ exit:
     {
         sem_close(continueSem);
     }
-    return result;
+    return launched;
 }
 
 /*++
@@ -2668,6 +2666,12 @@ CreateProcessModules(
     // VM_ALLOCATE            0000000105bac000-0000000105bad000 [    4K] r--/rw- SM=SHM
     // MALLOC (admin)         0000000105bad000-0000000105bae000 [    4K] r--/rwx SM=ZER
     // MALLOC                 0000000105bae000-0000000105baf000 [    4K] rw-/rwx SM=ZER
+
+    // OS X Sierra (10.12.4 Beta)
+    // REGION TYPE                      START - END             [ VSIZE  RSDNT  DIRTY   SWAP] PRT/MAX SHRMOD PURGE    REGION DETAIL
+    // Stack                  00007fff5a930000-00007fff5b130000 [ 8192K    32K    32K     0K] rw-/rwx SM=PRV          thread 0
+    // __TEXT                 00007fffa4a0b000-00007fffa4a0d000 [    8K     8K     0K     0K] r-x/r-x SM=COW          /usr/lib/libSystem.B.dylib
+    // __TEXT                 00007fffa4bbe000-00007fffa4c15000 [  348K   348K     0K     0K] r-x/r-x SM=COW          /usr/lib/libc++.1.dylib
     char *line = NULL;
     size_t lineLen = 0;
     int count = 0;
@@ -2688,9 +2692,8 @@ CreateProcessModules(
     {
         void *startAddress, *endAddress;
         char moduleName[PATH_MAX];
-        int size;
 
-        if (sscanf_s(line, "__TEXT %p-%p [ %dK] %*[-/rwxsp] SM=%*[A-Z] %s\n", &startAddress, &endAddress, &size, moduleName, _countof(moduleName)) == 4)
+        if (sscanf_s(line, "__TEXT %p-%p [ %*[0-9K ]] %*[-/rwxsp] SM=%*[A-Z] %s\n", &startAddress, &endAddress, moduleName, _countof(moduleName)) == 3)
         {
             bool dup = false;
             for (ProcessModules *entry = listHead; entry != NULL; entry = entry->Next)

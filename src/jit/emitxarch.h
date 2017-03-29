@@ -107,7 +107,18 @@ void SetUseSSE3_4(bool value)
 {
     useSSE3_4Encodings = value;
 }
+bool EncodedBySSE38orSSE3A(instruction ins);
 bool Is4ByteSSE4Instruction(instruction ins);
+
+bool hasRexPrefix(code_t code)
+{
+#ifdef _TARGET_AMD64_
+    const code_t REX_PREFIX_MASK = 0xFF00000000LL;
+    return (code & REX_PREFIX_MASK) != 0;
+#else  // !_TARGET_AMD64_
+    return false;
+#endif // !_TARGET_AMD64_
+}
 
 #ifdef FEATURE_AVX_SUPPORT
 
@@ -150,6 +161,26 @@ void SetUseAVX(bool value)
     useAVXEncodings = value;
 }
 
+bool containsAVXInstruction = false;
+bool ContainsAVX()
+{
+    return containsAVXInstruction;
+}
+void SetContainsAVX(bool value)
+{
+    containsAVXInstruction = value;
+}
+
+bool contains256bitAVXInstruction = false;
+bool Contains256bitAVX()
+{
+    return contains256bitAVXInstruction;
+}
+void SetContains256bitAVX(bool value)
+{
+    contains256bitAVXInstruction = value;
+}
+
 bool IsThreeOperandBinaryAVXInstruction(instruction ins);
 bool IsThreeOperandMoveAVXInstruction(instruction ins);
 bool IsThreeOperandAVXInstruction(instruction ins)
@@ -158,7 +189,15 @@ bool IsThreeOperandAVXInstruction(instruction ins)
 }
 bool Is4ByteAVXInstruction(instruction ins);
 #else  // !FEATURE_AVX_SUPPORT
-bool                     UseAVX()
+bool UseAVX()
+{
+    return false;
+}
+bool ContainsAVX()
+{
+    return false;
+}
+bool Contains256bitAVX()
 {
     return false;
 }
@@ -413,35 +452,41 @@ enum EmitCallType
     EC_COUNT
 };
 
+// clang-format off
 void emitIns_Call(EmitCallType          callType,
                   CORINFO_METHOD_HANDLE methHnd,
                   CORINFO_SIG_INFO*     sigInfo, // used to report call sites to the EE
                   void*                 addr,
                   ssize_t               argSize,
-                  emitAttr retSize MULTIREG_HAS_SECOND_GC_RET_ONLY_ARG(emitAttr secondRetSize),
-                  VARSET_VALARG_TP ptrVars,
-                  regMaskTP        gcrefRegs,
-                  regMaskTP        byrefRegs,
-                  GenTreeIndir*    indir,
-                  bool             isJump = false,
-                  bool             isNoGC = false);
+                  emitAttr              retSize
+                  MULTIREG_HAS_SECOND_GC_RET_ONLY_ARG(emitAttr secondRetSize),
+                  VARSET_VALARG_TP      ptrVars,
+                  regMaskTP             gcrefRegs,
+                  regMaskTP             byrefRegs,
+                  GenTreeIndir*         indir,
+                  bool                  isJump = false,
+                  bool                  isNoGC = false);
+// clang-format on
 
+// clang-format off
 void emitIns_Call(EmitCallType          callType,
                   CORINFO_METHOD_HANDLE methHnd,
                   INDEBUG_LDISASM_COMMA(CORINFO_SIG_INFO* sigInfo) // used to report call sites to the EE
-                  void*    addr,
-                  ssize_t  argSize,
-                  emitAttr retSize MULTIREG_HAS_SECOND_GC_RET_ONLY_ARG(emitAttr secondRetSize),
-                  VARSET_VALARG_TP ptrVars,
-                  regMaskTP        gcrefRegs,
-                  regMaskTP        byrefRegs,
-                  IL_OFFSETX       ilOffset = BAD_IL_OFFSET,
-                  regNumber        ireg     = REG_NA,
-                  regNumber        xreg     = REG_NA,
-                  unsigned         xmul     = 0,
-                  ssize_t          disp     = 0,
-                  bool             isJump   = false,
-                  bool             isNoGC   = false);
+                  void*                 addr,
+                  ssize_t               argSize,
+                  emitAttr              retSize
+                  MULTIREG_HAS_SECOND_GC_RET_ONLY_ARG(emitAttr secondRetSize),
+                  VARSET_VALARG_TP      ptrVars,
+                  regMaskTP             gcrefRegs,
+                  regMaskTP             byrefRegs,
+                  IL_OFFSETX            ilOffset = BAD_IL_OFFSET,
+                  regNumber             ireg     = REG_NA,
+                  regNumber             xreg     = REG_NA,
+                  unsigned              xmul     = 0,
+                  ssize_t               disp     = 0,
+                  bool                  isJump   = false,
+                  bool                  isNoGC   = false);
+// clang-format on
 
 #ifdef _TARGET_AMD64_
 // Is the last instruction emitted a call instruction?
