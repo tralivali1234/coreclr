@@ -7900,8 +7900,7 @@ GenTreePtr Compiler::gtCloneExpr(
                 copy = new (this, oper) GenTreeFptrVal(tree->gtType, tree->gtFptrVal.gtFptrMethod);
 
 #ifdef FEATURE_READYTORUN_COMPILER
-                copy->gtFptrVal.gtEntryPoint         = tree->gtFptrVal.gtEntryPoint;
-                copy->gtFptrVal.gtLdftnResolvedToken = tree->gtFptrVal.gtLdftnResolvedToken;
+                copy->gtFptrVal.gtEntryPoint = tree->gtFptrVal.gtEntryPoint;
 #endif
                 goto DONE;
 
@@ -16378,6 +16377,14 @@ CORINFO_CLASS_HANDLE Compiler::gtGetClassHandle(GenTreePtr tree, bool* isExact, 
     *isNonNull                    = false;
     *isExact                      = false;
     CORINFO_CLASS_HANDLE objClass = nullptr;
+
+    // Bail out if we're just importing and not generating code, since
+    // the jit uses TYP_REF for CORINFO_TYPE_VAR locals and args, but
+    // these may not be ref types.
+    if (compIsForImportOnly())
+    {
+        return objClass;
+    }
 
     // Bail out if the tree is not a ref type.
     var_types treeType = tree->TypeGet();

@@ -214,11 +214,11 @@ TODO: Talk about initializing strutures before use
 #endif
 
 // Update this one
-SELECTANY const GUID JITEEVersionIdentifier = { /* 61783541-8fc0-44ce-80f7-7789b93a3309 */
-    0x61783541,
-    0x8fc0,
-    0x44ce,
-    { 0x80, 0xf7, 0x77, 0x89, 0xb9, 0x3a, 0x33, 0x09 }
+SELECTANY const GUID JITEEVersionIdentifier = { /* f00b3f49-ddd2-49be-ba43-6e49ffa66959 */
+    0xf00b3f49,
+    0xddd2,
+    0x49be,
+    { 0xba, 0x43, 0x6e, 0x49, 0xff, 0xa6, 0x69, 0x59 }
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -746,6 +746,17 @@ enum CorInfoCallConv
     CORINFO_CALLCONV_EXPLICITTHIS=0x40,
     CORINFO_CALLCONV_PARAMTYPE  = 0x80,     // Passed last. Same as CORINFO_GENERICS_CTXT_FROM_PARAMTYPEARG
 };
+
+#ifdef UNIX_X86_ABI
+inline bool IsCallerPop(CorInfoCallConv callConv)
+{
+    unsigned int umask = CORINFO_CALLCONV_STDCALL
+                       | CORINFO_CALLCONV_THISCALL
+                       | CORINFO_CALLCONV_FASTCALL;
+
+    return !(callConv & umask);
+}
+#endif // UNIX_X86_ABI
 
 enum CorInfoUnmanagedCallConv
 {
@@ -1557,6 +1568,9 @@ enum CorInfoTokenKind
 
     // token comes from CEE_NEWOBJ
     CORINFO_TOKENKIND_NewObj    = 0x200 | CORINFO_TOKENKIND_Method,
+
+    // token comes from CEE_LDVIRTFTN
+    CORINFO_TOKENKIND_Ldvirtftn = 0x400 | CORINFO_TOKENKIND_Method,
 };
 
 struct CORINFO_RESOLVED_TOKEN

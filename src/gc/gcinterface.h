@@ -149,7 +149,7 @@ struct segment_info
     void * pvMem; // base of the allocation, not the first object (must add ibFirstObject)
     size_t ibFirstObject;   // offset to the base of the first object in the segment
     size_t ibAllocated; // limit of allocated memory in the segment (>= firstobject)
-    size_t ibCommit; // limit of committed memory in the segment (>= alllocated)
+    size_t ibCommit; // limit of committed memory in the segment (>= allocated)
     size_t ibReserved; // limit of reserved memory in the segment (>= commit)
 };
 
@@ -163,19 +163,18 @@ struct segment_info
 // one for the object header, and one for the first field in the object.
 #define min_obj_size ((sizeof(uint8_t*) + sizeof(uintptr_t) + sizeof(size_t)))
 
-#define max_generation 2
-
 // The bit shift used to convert a memory address into an index into the
 // Software Write Watch table.
 #define SOFTWARE_WRITE_WATCH_AddressToTableByteIndexShift 0xc
 
 class Object;
 class IGCHeap;
+class IGCHandleTable;
 
 // Initializes the garbage collector. Should only be called
 // once, during EE startup. Returns true if the initialization
 // was successful, false otherwise.
-bool InitializeGarbageCollector(IGCToCLR* clrToGC, IGCHeap **gcHeap, GcDacVars* gcDacVars);
+bool InitializeGarbageCollector(IGCToCLR* clrToGC, IGCHeap** gcHeap, IGCHandleTable** gcHandleTable, GcDacVars* gcDacVars);
 
 // The runtime needs to know whether we're using workstation or server GC 
 // long before the GCHeap is created. This function sets the type of
@@ -378,12 +377,30 @@ typedef enum
     HNDTYPE_WEAK_WINRT   = 9
 } HandleType;
 
+typedef enum
+{
+    GC_HEAP_INVALID = 0,
+    GC_HEAP_WKS     = 1,
+    GC_HEAP_SVR     = 2
+} GCHeapType;
+
 typedef bool (* walk_fn)(Object*, void*);
 typedef void (* gen_walk_fn)(void* context, int generation, uint8_t* range_start, uint8_t* range_end, uint8_t* range_reserved);
 typedef void (* record_surv_fn)(uint8_t* begin, uint8_t* end, ptrdiff_t reloc, void* context, bool compacting_p, bool bgc_p);
 typedef void (* fq_walk_fn)(bool, void*);
 typedef void (* fq_scan_fn)(Object** ppObject, ScanContext *pSC, uint32_t dwFlags);
 typedef void (* handle_scan_fn)(Object** pRef, Object* pSec, uint32_t flags, ScanContext* context, bool isDependent);
+class IGCHandleTable {
+public:
+
+    virtual bool Initialize() = 0;
+
+    virtual void Shutdown() = 0;
+
+    virtual void* GetHandleTableContext(void* handleTable) = 0;
+
+    virtual void* GetHandleTableForHandle(OBJECTHANDLE handle) = 0;
+};
 
 // IGCHeap is the interface that the VM will use when interacting with the GC.
 class IGCHeap {
@@ -717,19 +734,6 @@ public:
 
     IGCHeap() {}
     virtual ~IGCHeap() {}
-
-    typedef enum
-    {
-        GC_HEAP_INVALID = 0,
-        GC_HEAP_WKS     = 1,
-        GC_HEAP_SVR     = 2
-    } GC_HEAP_TYPE;
-
-#ifdef FEATURE_SVR_GC
-    SVAL_DECL(uint32_t, gcHeapType);
-#endif
-
-    SVAL_DECL(uint32_t, maxGeneration);
 };
 
 #ifdef WRITE_BARRIER_CHECK

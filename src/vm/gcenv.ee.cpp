@@ -29,6 +29,15 @@
 #include "comcallablewrapper.h"
 #endif // FEATURE_COMINTEROP
 
+// the method table for the WeakReference class
+extern MethodTable* pWeakReferenceMT;
+
+// The canonical method table for WeakReference<T>
+extern MethodTable* pWeakReferenceOfTCanonMT;
+
+// Finalizes a weak reference directly.
+extern void FinalizeWeakReference(Object* obj);
+
 void GCToEEInterface::SuspendEE(SUSPEND_REASON reason)
 {
     WRAPPER_NO_CONTRACT;
@@ -1016,6 +1025,7 @@ void GCProfileWalkHeapWorker(BOOL fProfilerPinned, BOOL fShouldWalkHeapRootsForE
 {
     {
         ProfilingScanContext SC(fProfilerPinned);
+        unsigned max_generation = GCHeapUtilities::GetGCHeap()->GetMaxGeneration();
 
         // **** Scan roots:  Only scan roots if profiling API wants them or ETW wants them.
         if (fProfilerPinned || fShouldWalkHeapRootsForEtw)
@@ -1348,4 +1358,39 @@ void GCToEEInterface::EnableFinalization(bool foundFinalizers)
 void GCToEEInterface::HandleFatalError(unsigned int exitCode)
 {
     EEPOLICY_HANDLE_FATAL_ERROR(exitCode);
+}
+
+bool GCToEEInterface::ShouldFinalizeObjectForUnload(AppDomain* pDomain, Object* obj)
+{
+    // CoreCLR does not have appdomains, so this code path is dead. Other runtimes may
+    // choose to inspect the object being finalized here.
+    // [DESKTOP TODO] Desktop looks for "agile and finalizable" objects and may choose
+    // to move them to a new app domain instead of finalizing them here.
+    return true;
+}
+
+bool GCToEEInterface::ForceFullGCToBeBlocking()
+{
+    // In theory, there is nothing fundamental that requires an AppDomain unload to induce
+    // a blocking GC. In the past, this workaround was done to fix an Stress AV, but the root
+    // cause of the AV was never discovered and this workaround remains in place.
+    //
+    // It would be nice if this were not necessary. However, it's not clear if the aformentioned
+    // stress bug is still lurking and will return if this workaround is removed. We should
+    // do some experiments: remove this workaround and see if the stress bug still repros.
+    // If so, we should find the root cause instead of relying on this.
+    return !!SystemDomain::System()->RequireAppDomainCleanup();
+}
+
+bool GCToEEInterface::EagerFinalized(Object* obj)
+{
+    MethodTable* pMT = obj->GetGCSafeMethodTable();
+    if (pMT == pWeakReferenceMT ||
+        pMT->GetCanonicalMethodTable() == pWeakReferenceOfTCanonMT)
+    {
+        FinalizeWeakReference(obj);
+        return true;
+    }
+
+    return false;
 }
