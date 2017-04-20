@@ -34,6 +34,9 @@ check_include_files(lwp.h HAVE_LWP_H)
 check_include_files(libunwind.h HAVE_LIBUNWIND_H)
 check_include_files(runetype.h HAVE_RUNETYPE_H)
 check_include_files(semaphore.h HAVE_SEMAPHORE_H)
+check_include_files(sys/prctl.h HAVE_PRCTL_H)
+check_include_files(numa.h HAVE_NUMA_H)
+check_include_files(pthread_np.h HAVE_PTHREAD_NP_H)
 
 if(NOT CMAKE_SYSTEM_NAME STREQUAL FreeBSD AND NOT CMAKE_SYSTEM_NAME STREQUAL NetBSD)
   set(CMAKE_REQUIRED_FLAGS "-ldl")
@@ -68,6 +71,7 @@ check_library_exists(${PTHREAD_LIBRARY} pthread_attr_get_np "" HAVE_PTHREAD_ATTR
 check_library_exists(${PTHREAD_LIBRARY} pthread_getattr_np "" HAVE_PTHREAD_GETATTR_NP)
 check_library_exists(${PTHREAD_LIBRARY} pthread_getcpuclockid "" HAVE_PTHREAD_GETCPUCLOCKID)
 check_library_exists(${PTHREAD_LIBRARY} pthread_sigqueue "" HAVE_PTHREAD_SIGQUEUE)
+check_library_exists(${PTHREAD_LIBRARY} pthread_getaffinity_np "" HAVE_PTHREAD_GETAFFINITY_NP)
 
 check_function_exists(sigreturn HAVE_SIGRETURN)
 check_function_exists(_thread_sys_sigreturn HAVE__THREAD_SYS_SIGRETURN)
@@ -78,6 +82,7 @@ check_function_exists(fsync HAVE_FSYNC)
 check_function_exists(futimes HAVE_FUTIMES)
 check_function_exists(utimes HAVE_UTIMES)
 check_function_exists(sysctl HAVE_SYSCTL)
+check_function_exists(sysinfo HAVE_SYSINFO)
 check_function_exists(sysconf HAVE_SYSCONF)
 check_function_exists(localtime_r HAVE_LOCALTIME_R)
 check_function_exists(gmtime_r HAVE_GMTIME_R)
@@ -117,11 +122,20 @@ int main(int argc, char **argv) {
 }" HAVE_UNW_GET_ACCESSORS)
 set(CMAKE_REQUIRED_LIBRARIES)
 
+check_cxx_source_compiles("
+#include <pthread_np.h>
+int main(int argc, char **argv) {
+  cpuset_t cpuSet;
+
+  return 0;
+}" HAVE_CPUSET_T)
+
 check_struct_has_member ("struct stat" st_atimespec "sys/types.h;sys/stat.h" HAVE_STAT_TIMESPEC)
 check_struct_has_member ("struct stat" st_atimensec "sys/types.h;sys/stat.h" HAVE_STAT_NSEC)
 check_struct_has_member ("struct tm" tm_gmtoff time.h HAVE_TM_GMTOFF)
 check_struct_has_member ("ucontext_t" uc_mcontext.gregs[0] ucontext.h HAVE_GREGSET_T)
 check_struct_has_member ("ucontext_t" uc_mcontext.__gregs[0] ucontext.h HAVE___GREGSET_T)
+check_struct_has_member ("struct sysinfo" mem_unit "sys/sysinfo.h" HAVE_SYSINFO_WITH_MEM_UNIT)
 
 set(CMAKE_EXTRA_INCLUDE_FILES machine/reg.h)
 check_type_size("struct reg" BSD_REGS_T)
@@ -981,6 +995,29 @@ int main(int argc, char **argv)
         libUnwindContext = uContext;
         return 0;
 }" UNWIND_CONTEXT_IS_UCONTEXT_T)
+
+check_cxx_source_compiles("
+#include <sys/param.h>
+#include <sys/sysctl.h>
+#include <vm/vm_param.h>
+
+int main(int argc, char **argv)
+{
+    struct xswdev xsw;
+
+    return 0;
+}" HAVE_XSWDEV)
+
+check_cxx_source_compiles("
+#include <sys/param.h>
+#include <sys/sysctl.h>
+
+int main(int argc, char **argv)
+{
+    struct xsw_usage xsu;
+
+    return 0;
+}" HAVE_XSW_USAGE)
 
 set(CMAKE_REQUIRED_LIBRARIES pthread)
 check_cxx_source_compiles("

@@ -4,12 +4,7 @@ else()
   set(CLR_BUILD_JIT32 0)  
 endif()  
 
-if (WIN32)
-  set(FEATURE_EVENT_TRACE 1)
-endif()
-if(CLR_CMAKE_PLATFORM_LINUX AND CLR_CMAKE_TARGET_ARCH_AMD64)
-  set(FEATURE_EVENT_TRACE 1)
-endif()
+include(clrfeatures.cmake)
 
 if (CLR_CMAKE_TARGET_ARCH_AMD64)
   if (CLR_CMAKE_PLATFORM_UNIX)

@@ -2875,13 +2875,10 @@ protected:
     bool impILConsumesAddr(const BYTE* codeAddr, CORINFO_METHOD_HANDLE fncHandle, CORINFO_MODULE_HANDLE scpHandle);
 
     void impResolveToken(const BYTE* addr, CORINFO_RESOLVED_TOKEN* pResolvedToken, CorInfoTokenKind kind);
-    void impPushOnStackNoType(GenTreePtr tree);
 
     void impPushOnStack(GenTreePtr tree, typeInfo ti);
-    void       impPushNullObjRefOnStack();
-    StackEntry impPopStack();
-    StackEntry impPopStack(CORINFO_CLASS_HANDLE& structTypeRet);
-    GenTreePtr impPopStack(typeInfo& ti);
+    void        impPushNullObjRefOnStack();
+    StackEntry  impPopStack();
     StackEntry& impStackTop(unsigned n = 0);
     unsigned impStackHeight();
 
@@ -3136,6 +3133,11 @@ private:
     IL_OFFSETX impCurILOffset(IL_OFFSET offs, bool callInstruction = false);
 
     //---------------- Spilling the importer stack ----------------------------
+
+    // The maximum number of bytes of IL processed without clean stack state.
+    // It allows to limit the maximum tree size and depth.
+    static const unsigned MAX_TREE_SIZE = 200;
+    bool impCanSpillNow(OPCODE prevOpcode);
 
     struct PendingDsc
     {
@@ -3641,7 +3643,7 @@ public:
 
     GenTreePtr fgGetCritSectOfStaticMethod();
 
-#if !defined(_TARGET_X86_)
+#if FEATURE_EH_FUNCLETS
 
     void fgAddSyncMethodEnterExit();
 
@@ -3649,7 +3651,7 @@ public:
 
     void fgConvertSyncReturnToLeave(BasicBlock* block);
 
-#endif // !_TARGET_X86_
+#endif // FEATURE_EH_FUNCLETS
 
     void fgAddReversePInvokeEnterExit();
 
@@ -7865,13 +7867,11 @@ public:
                                     //   (or)
                                     //   3. When opts.compDbgEnC is true. (See also Compiler::compCompile).
                                     //
-// When this flag is set, jit will allocate a gc-reference local variable (lvaSecurityObject),
-// which gets reported as a GC root to stackwalker.
-// (See also ICodeManager::GetAddrOfSecurityObject.)
+        // When this flag is set, jit will allocate a gc-reference local variable (lvaSecurityObject),
+        // which gets reported as a GC root to stackwalker.
+        // (See also ICodeManager::GetAddrOfSecurityObject.)
 
-#if RELOC_SUPPORT
         bool compReloc;
-#endif
 
 #ifdef DEBUG
 #if defined(_TARGET_XARCH_) && !defined(LEGACY_BACKEND)
@@ -9472,12 +9472,17 @@ const instruction INS_XOR             = INS_eor;
 const instruction INS_NEG             = INS_rsb;
 const instruction INS_TEST            = INS_tst;
 const instruction INS_MUL             = INS_mul;
+const instruction INS_MULADD          = INS_mla;
 const instruction INS_SIGNED_DIVIDE   = INS_sdiv;
 const instruction INS_UNSIGNED_DIVIDE = INS_udiv;
 const instruction INS_BREAKPOINT      = INS_bkpt;
 const instruction INS_ADDC            = INS_adc;
 const instruction INS_SUBC            = INS_sbc;
 const instruction INS_NOT             = INS_mvn;
+
+const instruction INS_ABS   = INS_vabs;
+const instruction INS_ROUND = INS_invalid;
+const instruction INS_SQRT  = INS_vsqrt;
 
 #endif
 
@@ -9493,12 +9498,17 @@ const instruction INS_XOR             = INS_eor;
 const instruction INS_NEG             = INS_neg;
 const instruction INS_TEST            = INS_tst;
 const instruction INS_MUL             = INS_mul;
+const instruction INS_MULADD          = INS_madd;
 const instruction INS_SIGNED_DIVIDE   = INS_sdiv;
 const instruction INS_UNSIGNED_DIVIDE = INS_udiv;
 const instruction INS_BREAKPOINT      = INS_bkpt;
 const instruction INS_ADDC            = INS_adc;
 const instruction INS_SUBC            = INS_sbc;
 const instruction INS_NOT             = INS_mvn;
+
+const instruction INS_ABS   = INS_fabs;
+const instruction INS_ROUND = INS_frintn;
+const instruction INS_SQRT  = INS_fsqrt;
 
 #endif
 

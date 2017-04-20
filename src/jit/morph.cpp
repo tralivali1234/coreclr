@@ -60,7 +60,8 @@ GenTreePtr Compiler::fgMorphCastIntoHelper(GenTreePtr tree, int helper, GenTreeP
 
 GenTreePtr Compiler::fgMorphIntoHelperCall(GenTreePtr tree, int helper, GenTreeArgList* args)
 {
-    tree->ChangeOper(GT_CALL);
+    // The helper call ought to be semantically equivalent to the original node, so preserve its VN.
+    tree->ChangeOper(GT_CALL, GenTree::PRESERVE_VN);
 
     tree->gtFlags |= GTF_CALL;
     if (args)
@@ -11416,6 +11417,20 @@ GenTreePtr Compiler::fgMorphSmpOp(GenTreePtr tree, MorphAddrContext* mac)
                 }
             }
 
+            // If gtOp1 is a GT_FIELD, we need to pass down the mac if
+            // its parent is GT_ADDR, since the address of the field
+            // is part of an ongoing address computation. Otherwise
+            // op1 represents the value of the field and so any address
+            // calculations it does are in a new context.
+            if ((op1->gtOper == GT_FIELD) && (tree->gtOper != GT_ADDR))
+            {
+                subMac1 = nullptr;
+
+                // The impact of this field's value to any ongoing
+                // address computation is handled below when looking
+                // at op2.
+            }
+
             tree->gtOp.gtOp1 = op1 = fgMorphTree(op1, subMac1);
 
 #if LOCAL_ASSERTION_PROP
@@ -11496,7 +11511,6 @@ GenTreePtr Compiler::fgMorphSmpOp(GenTreePtr tree, MorphAddrContext* mac)
             // (These are used to convey parent context about how addresses being calculated
             // will be used; see the specification comment for MorphAddrContext for full details.)
             // Assume it's an Ind context to start.
-            MorphAddrContext subIndMac2(MACK_Ind);
             switch (tree->gtOper)
             {
                 case GT_ADD:
@@ -11517,6 +11531,17 @@ GenTreePtr Compiler::fgMorphSmpOp(GenTreePtr tree, MorphAddrContext* mac)
                 default:
                     break;
             }
+
+            // If gtOp2 is a GT_FIELD, we must be taking its value,
+            // so it should evaluate its address in a new context.
+            if (op2->gtOper == GT_FIELD)
+            {
+                // The impact of this field's value to any ongoing
+                // address computation is handled above when looking
+                // at op1.
+                mac = nullptr;
+            }
+
             tree->gtOp.gtOp2 = op2 = fgMorphTree(op2, mac);
 
             /* Propagate the side effect flags from op2 */
@@ -13676,20 +13701,20 @@ GenTree* Compiler::fgMorphSmpOpOptional(GenTreeOp* tree)
 
             /* Make sure we have the operator range right */
 
-            noway_assert(GT_SUB == GT_ADD + 1);
-            noway_assert(GT_MUL == GT_ADD + 2);
-            noway_assert(GT_DIV == GT_ADD + 3);
-            noway_assert(GT_MOD == GT_ADD + 4);
-            noway_assert(GT_UDIV == GT_ADD + 5);
-            noway_assert(GT_UMOD == GT_ADD + 6);
+            static_assert(GT_SUB == GT_ADD + 1, "bad oper value");
+            static_assert(GT_MUL == GT_ADD + 2, "bad oper value");
+            static_assert(GT_DIV == GT_ADD + 3, "bad oper value");
+            static_assert(GT_MOD == GT_ADD + 4, "bad oper value");
+            static_assert(GT_UDIV == GT_ADD + 5, "bad oper value");
+            static_assert(GT_UMOD == GT_ADD + 6, "bad oper value");
 
-            noway_assert(GT_OR == GT_ADD + 7);
-            noway_assert(GT_XOR == GT_ADD + 8);
-            noway_assert(GT_AND == GT_ADD + 9);
+            static_assert(GT_OR == GT_ADD + 7, "bad oper value");
+            static_assert(GT_XOR == GT_ADD + 8, "bad oper value");
+            static_assert(GT_AND == GT_ADD + 9, "bad oper value");
 
-            noway_assert(GT_LSH == GT_ADD + 10);
-            noway_assert(GT_RSH == GT_ADD + 11);
-            noway_assert(GT_RSZ == GT_ADD + 12);
+            static_assert(GT_LSH == GT_ADD + 10, "bad oper value");
+            static_assert(GT_RSH == GT_ADD + 11, "bad oper value");
+            static_assert(GT_RSZ == GT_ADD + 12, "bad oper value");
 
             /* Check for a suitable operator on the RHS */
 
@@ -16202,7 +16227,9 @@ void Compiler::fgSetOptions()
     // to use a frame pointer because of EH. But until all the code uses
     // the same test, leave info.compXcptnsCount here.
     if (info.compXcptnsCount > 0)
+    {
         codeGen->setFramePointerRequiredEH(true);
+    }
 
 #else // !_TARGET_X86_
 
@@ -16212,6 +16239,15 @@ void Compiler::fgSetOptions()
     }
 
 #endif // _TARGET_X86_
+
+#ifdef UNIX_X86_ABI
+    if (info.compXcptnsCount > 0)
+    {
+        assert(!codeGen->isGCTypeFixed());
+        // Enforce fully interruptible codegen for funclet unwinding
+        genInterruptible = true;
+    }
+#endif // UNIX_X86_ABI
 
     fgCheckArgCnt();
 

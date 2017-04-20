@@ -192,6 +192,18 @@
       "values": [ true, false ],
       "defaultValue": false
     },
+    "RestoreDefaultOptimizationDataPackage": {
+      "description": "Instructs BuildTools to restore the default OptimizationData package.",
+      "valueType": "property",
+      "values": [ true, false ],
+      "defaultValue": true
+    },
+    "UsePartialNGENOptimization": {
+      "description": "Adds the `-partialNGEN -minify` arguments when invoking IBCMerge.",
+      "valueType": "property",
+      "values": [ true, false ],
+      "defaultValue": true
+    },
     "OptimizationDataDir": {
       "description": "Sets the path where the build should look for IBC profile data.",
       "valueType": "property",
@@ -312,6 +324,12 @@
       "values": [ true, false ],
       "defaultValue": true
     },
+    "TargetsWindows": {
+      "description": "Sets the property specifying if the tests we're building will target Windows",
+      "valueType": "property",
+      "values": [ true, false ],
+      "defaultValue": true
+    },
     "PublishTestNativeBins": {
       "description": "Publishes test native binaries to Azure on non-windows",
       "valueType": "property",
@@ -324,10 +342,16 @@
       "values": [ true, false ],
       "defaultValue": true
     },
+    "Crossgen": {
+      "description": "Determines if we're running Crossgen tests",
+      "valueType": "property",
+      "values": [ true, false ],
+      "defaultValue": true
+    },
     "RuntimeId": {
       "description": "Specifies the OS to build Core_Root for",
       "valueType": "property",
-      "values": [ "debian.8-x64", "fedora.23-x64", "opensuse.42.1-x64", "osx.10.12-x64", "rhel.7-x64", "ubuntu.14.04-x64", "ubuntu.16.04-x64", "ubuntu.16.10-x64" ],
+      "values": [ "debian.8-x64", "fedora.24-x64", "fedora.25-x64", "opensuse.42.1-x64", "osx.10.12-x64", "rhel.7-x64", "ubuntu.14.04-x64", "ubuntu.16.04-x64", "ubuntu.16.10-x64" ],
       "defaultValue": "${__RuntimeId}"
     },
     "UpdateDependencies": {
@@ -469,7 +493,9 @@
           "MsBuildLog": "default",
           "MsBuildWrn": "default",
           "MsBuildErr": "default",
-          "MsBuildEventLogging": "default"
+          "MsBuildEventLogging": "default",
+          "RestoreDefaultOptimizationDataPackage": "false",
+          "UsePartialNGENOptimization": "false"
         }
       }
     },
