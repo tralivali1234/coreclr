@@ -216,14 +216,8 @@ void CodeGen::genCodeForBinary(GenTree* treeNode)
     var_types        targetType = treeNode->TypeGet();
     emitter*         emit       = getEmitter();
 
-    assert(oper == GT_ADD || oper == GT_SUB || oper == GT_ADD_LO || oper == GT_ADD_HI || oper == GT_SUB_LO ||
-           oper == GT_SUB_HI || oper == GT_OR || oper == GT_XOR || oper == GT_AND);
-
-    if ((oper == GT_ADD || oper == GT_SUB || oper == GT_ADD_HI || oper == GT_SUB_HI) && treeNode->gtOverflow())
-    {
-        // This is also checked in the importer.
-        NYI("Overflow not yet implemented");
-    }
+    assert(oper == GT_ADD || oper == GT_SUB || oper == GT_MUL || oper == GT_ADD_LO || oper == GT_ADD_HI ||
+           oper == GT_SUB_LO || oper == GT_SUB_HI || oper == GT_OR || oper == GT_XOR || oper == GT_AND);
 
     GenTreePtr op1 = treeNode->gtGetOp1();
     GenTreePtr op2 = treeNode->gtGetOp2();
@@ -403,32 +397,9 @@ void CodeGen::genCodeForTreeNode(GenTreePtr treeNode)
         case GT_SUB_HI:
         case GT_ADD:
         case GT_SUB:
+        case GT_MUL:
             genConsumeOperands(treeNode->AsOp());
             genCodeForBinary(treeNode);
-            break;
-
-        case GT_MUL:
-        {
-            genConsumeOperands(treeNode->AsOp());
-
-            const genTreeOps oper = treeNode->OperGet();
-            if (treeNode->gtOverflow())
-            {
-                // This is also checked in the importer.
-                NYI("Overflow not yet implemented");
-            }
-
-            GenTreePtr  op1 = treeNode->gtGetOp1();
-            GenTreePtr  op2 = treeNode->gtGetOp2();
-            instruction ins = genGetInsForOper(treeNode->OperGet(), targetType);
-
-            // The arithmetic node must be sitting in a register (since it's not contained)
-            noway_assert(targetReg != REG_NA);
-
-            regNumber r = emit->emitInsTernary(ins, emitTypeSize(treeNode), treeNode, op1, op2);
-            assert(r == targetReg);
-        }
-            genProduceReg(treeNode);
             break;
 
         case GT_LSH:
@@ -520,7 +491,21 @@ void CodeGen::genCodeForTreeNode(GenTreePtr treeNode)
             unsigned varNum = treeNode->gtLclVarCommon.gtLclNum;
             assert(varNum < compiler->lvaCount);
 
-            emit->emitIns_R_S(ins_Move_Extend(targetType, treeNode->InReg()), size, targetReg, varNum, offs);
+            if (varTypeIsFloating(targetType))
+            {
+                if (treeNode->InReg())
+                {
+                    NYI("GT_LCL_FLD with reg-to-reg floating point move");
+                }
+                else
+                {
+                    emit->emitIns_R_S(ins_Load(targetType), size, targetReg, varNum, offs);
+                }
+            }
+            else
+            {
+                emit->emitIns_R_S(ins_Move_Extend(targetType, treeNode->InReg()), size, targetReg, varNum, offs);
+            }
         }
             genProduceReg(treeNode);
             break;
@@ -795,22 +780,8 @@ void CodeGen::genCodeForTreeNode(GenTreePtr treeNode)
         break;
 
         case GT_JTRUE:
-        {
-            GenTree* cmp = treeNode->gtOp.gtOp1->gtEffectiveVal();
-            assert(cmp->OperIsCompare());
-            assert(compiler->compCurBB->bbJumpKind == BBJ_COND);
-
-            // Get the "kind" and type of the comparison.  Note that whether it is an unsigned cmp
-            // is governed by a flag NOT by the inherent type of the node
-            // TODO-ARM-CQ: Check if we can use the currently set flags.
-            CompareKind compareKind = ((cmp->gtFlags & GTF_UNSIGNED) != 0) ? CK_UNSIGNED : CK_SIGNED;
-
-            emitJumpKind jmpKind   = genJumpKindForOper(cmp->gtOper, compareKind);
-            BasicBlock*  jmpTarget = compiler->compCurBB->bbJumpDest;
-
-            inst_JMP(jmpKind, jmpTarget);
-        }
-        break;
+            genCodeForJumpTrue(treeNode);
+            break;
 
         case GT_JCC:
         {

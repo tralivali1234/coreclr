@@ -20356,7 +20356,7 @@ size_t gc_heap::update_brick_table (uint8_t* tree, size_t current_brick,
     dprintf (3, ("tree: %Ix, current b: %Ix, x: %Ix, plug_end: %Ix",
         tree, current_brick, x, plug_end));
 
-    if (tree > 0)
+    if (tree != NULL)
     {
         dprintf (3, ("b- %Ix->%Ix pointing to tree %Ix", 
             current_brick, (size_t)(tree - brick_address (current_brick)), tree));
@@ -34218,7 +34218,7 @@ bool GCHeap::StressHeap(gc_alloc_context * context)
                     if (g_pConfig->AppDomainLeaks() && str->SetAppDomainNoThrow())
                     {
 #endif
-                        StoreObjectInHandle(m_StressObjs[i], ObjectToOBJECTREF(str));
+                        HndAssignHandle(m_StressObjs[i], ObjectToOBJECTREF(str));
 #if CHECK_APP_DOMAIN_LEAKS
                     }
 #endif
@@ -34251,7 +34251,7 @@ bool GCHeap::StressHeap(gc_alloc_context * context)
             {
                 // Let the string itself become garbage.
                 // will be realloced next time around
-                StoreObjectInHandle(m_StressObjs[m_CurStressObj], 0);
+                HndAssignHandle(m_StressObjs[m_CurStressObj], 0);
             }
         }
     }

@@ -4698,11 +4698,13 @@ void LinearScan::buildIntervals()
         {
             VarSetOps::DiffD(compiler, expUseSet, nextBlock->bbLiveIn);
         }
-        AllSuccessorIter succsEnd = block->GetAllSuccs(compiler).end();
-        for (AllSuccessorIter succs = block->GetAllSuccs(compiler).begin();
-             succs != succsEnd && !VarSetOps::IsEmpty(compiler, expUseSet); ++succs)
+        for (BasicBlock* succ : block->GetAllSuccs(compiler))
         {
-            BasicBlock* succ = (*succs);
+            if (VarSetOps::IsEmpty(compiler, expUseSet))
+            {
+                break;
+            }
+
             if (isBlockVisited(succ))
             {
                 continue;
@@ -9677,10 +9679,12 @@ void LinearScan::resolveEdge(BasicBlock*      fromBlock,
 
     // What interval is this register associated with?
     // (associated with incoming reg)
-    Interval* sourceIntervals[REG_COUNT] = {nullptr};
+    Interval* sourceIntervals[REG_COUNT];
+    memset(&sourceIntervals, 0, sizeof(sourceIntervals));
 
     // Intervals for vars that need to be loaded from the stack
-    Interval* stackToRegIntervals[REG_COUNT] = {nullptr};
+    Interval* stackToRegIntervals[REG_COUNT];
+    memset(&stackToRegIntervals, 0, sizeof(stackToRegIntervals));
 
     // Get the starting insertion point for the "to" resolution
     GenTreePtr insertionPoint = nullptr;

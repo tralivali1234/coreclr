@@ -4280,6 +4280,11 @@ void AppDomain::Init()
         m_handleStore = GCHandleUtilities::GetGCHandleManager()->CreateHandleStore((void*)(uintptr_t)m_dwIndex.m_dwIndex);
     }
 
+    if (!m_handleStore)
+    {
+        COMPlusThrowOM();
+    }
+
 #endif // CROSSGEN_COMPILE
 
 #ifdef FEATURE_TYPEEQUIVALENCE
@@ -4679,7 +4684,8 @@ OBJECTREF AppDomain::GetExposedObject()
         obj = (APPDOMAINREF) AllocateObject(pMT);
         obj->SetDomain(this);
 
-        if(StoreFirstObjectInHandle(m_ExposedObject, (OBJECTREF) obj) == FALSE) {
+        if (!StoreFirstObjectInHandle(m_ExposedObject, (OBJECTREF) obj))
+        {
             obj = (APPDOMAINREF) GetRawExposedObject();
             _ASSERTE(obj);
         }

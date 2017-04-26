@@ -331,7 +331,6 @@ void TransitionFrame::UpdateRegDisplayHelper(const PREGDISPLAY pRD, UINT cbStack
 
     pRD->pCurrentContext->Eip = *PTR_PCODE(pRD->PCTAddr);;
     pRD->pCurrentContext->Esp = CallerSP;
-    pRD->pCurrentContext->ResumeEsp = CallerSP + cbStackPop;
 
     UpdateRegDisplayFromCalleeSavedRegisters(pRD, regs);
     ClearRegDisplayArgumentAndScratchRegisters(pRD);
@@ -384,7 +383,7 @@ void HelperMethodFrame::UpdateRegDisplay(const PREGDISPLAY pRD)
 #endif // DACCESS_COMPILE
 
     pRD->pCurrentContext->Eip = pRD->ControlPC = m_MachState.GetRetAddr();
-    pRD->pCurrentContext->Esp = pRD->pCurrentContext->ResumeEsp = pRD->SP = (DWORD) m_MachState.esp();
+    pRD->pCurrentContext->Esp = pRD->SP = (DWORD) m_MachState.esp();
 
 #define CALLEE_SAVED_REGISTER(regname) pRD->pCurrentContext->regname = *((DWORD*) m_MachState.p##regname());
     ENUM_CALLEE_SAVED_REGISTERS();
@@ -689,7 +688,6 @@ void InlinedCallFrame::UpdateRegDisplay(const PREGDISPLAY pRD)
 
     pRD->pCurrentContext->Eip = *PTR_PCODE(pRD->PCTAddr);
     pRD->pCurrentContext->Esp = (DWORD) dac_cast<TADDR>(m_pCallSiteSP);
-    pRD->pCurrentContext->ResumeEsp = (DWORD) dac_cast<TADDR>(m_pCallSiteSP) + stackArgSize;
     pRD->pCurrentContext->Ebp = (DWORD) m_pCalleeSavedFP;
 
     ClearRegDisplayArgumentAndScratchRegisters(pRD);
@@ -829,7 +827,7 @@ void HijackFrame::UpdateRegDisplay(const PREGDISPLAY pRD)
     pRD->IsCallerSPValid      = FALSE;        // Don't add usage of this field.  This is only temporary.
 
     pRD->pCurrentContext->Eip = *PTR_PCODE(pRD->PCTAddr);
-    pRD->pCurrentContext->Esp = pRD->pCurrentContext->ResumeEsp = (DWORD)(pRD->PCTAddr + sizeof(TADDR));
+    pRD->pCurrentContext->Esp = (DWORD)(pRD->PCTAddr + sizeof(TADDR));
 
 #define RESTORE_REG(reg) { pRD->pCurrentContext->reg = m_Args->reg; pRD->pCurrentContextPointers->reg = &m_Args->reg; }
 #define CALLEE_SAVED_REGISTER(reg) RESTORE_REG(reg)
@@ -908,7 +906,7 @@ void TailCallFrame::UpdateRegDisplay(const PREGDISPLAY pRD)
     pRD->IsCallerSPValid      = FALSE;        // Don't add usage of this field.  This is only temporary.
 
     pRD->pCurrentContext->Eip = *PTR_PCODE(pRD->PCTAddr);
-    pRD->pCurrentContext->Esp = pRD->pCurrentContext->ResumeEsp = (DWORD)(pRD->PCTAddr + sizeof(TADDR));
+    pRD->pCurrentContext->Esp = (DWORD)(pRD->PCTAddr + sizeof(TADDR));
 
     UpdateRegDisplayFromCalleeSavedRegisters(pRD, &m_regs);
     ClearRegDisplayArgumentAndScratchRegisters(pRD);
@@ -933,6 +931,14 @@ void TailCallFrame::UpdateRegDisplay(const PREGDISPLAY pRD)
 
     RETURN;
 }
+
+#ifdef FEATURE_READYTORUN
+void DynamicHelperFrame::UpdateRegDisplay(const PREGDISPLAY pRD)
+{
+    WRAPPER_NO_CONTRACT;
+    UpdateRegDisplayHelper(pRD, 0);
+}
+#endif // FEATURE_READYTORUN
 
 //------------------------------------------------------------------------
 // This is declared as returning WORD instead of PRD_TYPE because of
@@ -1878,23 +1884,47 @@ PCODE DynamicHelpers::CreateReturnIndirConst(LoaderAllocator * pAllocator, TADDR
     END_DYNAMIC_HELPER_EMIT();
 }
 
+EXTERN_C VOID DynamicHelperArgsStub();
+
 PCODE DynamicHelpers::CreateHelperWithTwoArgs(LoaderAllocator * pAllocator, TADDR arg, PCODE target)
 {
+#ifdef UNIX_X86_ABI
+    BEGIN_DYNAMIC_HELPER_EMIT(18);
+#else
     BEGIN_DYNAMIC_HELPER_EMIT(12);
+#endif
 
+#ifdef UNIX_X86_ABI
+	// sub esp, 8
+	*p++ = 0x83;
+	*p++ = 0xec;
+	*p++ = 0x8;
+#else
     // pop eax
     *p++ = 0x58;
+#endif
 
     // push arg
     *p++ = 0x68;
     *(INT32 *)p = arg;
     p += 4;
 
+#ifdef UNIX_X86_ABI
+    // mov eax, target
+    *p++ = 0xB8;
+    *(INT32 *)p = target;
+    p += 4;
+#else
     // push eax
     *p++ = 0x50;
+#endif
 
     *p++ = X86_INSTR_JMP_REL32; // jmp rel32
+#ifdef UNIX_X86_ABI
+    *(INT32 *)p = rel32UsingJumpStub((INT32 *)p, (PCODE)DynamicHelperArgsStub);
+#else
     *(INT32 *)p = rel32UsingJumpStub((INT32 *)p, target);
+#endif
     p += 4;
 
     END_DYNAMIC_HELPER_EMIT();
@@ -1902,10 +1932,21 @@ PCODE DynamicHelpers::CreateHelperWithTwoArgs(LoaderAllocator * pAllocator, TADD
 
 PCODE DynamicHelpers::CreateHelperWithTwoArgs(LoaderAllocator * pAllocator, TADDR arg, TADDR arg2, PCODE target)
 {
+#ifdef UNIX_X86_ABI
+    BEGIN_DYNAMIC_HELPER_EMIT(23);
+#else
     BEGIN_DYNAMIC_HELPER_EMIT(17);
+#endif
 
+#ifdef UNIX_X86_ABI
+	// sub esp, 4
+	*p++ = 0x83;
+	*p++ = 0xec;
+	*p++ = 0x4;
+#else
     // pop eax
     *p++ = 0x58;
+#endif
 
     // push arg
     *p++ = 0x68;
@@ -1917,11 +1958,22 @@ PCODE DynamicHelpers::CreateHelperWithTwoArgs(LoaderAllocator * pAllocator, TADD
     *(INT32 *)p = arg2;
     p += 4;
 
+#ifdef UNIX_X86_ABI
+    // mov eax, target
+    *p++ = 0xB8;
+    *(INT32 *)p = target;
+    p += 4;
+#else
     // push eax
     *p++ = 0x50;
+#endif
 
     *p++ = X86_INSTR_JMP_REL32; // jmp rel32
+#ifdef UNIX_X86_ABI
+    *(INT32 *)p = rel32UsingJumpStub((INT32 *)p, (PCODE)DynamicHelperArgsStub);
+#else
     *(INT32 *)p = rel32UsingJumpStub((INT32 *)p, target);
+#endif
     p += 4;
 
     END_DYNAMIC_HELPER_EMIT();
