@@ -2402,7 +2402,7 @@ void Compiler::impSpillLclRefs(ssize_t lclNum)
  *  Returns the basic block of the actual handler.
  */
 
-BasicBlock* Compiler::impPushCatchArgOnStack(BasicBlock* hndBlk, CORINFO_CLASS_HANDLE clsHnd)
+BasicBlock* Compiler::impPushCatchArgOnStack(BasicBlock* hndBlk, CORINFO_CLASS_HANDLE clsHnd, bool isSingleBlockFilter)
 {
     // Do not inject the basic block twice on reimport. This should be
     // hit only under JIT stress. See if the block is the one we injected.
@@ -2440,8 +2440,14 @@ BasicBlock* Compiler::impPushCatchArgOnStack(BasicBlock* hndBlk, CORINFO_CLASS_H
      * moved around since it is tied to a fixed location (EAX) */
     arg->gtFlags |= GTF_ORDER_SIDEEFF;
 
+#if defined(JIT32_GCENCODER)
+    const bool forceInsertNewBlock = isSingleBlockFilter || compStressCompile(STRESS_CATCH_ARG, 5);
+#else
+    const bool forceInsertNewBlock                                     = compStressCompile(STRESS_CATCH_ARG, 5);
+#endif // defined(JIT32_GCENCODER)
+
     /* Spill GT_CATCH_ARG to a temp if there are jumps to the beginning of the handler */
-    if (hndBlk->bbRefs > 1 || compStressCompile(STRESS_CATCH_ARG, 5))
+    if (hndBlk->bbRefs > 1 || forceInsertNewBlock)
     {
         if (hndBlk->bbRefs == 1)
         {
@@ -3520,6 +3526,10 @@ GenTreePtr Compiler::impIntrinsic(GenTreePtr            newobjThis,
                                     gtNewIconNode(offsetof(CORINFO_String, stringLen), TYP_I_IMPL));
                 op1 = gtNewOperNode(GT_IND, TYP_INT, op1);
             }
+
+            // Getting the length of a null string should throw
+            op1->gtFlags |= GTF_EXCEPT;
+
             retNode = op1;
             break;
 
@@ -6047,6 +6057,11 @@ GenTreePtr Compiler::impImportStaticFieldAccess(CORINFO_RESOLVED_TOKEN* pResolve
                 // In future, it may be better to just create the right tree here instead of folding it later.
                 op1 = gtNewFieldRef(lclTyp, pResolvedToken->hField);
 
+                if (pFieldInfo->fieldFlags & CORINFO_FLG_FIELD_INITCLASS)
+                {
+                    op1->gtFlags |= GTF_FLD_INITCLASS;
+                }
+
                 if (pFieldInfo->fieldFlags & CORINFO_FLG_FIELD_STATIC_IN_HEAP)
                 {
                     op1->gtType = TYP_REF; // points at boxed object
@@ -7325,8 +7340,7 @@ var_types Compiler::impImportCall(OPCODE                  opcode,
                 // instParam.
                 instParam = gtNewIconNode(0, TYP_REF);
             }
-
-            if (!exactContextNeedsRuntimeLookup)
+            else if (!exactContextNeedsRuntimeLookup)
             {
 #ifdef FEATURE_READYTORUN_COMPILER
                 if (opts.IsReadyToRun())
@@ -14806,6 +14820,11 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                     // Could point anywhere, example a boxed class static int
                     op1->gtFlags |= GTF_IND_TGTANYWHERE | GTF_GLOB_REF;
                     assertImp(varTypeIsArithmetic(op1->gtType));
+
+                    if (prefixFlags & PREFIX_UNALIGNED)
+                    {
+                        op1->gtFlags |= GTF_IND_UNALIGNED;
+                    }
                 }
                 else
                 {
@@ -15616,7 +15635,7 @@ void Compiler::impVerifyEHBlock(BasicBlock* block, bool isTryStart)
 
                 // push catch arg the stack, spill to a temp if necessary
                 // Note: can update HBtab->ebdHndBeg!
-                hndBegBB = impPushCatchArgOnStack(hndBegBB, clsHnd);
+                hndBegBB = impPushCatchArgOnStack(hndBegBB, clsHnd, false);
             }
 
             // Queue up the handler for importing
@@ -15637,7 +15656,8 @@ void Compiler::impVerifyEHBlock(BasicBlock* block, bool isTryStart)
 
                 // push catch arg the stack, spill to a temp if necessary
                 // Note: can update HBtab->ebdFilter!
-                filterBB = impPushCatchArgOnStack(filterBB, impGetObjectClass());
+                const bool isSingleBlockFilter = (filterBB->bbNext == hndBegBB);
+                filterBB = impPushCatchArgOnStack(filterBB, impGetObjectClass(), isSingleBlockFilter);
 
                 impImportBlockPending(filterBB);
             }
@@ -17954,8 +17974,12 @@ GenTreePtr Compiler::impInlineFetchArg(unsigned lclNum, InlArgInfo* inlArgInfo, 
         op1               = argInfo.argNode;
         argInfo.argTmpNum = op1->gtLclVarCommon.gtLclNum;
 
-        // Use an equivalent copy if this is the second or subsequent use.
-        if (argInfo.argIsUsed)
+        // Use an equivalent copy if this is the second or subsequent
+        // use, or if we need to retype.
+        //
+        // Note argument type mismatches that prevent inlining should
+        // have been caught in impInlineInitVars.
+        if (argInfo.argIsUsed || (op1->TypeGet() != lclTyp))
         {
             assert(op1->gtOper == GT_LCL_VAR);
             assert(lclNum == op1->gtLclVar.gtLclILoffs);

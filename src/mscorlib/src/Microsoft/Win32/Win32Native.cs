@@ -93,7 +93,6 @@ namespace Microsoft.Win32
     using System.Security;
     using System.Text;
     using System.Configuration.Assemblies;
-    using System.Runtime.Remoting;
     using System.Runtime.InteropServices;
     using System.Threading;
     using Microsoft.Win32.SafeHandles;
@@ -461,13 +460,11 @@ namespace Microsoft.Win32
         internal const String USER32 = "user32.dll";
         internal const String OLE32 = "ole32.dll";
         internal const String OLEAUT32 = "oleaut32.dll";
-        internal const String NTDLL = "ntdll.dll";
 #else //FEATURE_PAL
         internal const String KERNEL32 = "libcoreclr";
         internal const String USER32   = "libcoreclr";
         internal const String OLE32    = "libcoreclr";
         internal const String OLEAUT32 = "libcoreclr";
-        internal const String NTDLL    = "libcoreclr";
 #endif //FEATURE_PAL         
         internal const String ADVAPI32 = "advapi32.dll";
         internal const String SHELL32 = "shell32.dll";
@@ -508,10 +505,6 @@ namespace Microsoft.Win32
 
         [DllImport(KERNEL32, SetLastError = true)]
         internal static extern IntPtr LocalFree(IntPtr handle);
-
-        // MSDN says the length is a SIZE_T.
-        [DllImport(NTDLL, EntryPoint = "RtlZeroMemory")]
-        internal static extern void ZeroMemory(IntPtr address, UIntPtr length);
 
         internal static bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX buffer)
         {

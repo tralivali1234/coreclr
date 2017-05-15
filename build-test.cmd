@@ -397,6 +397,13 @@ REM ===
 REM =========================================================================================
 
 call %__ProjectDir%\run.cmd build -Project=%__ProjectDir%\tests\helixprep.proj  -MsBuildLog=!__msbuildLog! -MsBuildWrn=!__msbuildWrn! -MsBuildErr=!__msbuildErr! %__RunArgs% %__BuildAgainstPackagesArg% %RuntimeIdArg% %TargetsWindowsArg% %__CrossgenArg% %__unprocessedBuildArgs%
+if errorlevel 1 (
+    echo %__MsgPrefix%Error: build failed. Refer to the build log files for details:
+    echo     %__BuildLog%
+    echo     %__BuildWrn%
+    echo     %__BuildErr%
+    exit /b 1
+)
 
 echo %__MsgPrefix% Prepped test binaries for publishing
 
@@ -448,7 +455,6 @@ echo     1: Build all tests with priority 0 and 1
 echo     666: Build all tests with priority 0, 1 ... 666
 echo -sequential: force a non-parallel build ^(default is to build in parallel
 echo     using all processors^).
-echo -ilasmroundtrip: enables ilasm round trip build and run of the tests before executing them.
 echo -verbose: enables detailed file logging for the msbuild tasks into the msbuild log file.
 exit /b 1
 
@@ -506,7 +512,7 @@ if /I "%2" == "mscorlib.ni.dll" exit /b 0
 REM don't precompile anything from CoreCLR
 if /I exist %CORE_ROOT_STAGE%\%2 exit /b 0
 
-"%CORE_ROOT_STAGE%\crossgen.exe" /Platform_Assemblies_Paths "%CORE_ROOT%" "%1" >nul 2>nul
+"%CORE_ROOT_STAGE%\crossgen.exe" /Platform_Assemblies_Paths "%CORE_ROOT%" /in "%1" /out "%CORE_ROOT%/temp.ni.dll" >nul 2>nul
 set /a __exitCode = %errorlevel%
 if "%__exitCode%" == "-2146230517" (
     echo %2 is not a managed assembly.
@@ -517,6 +523,10 @@ if %__exitCode% neq 0 (
     echo Unable to precompile %2
     exit /b 0
 )
+
+:: Delete original .dll & replace it with the Crossgened .dll
+del %1
+ren "%CORE_ROOT%\temp.ni.dll" %2
     
 echo Successfully precompiled %2
 exit /b 0

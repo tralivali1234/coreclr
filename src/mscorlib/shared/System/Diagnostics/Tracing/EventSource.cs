@@ -4,15 +4,9 @@
 
 // This program uses code hyperlinks available as part of the HyperAddin Visual Studio plug-in.
 // It is available from http://www.codeplex.com/hyperAddin 
-#if PLATFORM_WINDOWS
-
-#define FEATURE_MANAGED_ETW
-
-#if !ES_BUILD_STANDALONE && !CORECLR && !ES_BUILD_PN
+#if PLATFORM_WINDOWS && !ES_BUILD_STANDALONE && !CORECLR && !ES_BUILD_PN
 #define FEATURE_ACTIVITYSAMPLING
 #endif // !ES_BUILD_STANDALONE
-
-#endif // PLATFORM_WINDOWS
 
 #if ES_BUILD_STANDALONE
 #define FEATURE_MANAGED_ETW_CHANNELS
@@ -1474,6 +1468,7 @@ namespace System.Diagnostics.Tracing
                 // Set m_provider, which allows this.  
                 m_provider = provider;
 
+#if PLATFORM_WINDOWS
 #if (!ES_BUILD_STANDALONE && !ES_BUILD_PN)
                 // API available on OS >= Win 8 and patched Win 7.
                 // Disable only for FrameworkEventSource to avoid recursion inside exception handling.
@@ -1492,6 +1487,7 @@ namespace System.Diagnostics.Tracing
 
                     metadataHandle.Free();
                 }
+#endif // PLATFORM_WINDOWS
 #endif // FEATURE_MANAGED_ETW
 
                 Debug.Assert(!m_eventSourceEnabled);     // We can't be enabled until we are completely initted.  

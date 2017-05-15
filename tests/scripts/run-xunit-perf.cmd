@@ -5,6 +5,7 @@
 @echo off
 @if defined _echo echo on
 
+setlocal ENABLEDELAYEDEXPANSION
 setlocal
   set ERRORLEVEL=
   set BENCHVIEW_RUN_TYPE=local
@@ -15,14 +16,21 @@ setlocal
   set TEST_CONFIG=Release
   set IS_SCENARIO_TEST=
   set USAGE_DISPLAYED=
+  set SHOULD_UPLOAD_TO_BENCHVIEW=
+  set BENCHVIEW_PATH=
+  set COLLECTION_FLAGS=stopwatch
+  set ETW_COLLECTION=Off
+  set STABILITY_PREFIX=
 
   call :parse_command_line_arguments %*
   if defined USAGE_DISPLAYED exit /b %ERRORLEVEL%
 
-  call :set_test_architecture || exit /b 1
-  call :verify_core_overlay   || exit /b 1
-  call :set_perf_run_log      || exit /b 1
-  call :setup_sandbox         || exit /b 1
+  call :set_test_architecture  || exit /b 1
+  call :set_collection_config  || exit /b 1
+  call :verify_benchview_tools || exit /b 1
+  call :verify_core_overlay    || exit /b 1
+  call :set_perf_run_log       || exit /b 1
+  call :setup_sandbox          || exit /b 1
 
   call :run_cmd "%CORECLR_REPO%\Tools\dotnetcli\dotnet.exe" restore "%CORECLR_REPO%\tests\src\Common\PerfHarness\project.json"                                        || exit /b 1
   call :run_cmd "%CORECLR_REPO%\Tools\dotnetcli\dotnet.exe" publish "%CORECLR_REPO%\tests\src\Common\PerfHarness\project.json" -c Release -o "%CORECLR_REPO%\sandbox" || exit /b 1
@@ -82,7 +90,7 @@ setlocal
   if defined IS_SCENARIO_TEST (
     call :run_cmd corerun.exe "%CORECLR_REPO%\sandbox\%BENCHNAME%.%TEST_FILE_EXT%" --perf:runid Perf 1>"%BENCHNAME_LOG_FILE_NAME%" 2>&1
   ) else (
-    call :run_cmd corerun.exe PerfHarness.dll "%CORECLR_REPO%\sandbox\%BENCHNAME%.%TEST_FILE_EXT%" --perf:runid Perf 1>"%BENCHNAME_LOG_FILE_NAME%" 2>&1
+    call :run_cmd %STABILITY_PREFIX% corerun.exe PerfHarness.dll "%CORECLR_REPO%\sandbox\%BENCHNAME%.%TEST_FILE_EXT%" --perf:runid Perf --perf:collect %COLLECTION_FLAGS% 1>"%BENCHNAME_LOG_FILE_NAME%" 2>&1
   )
 
   IF %ERRORLEVEL% NEQ 0 (
@@ -92,15 +100,19 @@ setlocal
   )
 
   rem optionally generate results for benchview
-  if not [%BENCHVIEW_PATH%] == [] (
+  if exist "%BENCHVIEW_PATH%" (
     call :generate_results_for_benchview || exit /b 1
   ) else (
     type "%XMLOUT%" | findstr /i /c:"test name"
   )
 
   rem Save off the results to the root directory for recovery later in Jenkins
-  call :run_cmd xcopy "Perf-%BENCHNAME%*.xml" "%CORECLR_REPO%\" || exit /b 1
-  call :run_cmd xcopy "Perf-%BENCHNAME%*.etl" "%CORECLR_REPO%\" || exit /b 1
+  IF EXIST "Perf-%BENCHNAME%.xml" (
+    call :run_cmd copy "Perf-%BENCHNAME%.xml" "%CORECLR_REPO%\Perf-%BENCHNAME%-%ETW_COLLECTION%.xml" || exit /b 1
+  )
+  IF EXIST "Perf-%BENCHNAME%.etl" (
+    call :run_cmd copy "Perf-%BENCHNAME%.etl" "%CORECLR_REPO%\Perf-%BENCHNAME%-%ETW_COLLECTION%.etl" || exit /b 1
+  )
 
   exit /b 0
 
@@ -114,8 +126,19 @@ rem ****************************************************************************
     shift
     goto :parse_command_line_arguments
   )
+  IF /I [%~1] == [-stabilityPrefix] (
+    set STABILITY_PREFIX=%~2
+    shift
+    shift
+    goto :parse_command_line_arguments
+  )
   IF /I [%~1] == [-scenarioTest] (
     set IS_SCENARIO_TEST=1
+    shift
+    goto :parse_command_line_arguments
+  )
+  IF /I [%~1] == [-uploadtobenchview] (
+    set SHOULD_UPLOAD_TO_BENCHVIEW=1
     shift
     goto :parse_command_line_arguments
   )
@@ -125,12 +148,18 @@ rem ****************************************************************************
     shift
     goto :parse_command_line_arguments
   )
+  IF /I [%~1] == [-collectionflags] (
+    set COLLECTION_FLAGS=%~2
+    shift
+    shift
+    goto :parse_command_line_arguments
+  )
   IF /I [%~1] == [-library] (
     set TEST_FILE_EXT=dll
     shift
     goto :parse_command_line_arguments
   )
-  IF /I [%~1] == [-uploadtobenchview] (
+  IF /I [%~1] == [-generatebenchviewdata] (
     set BENCHVIEW_PATH=%~2
     shift
     shift
@@ -173,13 +202,21 @@ rem ****************************************************************************
 rem ****************************************************************************
 rem   Sets the test architecture.
 rem ****************************************************************************
-  IF /I [%TEST_ARCHITECTURE%] == [x86jit32] (
-      set TEST_ARCH=x86
-  ) ELSE (
-      set TEST_ARCH=%TEST_ARCHITECTURE%
+  set TEST_ARCH=%TEST_ARCHITECTURE%
+  exit /b 0
+  
+:verify_benchview_tools
+rem ****************************************************************************
+rem   Verifies that the path to the benchview tools is correct.
+rem ****************************************************************************
+  if defined BENCHVIEW_PATH (
+    if not exist "%BENCHVIEW_PATH%" (
+      call :print_error BenchView path: "%BENCHVIEW_PATH%" was specified, but it does not exist.
+      exit /b 1
+    )
   )
   exit /b 0
-
+  
 :verify_core_overlay
 rem ****************************************************************************
 rem   Verify that the Core_Root folder exist.
@@ -191,6 +228,18 @@ rem ****************************************************************************
   )
   exit /b 0
 
+  :set_collection_config
+rem ****************************************************************************
+rem   Set's the config based on the providers used for collection
+rem ****************************************************************************
+  if /I [%COLLECTION_FLAGS%] == [stopwatch] (
+    set ETW_COLLECTION=Off
+  ) else (
+    set ETW_COLLECTION=On
+  )
+  exit /b 0
+
+  
 :set_perf_run_log
 rem ****************************************************************************
 rem   Sets the script's output log file.
@@ -249,6 +298,7 @@ setlocal
   set LV_SUBMISSION_ARGS=%LV_SUBMISSION_ARGS% --config-name "%TEST_CONFIG%"
   set LV_SUBMISSION_ARGS=%LV_SUBMISSION_ARGS% --config Configuration "%TEST_CONFIG%"
   set LV_SUBMISSION_ARGS=%LV_SUBMISSION_ARGS% --config OS "Windows_NT"
+  set LV_SUBMISSION_ARGS=%LV_SUBMISSION_ARGS% --config Profile "%ETW_COLLECTION%"
   set LV_SUBMISSION_ARGS=%LV_SUBMISSION_ARGS% --arch "%TEST_ARCHITECTURE%"
   set LV_SUBMISSION_ARGS=%LV_SUBMISSION_ARGS% --machinepool "PerfSnake"
   call :run_cmd py.exe "%BENCHVIEW_PATH%\submission.py" measurement.json %LV_SUBMISSION_ARGS%
@@ -257,10 +307,12 @@ setlocal
     exit /b 1
   )
 
-  call :run_cmd py.exe "%BENCHVIEW_PATH%\upload.py" submission.json --container coreclr
-  IF %ERRORLEVEL% NEQ 0 (
-    call :print_error Uploading to BenchView failed.
-    exit /b 1
+  if defined SHOULD_UPLOAD_TO_BENCHVIEW (
+    call :run_cmd py.exe "%BENCHVIEW_PATH%\upload.py" submission.json --container coreclr
+    IF !ERRORLEVEL! NEQ 0 (
+      call :print_error Uploading to BenchView failed.
+      exit /b 1
+    )
   )
   exit /b %ERRORLEVEL%
 
@@ -269,17 +321,22 @@ rem ****************************************************************************
 rem   Script's usage.
 rem ****************************************************************************
   set USAGE_DISPLAYED=1
-  echo run-xunit-perf.cmd -testBinLoc ^<path_to_tests^> [-library] [-arch] ^<x86^|x64^> [-configuration] ^<Release^|Debug^> [-uploadToBenchview] ^<path_to_benchview_tools^> [-runtype] ^<rolling^|private^> [-scenarioTest]
+  echo run-xunit-perf.cmd -testBinLoc ^<path_to_tests^> [-library] [-arch] ^<x86^|x64^> [-configuration] ^<Release^|Debug^> [-generateBenchviewData] ^<path_to_benchview_tools^> [-runtype] ^<rolling^|private^> [-scenarioTest] [-collectionFlags] ^<default^+CacheMisses^+InstructionRetired^+BranchMispredictions^+gcapi^>
   echo/
   echo For the path to the tests you can pass a parent directory and the script will grovel for
   echo all tests in subdirectories and run them.
   echo The library flag denotes whether the tests are build as libraries (.dll) or an executable (.exe)
   echo Architecture defaults to x64 and configuration defaults to release.
-  echo -uploadtoBenchview is used to specify a path to the Benchview tooling and when this flag is
-  echo set we will upload the results of the tests to the coreclr container in benchviewupload.
+  echo -generateBenchviewData is used to specify a path to the Benchview tooling and when this flag is
+  echo set we will generate the results for upload to benchview.
+  echo -uploadToBenchview If this flag is set the generated benchview test data will be uploaded.
   echo Runtype sets the runtype that we upload to Benchview, rolling for regular runs, and private for
   echo PRs.
   echo -scenarioTest should be included if you are running a scenario benchmark.
+  echo -collectionFlags This is used to specify what collectoin flags get passed to the performance
+  echo harness that is doing the test running.  If this is not specified we only use stopwatch.
+  echo Other flags are "default", which is the whatever the test being run specified, "CacheMisses",
+  echo "BranchMispredictions", and "InstructionsRetired".  
   exit /b %ERRORLEVEL%
 
 :print_error
@@ -320,14 +377,4 @@ rem ****************************************************************************
 rem ****************************************************************************
 rem   Skip known failures
 rem ****************************************************************************
-  IF /I [%TEST_ARCHITECTURE%] == [x86jit32] (
-    IF /I "%~1" == "CscBench" (
-      rem https://github.com/dotnet/coreclr/issues/11088
-      exit /b 1
-    )
-    IF /I "%~1" == "SciMark2" (
-      rem https://github.com/dotnet/coreclr/issues/11089
-      exit /b 1
-    )
-  )
   exit /b 0
