@@ -71,7 +71,9 @@ CreateFileMappingW
 CreateFileA
 CreateFileW
 CreateMutexW
+CreateMutexExW
 CreateEventW
+CreateEventExW
 CreateProcessW
 CreateSemaphoreExW
 CreateStreamOnHGlobal
@@ -106,6 +108,7 @@ GetLastError
 GetLongPathNameW
 GetModuleFileNameW
 GetProcAddress
+GetProcessAffinityMask
 GetProcessHeap
 GetShortPathNameW
 GetStdHandle
@@ -174,7 +177,6 @@ WaitForSingleObject
 WaitForSingleObjectEx
 WideCharToMultiByte
 WriteFile
-YieldProcessor
 
 nativeStringResourceTable_mscorrc_debug
 _ZN25NativeExceptionHolderBase4PushEv

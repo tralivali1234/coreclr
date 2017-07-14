@@ -141,7 +141,6 @@
 #include "context.h"
 #include "regdisp.h"
 #include "mscoree.h"
-#include "appdomainstack.h"
 #include "gcheaputilities.h"
 #include "gchandleutilities.h"
 #include "gcinfotypes.h"
@@ -628,8 +627,6 @@ Thread* SetupThreadNoThrow(HRESULT *phresult = NULL);
 Thread* SetupUnstartedThread(BOOL bRequiresTSL=TRUE);
 void    DestroyThread(Thread *th);
 
-
-FCDECL0(INT32, GetRuntimeId_Wrapper);
 
 //---------------------------------------------------------------------------
 //---------------------------------------------------------------------------
@@ -3576,7 +3573,7 @@ private:
     PTR_VOID    m_CacheStackLimit;
     UINT_PTR    m_CacheStackSufficientExecutionLimit;
 
-#define HARD_GUARD_REGION_SIZE OS_PAGE_SIZE
+#define HARD_GUARD_REGION_SIZE GetOsPageSize()
 
 private:
     //
@@ -3590,8 +3587,8 @@ private:
 
     // Every stack has a single reserved page at its limit that we call the 'hard guard page'. This page is never
     // committed, and access to it after a stack overflow will terminate the thread.
-#define HARD_GUARD_REGION_SIZE OS_PAGE_SIZE
-#define SIZEOF_DEFAULT_STACK_GUARANTEE 1 * OS_PAGE_SIZE
+#define HARD_GUARD_REGION_SIZE GetOsPageSize()
+#define SIZEOF_DEFAULT_STACK_GUARANTEE 1 * GetOsPageSize()
 
 public:
     // This will return the last stack address that one could write to before a stack overflow.
@@ -4202,11 +4199,6 @@ public:
 private:
 
     //-------------------------------------------------------------------------
-    // AppDomains on the current call stack
-    //-------------------------------------------------------------------------
-    AppDomainStack  m_ADStack;
-
-    //-------------------------------------------------------------------------
     // Support creation of assemblies in DllMain (see ceemain.cpp)
     //-------------------------------------------------------------------------
     DomainFile* m_pLoadingFile;
@@ -4232,55 +4224,6 @@ public:
     {
         LIMITED_METHOD_CONTRACT;
         return m_fInteropDebuggingHijacked;
-    }
-
-    inline DWORD IncrementOverridesCount();
-    inline DWORD DecrementOverridesCount();
-    inline DWORD GetOverridesCount();
-    inline DWORD IncrementAssertCount();
-    inline DWORD DecrementAssertCount();
-    inline DWORD GetAssertCount();
-    inline void PushDomain(ADID pDomain);
-    inline ADID PopDomain();
-    inline DWORD GetNumAppDomainsOnThread();
-    inline BOOL CheckThreadWideSpecialFlag(DWORD flags);
-    inline void InitDomainIteration(DWORD *pIndex);
-    inline ADID GetNextDomainOnStack(DWORD *pIndex, DWORD *pOverrides, DWORD *pAsserts);
-    inline void UpdateDomainOnStack(DWORD pIndex, DWORD asserts, DWORD overrides);
-
-    BOOL IsDefaultSecurityInfo(void)
-    {
-        WRAPPER_NO_CONTRACT;
-        return m_ADStack.IsDefaultSecurityInfo();
-    }
-
-    BOOL AllDomainsHomogeneousWithNoStackModifiers(void)
-    {
-        WRAPPER_NO_CONTRACT;
-        return m_ADStack.AllDomainsHomogeneousWithNoStackModifiers();
-    }
-    
-    const AppDomainStack& GetAppDomainStack(void)
-    {
-        LIMITED_METHOD_CONTRACT;
-        return m_ADStack;
-    }
-    AppDomainStack* GetAppDomainStackPointer(void)
-    {
-        LIMITED_METHOD_CONTRACT;
-        return &m_ADStack;
-    }
-
-    void SetAppDomainStack(const AppDomainStack& appDomainStack)
-    {
-        WRAPPER_NO_CONTRACT;
-        m_ADStack = appDomainStack; // this is a function call, massive operator=
-    }
-
-    void ResetSecurityInfo( void )
-    {
-        WRAPPER_NO_CONTRACT;
-        m_ADStack.ClearDomainStack();
     }
 
     void SetFilterContext(T_CONTEXT *pContext);
@@ -5346,6 +5289,10 @@ private:
     // Whether or not the thread is currently writing an event.
     Volatile<bool> m_eventWriteInProgress;
 
+    // SampleProfiler thread state.  This is set on suspension and cleared before restart.
+    // True if the thread was in cooperative mode.  False if it was in preemptive when the suspension started.
+    Volatile<ULONG> m_gcModeOnSuspension;
+
 public:
     EventPipeBufferList* GetEventPipeBufferList()
     {
@@ -5369,6 +5316,23 @@ public:
     {
         LIMITED_METHOD_CONTRACT;
         m_eventWriteInProgress = value;
+    }
+
+    bool GetGCModeOnSuspension()
+    {
+        LIMITED_METHOD_CONTRACT;
+        return m_gcModeOnSuspension;
+    }
+
+    void SaveGCModeOnSuspension()
+    {
+        LIMITED_METHOD_CONTRACT;
+        m_gcModeOnSuspension = m_fPreemptiveGCDisabled;
+    }
+
+    void ClearGCModeOnSuspension()
+    {
+        m_gcModeOnSuspension = 0;
     }
 #endif // FEATURE_PERFTRACING
 
@@ -5700,6 +5664,7 @@ private:
     DPTR(PTR_Thread)    m_idToThread;         // map thread ids to threads
     DWORD       m_idToThreadCapacity; // capacity of the map
 
+#ifndef DACCESS_COMPILE
     void GrowIdToThread()
     {
         CONTRACTL
@@ -5711,7 +5676,6 @@ private:
         }
         CONTRACTL_END;
 
-#ifndef DACCESS_COMPILE
         DWORD newCapacity = m_idToThreadCapacity == 0 ? 16 : m_idToThreadCapacity*2;
         Thread **newIdToThread = new Thread*[newCapacity];
 
@@ -5728,11 +5692,8 @@ private:
         delete[] m_idToThread;
         m_idToThread = newIdToThread;
         m_idToThreadCapacity = newCapacity;
-#else
-        DacNotImpl();
-#endif // !DACCESS_COMPILE
-
     }
+#endif // !DACCESS_COMPILE
 
 public:
     IdDispenser() :
@@ -5762,9 +5723,9 @@ public:
         return (id > 0) && (id <= m_highestId);
     }
 
+#ifndef DACCESS_COMPILE
     void NewId(Thread *pThread, DWORD & newId)
     {
-#ifndef DACCESS_COMPILE
         WRAPPER_NO_CONTRACT;
         DWORD result;
         CrstHolder ch(&m_Crst);
@@ -5790,15 +5751,12 @@ public:
         newId = result;
         if (result < m_idToThreadCapacity)
             m_idToThread[result] = pThread;
-
-#else
-        DacNotImpl();
-#endif // !DACCESS_COMPILE
     }
+#endif // !DACCESS_COMPILE
 
+#ifndef DACCESS_COMPILE
     void DisposeId(DWORD id)
     {
-#ifndef DACCESS_COMPILE
         CONTRACTL
         {
             NOTHROW;
@@ -5827,10 +5785,8 @@ public:
             }
 #endif
         }
-#else
-        DacNotImpl();
-#endif // !DACCESS_COMPILE
     }
+#endif // !DACCESS_COMPILE
 
     Thread *IdToThread(DWORD id)
     {

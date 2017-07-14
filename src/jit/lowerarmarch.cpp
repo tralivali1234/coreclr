@@ -30,6 +30,132 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 #include "lsra.h"
 
 //------------------------------------------------------------------------
+// IsCallTargetInRange: Can a call target address be encoded in-place?
+//
+// Return Value:
+//    True if the addr fits into the range.
+//
+bool Lowering::IsCallTargetInRange(void* addr)
+{
+#ifdef _TARGET_ARM64_
+    // TODO-ARM64-CQ:  This is a workaround to unblock the JIT from getting calls working.
+    // Currently, we'll be generating calls using blr and manually loading an absolute
+    // call target in a register using a sequence of load immediate instructions.
+    //
+    // As you can expect, this is inefficient and it's not the recommended way as per the
+    // ARM64 ABI Manual but will get us getting things done for now.
+    // The work to get this right would be to implement PC-relative calls, the bl instruction
+    // can only address things -128 + 128MB away, so this will require getting some additional
+    // code to get jump thunks working.
+    return true;
+#elif defined(_TARGET_ARM_)
+    return comp->codeGen->validImmForBL((ssize_t)addr);
+#endif
+}
+
+//------------------------------------------------------------------------
+// IsContainableImmed: Is an immediate encodable in-place?
+//
+// Return Value:
+//    True if the immediate can be folded into an instruction,
+//    for example small enough and non-relocatable.
+bool Lowering::IsContainableImmed(GenTree* parentNode, GenTree* childNode)
+{
+    if (varTypeIsFloating(parentNode->TypeGet()))
+    {
+        // We can contain a floating point 0.0 constant in a compare instruction
+        switch (parentNode->OperGet())
+        {
+            default:
+                return false;
+
+            case GT_EQ:
+            case GT_NE:
+            case GT_LT:
+            case GT_LE:
+            case GT_GE:
+            case GT_GT:
+                if (childNode->IsIntegralConst(0))
+                {
+                    // TODO-ARM-Cleanup: not tested yet.
+                    NYI_ARM("ARM IsContainableImmed for floating point type");
+
+                    return true;
+                }
+                break;
+        }
+    }
+    else
+    {
+        // Make sure we have an actual immediate
+        if (!childNode->IsCnsIntOrI())
+            return false;
+        if (childNode->IsIconHandle() && comp->opts.compReloc)
+            return false;
+
+        ssize_t  immVal = childNode->gtIntCon.gtIconVal;
+        emitAttr attr   = emitActualTypeSize(childNode->TypeGet());
+        emitAttr size   = EA_SIZE(attr);
+#ifdef _TARGET_ARM_
+        insFlags flags = parentNode->gtSetFlags() ? INS_FLAGS_SET : INS_FLAGS_DONT_CARE;
+#endif
+
+        switch (parentNode->OperGet())
+        {
+            default:
+                return false;
+
+            case GT_ADD:
+            case GT_SUB:
+#ifdef _TARGET_ARM64_
+                return emitter::emitIns_valid_imm_for_add(immVal, size);
+#elif defined(_TARGET_ARM_)
+                return emitter::emitIns_valid_imm_for_add(immVal, flags);
+#endif
+                break;
+
+#ifdef _TARGET_ARM64_
+            case GT_EQ:
+            case GT_NE:
+            case GT_LT:
+            case GT_LE:
+            case GT_GE:
+            case GT_GT:
+                return emitter::emitIns_valid_imm_for_cmp(immVal, size);
+                break;
+            case GT_AND:
+            case GT_OR:
+            case GT_XOR:
+                return emitter::emitIns_valid_imm_for_alu(immVal, size);
+                break;
+#elif defined(_TARGET_ARM_)
+            case GT_EQ:
+            case GT_NE:
+            case GT_LT:
+            case GT_LE:
+            case GT_GE:
+            case GT_GT:
+            case GT_CMP:
+            case GT_AND:
+            case GT_OR:
+            case GT_XOR:
+                return emitter::emitIns_valid_imm_for_alu(immVal);
+                break;
+#endif // _TARGET_ARM_
+
+#ifdef _TARGET_ARM64_
+            case GT_STORE_LCL_VAR:
+                if (immVal == 0)
+                    return true;
+                break;
+#endif
+        }
+    }
+
+    return false;
+}
+
+//------------------------------------------------------------------------
 // LowerStoreLoc: Lower a store of a lclVar
 //
 // Arguments:
@@ -201,12 +327,8 @@ void Lowering::LowerBlockStore(GenTreeBlk* blkNode)
 
             blkNode->gtBlkOpKind = GenTreeBlk::BlkOpKindUnroll;
         }
-        else
+        else // CopyBlk
         {
-            // CopyBlk
-            short     internalIntCount      = 0;
-            regMaskTP internalIntCandidates = RBM_NONE;
-
 #ifdef _TARGET_ARM64_
             // In case of a CpBlk with a constant size and less than CPBLK_UNROLL_LIMIT size
             // we should unroll the loop to improve CQ.
@@ -276,7 +398,6 @@ void Lowering::LowerCast(GenTree* tree)
     // Case of src is a small type and dst is a floating point type.
     if (varTypeIsSmall(srcType) && varTypeIsFloating(dstType))
     {
-        NYI_ARM("Lowering for cast from small type to float"); // Not tested yet.
         // These conversions can never be overflow detecting ones.
         noway_assert(!tree->gtOverflow());
         tmpType = TYP_INT;
@@ -300,7 +421,7 @@ void Lowering::LowerCast(GenTree* tree)
 }
 
 //------------------------------------------------------------------------
-// LowerRotate: Lower GT_ROL and GT_ROL nodes.
+// LowerRotate: Lower GT_ROL and GT_ROR nodes.
 //
 // Arguments:
 //    tree - the node to lower
@@ -331,6 +452,217 @@ void Lowering::LowerRotate(GenTreePtr tree)
             tree->gtOp.gtOp2 = tmp;
         }
         tree->ChangeOper(GT_ROR);
+    }
+}
+
+//------------------------------------------------------------------------
+// Containment analysis
+//------------------------------------------------------------------------
+
+//------------------------------------------------------------------------
+// ContainCheckIndir: Determine whether operands of an indir should be contained.
+//
+// Arguments:
+//    node       - The indirection node of interest
+//
+// Notes:
+//    This is called for both store and load indirections.
+//
+// Return Value:
+//    None.
+//
+void Lowering::ContainCheckIndir(GenTreeIndir* indirNode)
+{
+#ifdef _TARGET_ARM64_
+    if (indirNode->OperIs(GT_STOREIND))
+    {
+        GenTree* src = indirNode->gtOp.gtOp2;
+        if (!varTypeIsFloating(src->TypeGet()) && src->IsIntegralConst(0))
+        {
+            // an integer zero for 'src' can be contained.
+            MakeSrcContained(indirNode, src);
+        }
+    }
+#endif // _TARGET_ARM64_
+
+    // If this is the rhs of a block copy it will be handled when we handle the store.
+    if (indirNode->TypeGet() == TYP_STRUCT)
+    {
+        return;
+    }
+
+    GenTree* addr          = indirNode->Addr();
+    bool     makeContained = true;
+    if ((addr->OperGet() == GT_LEA) && IsSafeToContainMem(indirNode, addr))
+    {
+        GenTreeAddrMode* lea   = addr->AsAddrMode();
+        GenTree*         base  = lea->Base();
+        GenTree*         index = lea->Index();
+        unsigned         cns   = lea->gtOffset;
+
+#ifdef _TARGET_ARM_
+        // ARM floating-point load/store doesn't support a form similar to integer
+        // ldr Rdst, [Rbase + Roffset] with offset in a register. The only supported
+        // form is vldr Rdst, [Rbase + imm] with a more limited constraint on the imm.
+        if (lea->HasIndex() || !emitter::emitIns_valid_imm_for_vldst_offset(cns))
+        {
+            if (indirNode->OperGet() == GT_STOREIND)
+            {
+                if (varTypeIsFloating(indirNode->AsStoreInd()->Data()))
+                {
+                    makeContained = false;
+                }
+            }
+            else if (indirNode->OperGet() == GT_IND)
+            {
+                if (varTypeIsFloating(indirNode))
+                {
+                    makeContained = false;
+                }
+            }
+        }
+#endif
+        if (makeContained)
+        {
+            MakeSrcContained(indirNode, addr);
+        }
+    }
+}
+
+//------------------------------------------------------------------------
+// ContainCheckBinary: Determine whether a binary op's operands should be contained.
+//
+// Arguments:
+//    node - the node we care about
+//
+void Lowering::ContainCheckBinary(GenTreeOp* node)
+{
+    // Check and make op2 contained (if it is a containable immediate)
+    CheckImmedAndMakeContained(node, node->gtOp2);
+}
+
+//------------------------------------------------------------------------
+// ContainCheckMul: Determine whether a mul op's operands should be contained.
+//
+// Arguments:
+//    node - the node we care about
+//
+void Lowering::ContainCheckMul(GenTreeOp* node)
+{
+    ContainCheckBinary(node);
+}
+
+//------------------------------------------------------------------------
+// ContainCheckShiftRotate: Determine whether a mul op's operands should be contained.
+//
+// Arguments:
+//    node - the node we care about
+//
+void Lowering::ContainCheckShiftRotate(GenTreeOp* node)
+{
+    GenTreePtr shiftBy = node->gtOp2;
+
+#ifdef _TARGET_ARM_
+    GenTreePtr source = node->gtOp1;
+    if (node->OperIs(GT_LSH_HI, GT_RSH_LO))
+    {
+        assert(source->OperGet() == GT_LONG);
+        MakeSrcContained(node, source);
+    }
+#else  // !_TARGET_ARM_
+    assert(node->OperIsShiftOrRotate());
+#endif // !_TARGET_ARM_
+
+    if (shiftBy->IsCnsIntOrI())
+    {
+        MakeSrcContained(node, shiftBy);
+    }
+}
+
+//------------------------------------------------------------------------
+// ContainCheckStoreLoc: determine whether the source of a STORE_LCL* should be contained.
+//
+// Arguments:
+//    node - pointer to the node
+//
+void Lowering::ContainCheckStoreLoc(GenTreeLclVarCommon* storeLoc)
+{
+    assert(storeLoc->OperIsLocalStore());
+    GenTree* op1 = storeLoc->gtGetOp1();
+
+#ifdef FEATURE_SIMD
+    if (varTypeIsSIMD(storeLoc))
+    {
+        if (op1->IsCnsIntOrI())
+        {
+            // For an InitBlk we want op1 to be contained; otherwise we want it to
+            // be evaluated into an xmm register.
+            MakeSrcContained(storeLoc, op1);
+        }
+        return;
+    }
+#endif // FEATURE_SIMD
+
+    // If the source is a containable immediate, make it contained, unless it is
+    // an int-size or larger store of zero to memory, because we can generate smaller code
+    // by zeroing a register and then storing it.
+    if (IsContainableImmed(storeLoc, op1) && (!op1->IsIntegralConst(0) || varTypeIsSmall(storeLoc)))
+    {
+        MakeSrcContained(storeLoc, op1);
+    }
+#ifdef _TARGET_ARM_
+    else if (op1->OperGet() == GT_LONG)
+    {
+        MakeSrcContained(storeLoc, op1);
+    }
+#endif // _TARGET_ARM_
+}
+
+//------------------------------------------------------------------------
+// ContainCheckCast: determine whether the source of a CAST node should be contained.
+//
+// Arguments:
+//    node - pointer to the node
+//
+void Lowering::ContainCheckCast(GenTreeCast* node)
+{
+#ifdef _TARGET_ARM_
+    GenTreePtr castOp     = node->CastOp();
+    var_types  castToType = node->CastToType();
+    var_types  srcType    = castOp->TypeGet();
+
+    if (varTypeIsLong(castOp))
+    {
+        assert(castOp->OperGet() == GT_LONG);
+        MakeSrcContained(node, castOp);
+    }
+#endif // _TARGET_ARM_
+}
+
+//------------------------------------------------------------------------
+// ContainCheckCompare: determine whether the sources of a compare node should be contained.
+//
+// Arguments:
+//    node - pointer to the node
+//
+void Lowering::ContainCheckCompare(GenTreeOp* cmp)
+{
+    ContainCheckBinary(cmp);
+}
+
+//------------------------------------------------------------------------
+// ContainCheckBoundsChk: determine whether any source of a bounds check node should be contained.
+//
+// Arguments:
+//    node - pointer to the node
+//
+void Lowering::ContainCheckBoundsChk(GenTreeBoundsChk* node)
+{
+    assert(node->OperIsBoundsCheck());
+    GenTreePtr other;
+    if (!CheckImmedAndMakeContained(node, node->gtIndex))
+    {
+        CheckImmedAndMakeContained(node, node->gtArrLen);
     }
 }
 

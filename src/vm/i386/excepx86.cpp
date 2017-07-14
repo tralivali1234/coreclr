@@ -1953,18 +1953,6 @@ LPVOID STDCALL COMPlusEndCatch(LPVOID ebp, DWORD ebx, DWORD edi, DWORD esi, LPVO
     return esp;
 }
 
-#endif // !DACCESS_COMPILE
-
-PTR_CONTEXT GetCONTEXTFromRedirectedStubStackFrame(CONTEXT * pContext)
-{
-    LIMITED_METHOD_DAC_CONTRACT;
-    
-    UINT_PTR stackSlot = pContext->Ebp + REDIRECTSTUB_EBP_OFFSET_CONTEXT;
-    PTR_PTR_CONTEXT ppContext = dac_cast<PTR_PTR_CONTEXT>((TADDR)stackSlot);
-    return *ppContext;
-}
-
-#if !defined(DACCESS_COMPILE)
 PEXCEPTION_REGISTRATION_RECORD GetCurrentSEHRecord()
 {
     WRAPPER_NO_CONTRACT;
@@ -2040,6 +2028,27 @@ VOID SetCurrentSEHRecord(EXCEPTION_REGISTRATION_RECORD *pSEH)
     *GetThread()->GetExceptionListPtr() = pSEH;
 }
 
+// Note that this logic is copied below, in PopSEHRecords
+__declspec(naked)
+VOID __cdecl PopSEHRecords(LPVOID pTargetSP)
+{
+    // No CONTRACT possible on naked functions
+    STATIC_CONTRACT_NOTHROW;
+    STATIC_CONTRACT_GC_NOTRIGGER;
+
+    __asm{
+        mov     ecx, [esp+4]        ;; ecx <- pTargetSP
+        mov     eax, fs:[0]         ;; get current SEH record
+  poploop:
+        cmp     eax, ecx
+        jge     done
+        mov     eax, [eax]          ;; get next SEH record
+        jmp     poploop
+  done:
+        mov     fs:[0], eax
+        retn
+    }
+}
 
 //
 // Unwind pExinfo, pops FS:[0] handlers until the interception context SP, and
@@ -3596,6 +3605,15 @@ EXCEPTION_HANDLER_IMPL(COMPlusFrameHandlerRevCom)
 #endif // FEATURE_COMINTEROP
 #endif // !DACCESS_COMPILE
 #endif // !WIN64EXCEPTIONS
+
+PTR_CONTEXT GetCONTEXTFromRedirectedStubStackFrame(CONTEXT * pContext)
+{
+    LIMITED_METHOD_DAC_CONTRACT;
+
+    UINT_PTR stackSlot = pContext->Ebp + REDIRECTSTUB_EBP_OFFSET_CONTEXT;
+    PTR_PTR_CONTEXT ppContext = dac_cast<PTR_PTR_CONTEXT>((TADDR)stackSlot);
+    return *ppContext;
+}
 
 #ifndef DACCESS_COMPILE
 LONG CLRNoCatchHandler(EXCEPTION_POINTERS* pExceptionInfo, PVOID pv)

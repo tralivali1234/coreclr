@@ -75,12 +75,6 @@ void            HndDestroyHandle(HHANDLETABLE hTable, uint32_t uType, OBJECTHAND
 void            HndDestroyHandleOfUnknownType(HHANDLETABLE hTable, OBJECTHANDLE handle);
 
 /*
- * bulk handle allocation and deallocation
- */
-uint32_t        HndCreateHandles(HHANDLETABLE hTable, uint32_t uType, OBJECTHANDLE *pHandles, uint32_t uCount);
-void            HndDestroyHandles(HHANDLETABLE hTable, uint32_t uType, const OBJECTHANDLE *pHandles, uint32_t uCount);
-
-/*
  * owner data associated with handles
  */
 void            HndSetHandleExtraInfo(OBJECTHANDLE handle, uint32_t uType, uintptr_t lExtraInfo);
@@ -143,14 +137,6 @@ uint32_t        HndCountAllHandles(BOOL fUseLocks);
 
 /*--------------------------------------------------------------------------*/
 
-
-#if defined(USE_CHECKED_OBJECTREFS) && !defined(_NOVM)
-#define OBJECTREF_TO_UNCHECKED_OBJECTREF(objref)    (*((_UNCHECKED_OBJECTREF*)&(objref)))
-#define UNCHECKED_OBJECTREF_TO_OBJECTREF(obj)       (OBJECTREF(obj))
-#else
-#define OBJECTREF_TO_UNCHECKED_OBJECTREF(objref)    (objref)
-#define UNCHECKED_OBJECTREF_TO_OBJECTREF(obj)       (obj)
-#endif
 
 #ifdef _DEBUG_IMPL
 void ValidateAssignObjrefForHandle(OBJECTREF, ADIndex appDomainIndex);

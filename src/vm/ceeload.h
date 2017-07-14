@@ -52,7 +52,6 @@ class Stub;
 class MethodDesc;
 class FieldDesc;
 class Crst;
-class IAssemblySecurityDescriptor;
 class ClassConverter;
 class RefClassWriter;
 class ReflectionModule;
@@ -73,7 +72,6 @@ class MethodTable;
 class AppDomain;
 class DynamicMethodTable;
 struct CerPrepInfo;
-class ModuleSecurityDescriptor;
 #ifdef FEATURE_PREJIT
 class CerNgenRootTable;
 struct MethodContextElement;
@@ -311,7 +309,10 @@ template <typename TYPE>
 struct LookupMap : LookupMapBase
 {
     static TYPE GetValueAt(PTR_TADDR pValue, TADDR* pFlags, TADDR supportedFlags);
+
+#ifndef DACCESS_COMPILE
     static void SetValueAt(PTR_TADDR pValue, TYPE value, TADDR flags);
+#endif // DACCESS_COMPILE
 
     TYPE GetElement(DWORD rid, TADDR* pFlags);
     void SetElement(DWORD rid, TYPE value, TADDR flags);
@@ -368,6 +369,7 @@ public:
         SetElement(rid, value, flags);
     }
 
+#ifndef DACCESS_COMPILE
     void AddFlag(DWORD rid, TADDR flag)
     {
         WRAPPER_NO_CONTRACT;
@@ -388,6 +390,7 @@ public:
         TYPE existingValue = GetValueAt(pElement, &existingFlags, supportedFlags);
         SetValueAt(pElement, existingValue, existingFlags | flag);
     }
+#endif // DACCESS_COMPILE
 
     //
     // Try to store an association in a map. Will never throw or fail.
@@ -1720,7 +1723,6 @@ private:
 
     PTR_ProfilingBlobTable  m_pProfilingBlobTable;   // While performing IBC instrumenting this hashtable is populated with the External defs
     CorProfileData *        m_pProfileData;          // While ngen-ing with IBC optimizations this contains a link to the IBC data for the assembly
-    SString *               m_pIBCErrorNameString;   // Used when reporting IBC type loading errors
 
     // Profile information
     BOOL                            m_nativeImageProfiling;
@@ -1884,7 +1886,6 @@ protected:
     ClassLoader *GetClassLoader();
     PTR_BaseDomain GetDomain();
     ReJitManager * GetReJitManager();
-    IAssemblySecurityDescriptor* GetSecurityDescriptor();
 
     mdFile GetModuleRef()
     {
@@ -2899,8 +2900,7 @@ public:
     static void RestoreMethodDescPointer(RelativeFixupPointer<PTR_MethodDesc> * ppMD,
                                          Module *pContainingModule = NULL,
                                          ClassLoadLevel level = CLASS_LOADED);
-
-    static void RestoreFieldDescPointer(FixupPointer<PTR_FieldDesc> * ppFD);
+    static void RestoreFieldDescPointer(RelativeFixupPointer<PTR_FieldDesc> * ppFD);
 
     static void RestoreModulePointer(RelativeFixupPointer<PTR_Module> * ppModule, Module *pContainingModule);
 
@@ -2936,19 +2936,11 @@ public:
     void SetProfileData(CorProfileData * profileData);
     CorProfileData *GetProfileData();
 
-
     mdTypeDef     LookupIbcTypeToken(  Module *   pExternalModule, mdToken ibcToken, SString* optionalFullNameOut = NULL);
     mdMethodDef   LookupIbcMethodToken(TypeHandle enclosingType,   mdToken ibcToken, SString* optionalFullNameOut = NULL);
 
-    SString *     IBCErrorNameString();
-
-    void          IBCTypeLoadFailed(  CORBBTPROF_BLOB_PARAM_SIG_ENTRY *pBlobSigEntry, 
-                                      SString& exceptionMessage, SString* typeNameError);
-    void          IBCMethodLoadFailed(CORBBTPROF_BLOB_PARAM_SIG_ENTRY *pBlobSigEntry, 
-                                      SString& exceptionMessage, SString* typeNameError);
-
-    TypeHandle    LoadIBCTypeHelper(  CORBBTPROF_BLOB_PARAM_SIG_ENTRY *pBlobSigEntry);
-    MethodDesc *  LoadIBCMethodHelper(CORBBTPROF_BLOB_PARAM_SIG_ENTRY *pBlobSigEntry);
+    TypeHandle    LoadIBCTypeHelper(DataImage *image, CORBBTPROF_BLOB_PARAM_SIG_ENTRY *pBlobSigEntry);
+    MethodDesc *  LoadIBCMethodHelper(DataImage *image, CORBBTPROF_BLOB_PARAM_SIG_ENTRY *pBlobSigEntry);
  
 
     void ExpandAll(DataImage *image);
@@ -3420,8 +3412,6 @@ private:
 #endif // defined(FEATURE_PREJIT)
 
 public:
-    ModuleSecurityDescriptor* m_pModuleSecurityDescriptor;
-
 #if !defined(DACCESS_COMPILE) && defined(FEATURE_PREJIT)
     PTR_Assembly GetNativeMetadataAssemblyRefFromCache(DWORD rid)
     {

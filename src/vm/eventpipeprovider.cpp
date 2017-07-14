@@ -128,7 +128,7 @@ void EventPipeProvider::SetConfiguration(bool providerEnabled, INT64 keywords, E
     InvokeCallback();
 }
 
-EventPipeEvent* EventPipeProvider::AddEvent(INT64 keywords, unsigned int eventID, unsigned int eventVersion, EventPipeEventLevel level)
+EventPipeEvent* EventPipeProvider::AddEvent(unsigned int eventID, INT64 keywords, unsigned int eventVersion, EventPipeEventLevel level, BYTE *pMetadata, unsigned int metadataLength)
 {
     CONTRACTL
     {
@@ -138,10 +138,10 @@ EventPipeEvent* EventPipeProvider::AddEvent(INT64 keywords, unsigned int eventID
     }
     CONTRACTL_END;
 
-    return AddEvent(keywords, eventID, eventVersion, level, true /* needStack */);
+    return AddEvent(eventID, keywords, eventVersion, level, true /* needStack */, pMetadata, metadataLength);
 }
 
-EventPipeEvent* EventPipeProvider::AddEvent(INT64 keywords, unsigned int eventID, unsigned int eventVersion, EventPipeEventLevel level, bool needStack)
+EventPipeEvent* EventPipeProvider::AddEvent(unsigned int eventID, INT64 keywords, unsigned int eventVersion, EventPipeEventLevel level, bool needStack, BYTE *pMetadata, unsigned int metadataLength)
 {
     CONTRACTL
     {
@@ -158,7 +158,9 @@ EventPipeEvent* EventPipeProvider::AddEvent(INT64 keywords, unsigned int eventID
         eventID,
         eventVersion,
         level,
-        needStack);
+        needStack,
+        pMetadata,
+        metadataLength);
 
     // Add it to the list of events.
     AddEvent(*pEvent);
@@ -204,6 +206,18 @@ void EventPipeProvider::InvokeCallback()
             NULL /* FilterData */,
             m_pCallbackData /* CallbackContext */);
     }
+}
+
+bool EventPipeProvider::GetDeleteDeferred() const
+{
+    LIMITED_METHOD_CONTRACT;
+    return m_deleteDeferred;
+}
+
+void EventPipeProvider::SetDeleteDeferred()
+{
+    LIMITED_METHOD_CONTRACT;
+    m_deleteDeferred = true;
 }
 
 void EventPipeProvider::RefreshAllEvents()

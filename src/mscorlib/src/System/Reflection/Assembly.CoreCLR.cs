@@ -3,7 +3,6 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Collections.Generic;
-using System.Security.Policy;
 using System.IO;
 using System.Configuration.Assemblies;
 using StackCrawlMark = System.Threading.StackCrawlMark;
@@ -52,7 +51,19 @@ namespace System.Reflection
             string requestedAssemblyPath = Path.Combine(Path.GetDirectoryName(requestorPath), requestedAssemblyName.Name+".dll");
 
             // Load the dependency via LoadFrom so that it goes through the same path of being in the LoadFrom list.
-            return Assembly.LoadFrom(requestedAssemblyPath);
+            Assembly resolvedAssembly = null;
+
+            try
+            {
+                resolvedAssembly = Assembly.LoadFrom(requestedAssemblyPath);
+            }
+            catch(FileNotFoundException)
+            {
+                // Catch FileNotFoundException when attempting to resolve assemblies via this handler to account for missing assemblies.
+                resolvedAssembly = null;
+            }
+
+            return resolvedAssembly;
         }
 
         public static Assembly LoadFrom(String assemblyFile)
@@ -103,7 +114,7 @@ namespace System.Reflection
             Contract.Ensures(!Contract.Result<Assembly>().ReflectionOnly);
 
             StackCrawlMark stackMark = StackCrawlMark.LookForMyCaller;
-            return RuntimeAssembly.InternalLoad(assemblyString, null, ref stackMark, false /*forIntrospection*/);
+            return RuntimeAssembly.InternalLoad(assemblyString, ref stackMark);
         }
 
         // Returns type from the assembly while keeping compatibility with Assembly.Load(assemblyString).GetType(typeName) for managed types.
@@ -121,7 +132,6 @@ namespace System.Reflection
             RuntimeAssembly assembly;
             AssemblyName assemblyName = RuntimeAssembly.CreateAssemblyName(
                 assemblyString,
-                false /*forIntrospection*/,
                 out assembly);
 
             if (assembly == null)
@@ -132,8 +142,8 @@ namespace System.Reflection
                 }
 
                 assembly = RuntimeAssembly.InternalLoadAssemblyName(
-                    assemblyName, null, null, ref stackMark,
-                    true /*thrownOnFileNotFound*/, false /*forIntrospection*/);
+                    assemblyName, null, ref stackMark,
+                    true /*thrownOnFileNotFound*/);
             }
             return assembly.GetType(typeName, true /*throwOnError*/, false /*ignoreCase*/);
         }
@@ -158,7 +168,7 @@ namespace System.Reflection
             }
             
             StackCrawlMark stackMark = StackCrawlMark.LookForMyCaller;
-            return RuntimeAssembly.InternalLoadAssemblyName(modifiedAssemblyRef, null, null, ref stackMark, true /*thrownOnFileNotFound*/, false /*forIntrospection*/);
+            return RuntimeAssembly.InternalLoadAssemblyName(modifiedAssemblyRef, null, ref stackMark, true /*thrownOnFileNotFound*/);
         }
 
         // Locate an assembly by its name. The name can be strong or
@@ -181,7 +191,7 @@ namespace System.Reflection
             }
 
             StackCrawlMark stackMark = StackCrawlMark.LookForMyCaller;
-            return RuntimeAssembly.InternalLoadAssemblyName(modifiedAssemblyRef, null, null, ref stackMark, true /*thrownOnFileNotFound*/, false /*forIntrospection*/, ptrLoadContextBinder);
+            return RuntimeAssembly.InternalLoadAssemblyName(modifiedAssemblyRef, null, ref stackMark, true /*thrownOnFileNotFound*/, ptrLoadContextBinder);
         }
 
         // Loads the assembly with a COFF based IMAGE containing

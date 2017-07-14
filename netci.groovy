@@ -143,14 +143,18 @@ class Constants {
     def static configurationList = ['Debug', 'Checked', 'Release']
 
     // This is the set of architectures
-    def static architectureList = ['arm', 'arm64', 'x64', 'x86']
+    def static architectureList = ['arm', 'arm64', 'x64', 'x86', 'x86lb']
 }
 
-def static setMachineAffinity(def job, def os, def architecture) {
+def static setMachineAffinity(def job, def os, def architecture, def options = null) {
     if (architecture == 'arm64' && os == 'Windows_NT') {
         Utilities.setMachineAffinity(job, os, 'latest-arm64');
-    } else if (architecture == 'arm64' && os == 'Ubuntu') {
-        Utilities.setMachineAffinity(job, os, 'arm-cross-latest');
+    } else if (architecture == 'arm64' && os != 'Windows_NT' && options == null) {
+        Utilities.setMachineAffinity(job, os, 'arm64-small-page-size');
+    } else if (architecture == 'arm64' && os != 'Windows_NT' && options['large_pages'] == true) {
+        Utilities.setMachineAffinity(job, os, 'arm64-huge-page-size');
+    } else if (architecture == 'arm64' && os != 'Windows_NT' && options['is_build_only'] == true) {
+        Utilities.setMachineAffinity(job, os, 'arm64-cross-latest');
     } else if ((architecture == 'arm') && (os == 'Ubuntu' || os == 'Ubuntu16.04' || os == 'Tizen')) {
         Utilities.setMachineAffinity(job, 'Ubuntu', 'arm-cross-latest');
     } else {
@@ -339,8 +343,14 @@ def static getJobName(def configuration, def architecture, def os, def scenario,
             }
             break
         case 'arm64':
-            // These are cross builds
-            baseName = architecture.toLowerCase() + '_cross_' + configuration.toLowerCase() + '_' + os.toLowerCase()
+            if (os.toLowerCase() == "windows_nt") {
+                // These are cross builds
+                baseName = architecture.toLowerCase() + '_cross_' + configuration.toLowerCase() + '_' + os.toLowerCase()
+            }
+            else {
+                // Defaults to a small page size set of machines.
+                baseName = architecture.toLowerCase() + '_' + configuration.toLowerCase() + '_' + "small_page_size"
+            }
             break
         case 'arm':
             // These are cross builds
@@ -353,6 +363,7 @@ def static getJobName(def configuration, def architecture, def os, def scenario,
             }
             break
         case 'x86':
+        case 'x86lb':
             baseName = architecture.toLowerCase() + '_' + configuration.toLowerCase() + '_' + os.toLowerCase()
             break
         default:
@@ -371,6 +382,7 @@ def static addNonPRTriggers(def job, def branch, def isPR, def architecture, def
             switch (architecture) {
                 case 'x64':
                 case 'x86':
+                case 'x86lb':
                     if (architecture == 'x86' && os == 'Ubuntu') {
                         Utilities.addPeriodicTrigger(job, '@daily')
                     }
@@ -382,11 +394,7 @@ def static addNonPRTriggers(def job, def branch, def isPR, def architecture, def
                     Utilities.addGithubPushTrigger(job)
                     break
                 case 'arm64':
-                    if (os == 'Windows_NT') {
-                        Utilities.addGithubPushTrigger(job)
-                        // TODO: Add once external email sending is available again
-                        // addEmailPublisher(job, 'dotnetonarm64@microsoft.com')
-                    }
+                    Utilities.addGithubPushTrigger(job)
                     break
                 default:
                     println("Unknown architecture: ${architecture}");
@@ -433,7 +441,7 @@ def static addNonPRTriggers(def job, def branch, def isPR, def architecture, def
                     }
                 }
                 // For x86, only add per-commit jobs for Windows
-                else if (architecture == 'x86') {
+                else if (architecture == 'x86' || architecture == 'x86lb') {
                     if (os == 'Windows_NT') {
                         Utilities.addGithubPushTrigger(job)
                     }
@@ -587,8 +595,9 @@ def static addNonPRTriggers(def job, def branch, def isPR, def architecture, def
             if (os != 'CentOS7.1' && !(os in bidailyCrossList)) {
                 assert (os == 'Windows_NT') || (os in Constants.crossList)
                 if (architecture == 'arm64') {
-                    assert (os == 'Windows_NT')
-                    Utilities.addPeriodicTrigger(job, '@daily')
+                    if (os == 'Windows_NT') {
+                        Utilities.addPeriodicTrigger(job, '@daily')
+                    }
                     // TODO: Add once external email sending is available again
                     // addEmailPublisher(job, 'dotnetonarm64@microsoft.com')
                 }
@@ -608,7 +617,6 @@ def static addNonPRTriggers(def job, def branch, def isPR, def architecture, def
             if (os != 'CentOS7.1' && os != 'OSX10.12' && !(os in bidailyCrossList)) {
                 assert (os == 'Windows_NT') || (os in Constants.crossList)
                 if (architecture == 'arm64') {
-                    assert (os == 'Windows_NT')
                     // TODO: Enable a periodic trigger after tests are updated.
                     // Utilities.addPeriodicTrigger(job, '@daily')
                     // TODO: Add once external email sending is available again
@@ -1106,10 +1114,10 @@ def static addTriggers(def job, def branch, def isPR, def architecture, def os, 
                 'jashook',
                 'JosephTremoulet',
                 'pgavlin',
-                'pkukol',
                 'russellhadley',
                 'RussKeldorph',
                 'sandreenko',
+                'sdmaclea',
                 'sivarv',
                 'swaroop-sridhar',
                 'gkhanna79',
@@ -1122,6 +1130,49 @@ def static addTriggers(def job, def branch, def isPR, def architecture, def os, 
             ]
 
             switch (os) {
+                case 'Ubuntu':
+                case 'Ubuntu16.04':
+                    switch (scenario) {
+                        case 'pri1':
+                            if (configuration == 'Release') {
+                                Utilities.addGithubPRTriggerForBranch(job, branch, "${os} ${architecture} ${configuration} Priority 1 Build and Test", "(?i).*test\\W+${os}\\W+${scenario}.*")
+                            }
+                            break
+                        case 'r2r':
+                            if (configuration == 'Checked' || configuration == 'Release') {
+                                Utilities.addGithubPRTriggerForBranch(job, branch, "${os} ${architecture} ${configuration} R2R pri0 Build & Test", "(?i).*test\\W+${os}\\W+${configuration}\\W+${scenario}.*")
+                            }
+                            break
+                        case 'pri1r2r':
+                            if (configuration == 'Checked' || configuration == 'Release') {
+                                Utilities.addGithubPRTriggerForBranch(job, branch, "${os} ${architecture} ${configuration} R2R pri1 Build & Test", "(?i).*test\\W+${os}\\W+${configuration}\\W+${scenario}.*")
+                            }
+                            break
+                        case 'gcstress15_pri1r2r':
+                            if (configuration == 'Release' || configuration == 'Checked') {
+                                Utilities.addGithubPRTriggerForBranch(job, branch, "${os} ${architecture} ${configuration} GCStress 15 R2R pri1 Build & Test", "(?i).*test\\W+${os}\\W+${configuration}\\W+${scenario}.*")
+                            }
+                            break
+                        case 'r2r_jitstress1':
+                        case 'r2r_jitstress2':
+                        case 'r2r_jitstressregs1':
+                        case 'r2r_jitstressregs2':
+                        case 'r2r_jitstressregs3':
+                        case 'r2r_jitstressregs4':
+                        case 'r2r_jitstressregs8':
+                        case 'r2r_jitstressregs0x10':
+                        case 'r2r_jitstressregs0x80':
+                        case 'r2r_jitstressregs0x1000':
+                        case 'r2r_jitminopts':
+                        case 'r2r_jitforcerelocs':
+                            if (configuration == 'Release' || configuration == 'Checked') {
+                                def displayStr = getR2RStressModeDisplayName(scenario)
+                                Utilities.addGithubPRTriggerForBranch(job, branch, "${os} ${architecture} ${configuration} ${displayStr} R2R Build & Test", "(?i).*test\\W+${os}\\W+${configuration}\\W+${scenario}.*")
+                            }
+                            break
+                        default:
+                            break
+                    }
                 case 'Windows_NT':
                     switch (scenario) {
                         case 'default':
@@ -1296,6 +1347,26 @@ def static addTriggers(def job, def branch, def isPR, def architecture, def os, 
                     break
             }
             break
+         // editor brace matching: }
+        case 'x86lb': // editor brace matching: {
+            assert (os == 'Windows_NT')
+            assert (scenario == 'default' || Constants.r2rJitStressScenarios.indexOf(scenario) !=1)
+
+            def arch = 'x86'
+            def jit = 'legacy_backend'
+            switch (scenario) {
+                case 'default':
+                    if (configuration == 'Checked') {
+                        Utilities.addGithubPRTriggerForBranch(job, branch, "${os} ${arch} ${jit} ${configuration} Build and Test",
+                            "(?i).*test\\W+${os}\\W+${arch}\\W+${jit}\\W+${configuration}.*")
+                    }
+                    break
+                default:
+                    println("Unknown scenario: ${os} ${arch} ${jit} ${scenario}");
+                    assert false
+                    break
+            }
+            break
         // editor brace matching: }
         default:
             println("Unknown architecture: ${architecture}");
@@ -1315,8 +1386,12 @@ def static calculateBuildCommands(def newJob, def scenario, def branch, def isPR
             switch (architecture) {
                 case 'x64':
                 case 'x86':
+                case 'x86lb':
                     def arch = architecture
                     def buildOpts = ''
+                    if (architecture == 'x86lb') {
+                        arch = 'x86'
+                    }
 
                     if (scenario == 'illink') {
                         buildCommands += "tests\\scripts\\build_illink.cmd clone ${arch}"
@@ -1470,11 +1545,12 @@ def static calculateBuildCommands(def newJob, def scenario, def branch, def isPR
                         else if (isGcReliabilityFramework(scenario)) {
                             buildCommands += "tests\\runtest.cmd ${runtestArguments} GenerateLayoutOnly"
                             buildCommands += "tests\\scripts\\run-gc-reliability-framework.cmd ${arch} ${configuration}"
-                            Utilities.addArchival(newJob, "stdout.txt")
-                            Utilities.addArchival(newJob, "Logs/**")
                         }
                         else if (architecture == 'x64' || architecture == 'x86') {
                             buildCommands += "tests\\runtest.cmd ${runtestArguments}"
+                        }
+                        else if (architecture == 'x86lb') {
+                            buildCommands += "tests\\runtest.cmd ${runtestArguments} TestEnv %WORKSPACE%\\tests\\legacyjit_x86_testenv.cmd"
                         }
                     }
 
@@ -1484,6 +1560,10 @@ def static calculateBuildCommands(def newJob, def scenario, def branch, def isPR
                         buildCommands += "build.cmd ${lowerConfiguration} ${arch} linuxmscorlib"
                         buildCommands += "build.cmd ${lowerConfiguration} ${arch} freebsdmscorlib"
                         buildCommands += "build.cmd ${lowerConfiguration} ${arch} osxmscorlib"
+                       
+                        if (arch == "x64") {
+                            buildCommands += "build.cmd ${lowerConfiguration} arm64 linuxmscorlib"
+                        }
 
                         // Zip up the tests directory so that we don't use so much space/time copying
                         // 10s of thousands of files around.
@@ -1504,9 +1584,7 @@ def static calculateBuildCommands(def newJob, def scenario, def branch, def isPR
                         }
 
                         if (!isBuildOnly) {
-                            if (architecture == 'x64' || !isPR) {
-                                Utilities.addXUnitDotNETResults(newJob, 'bin/**/TestRun*.xml')
-                            }
+                            Utilities.addXUnitDotNETResults(newJob, 'bin/**/TestRun*.xml', true)
                             setTestJobTimeOut(newJob, scenario)
                         }
                     }
@@ -1647,14 +1725,25 @@ def static calculateBuildCommands(def newJob, def scenario, def branch, def isPR
                     }
                     break
                 case 'arm64':
-                    // We don't run the cross build except on Ubuntu
-                    assert os == 'Ubuntu'
+                    def standaloneGc = ''
+                    if (scenario == 'standalone_gc') {
+                        standaloneGc = 'buildstandalonegc'
+                    }
 
-                    buildCommands += """echo \"Using rootfs in /opt/aarch64-linux-gnu-root\"
-                        ROOTFS_DIR=/opt/aarch64-linux-gnu-root ./build.sh skipmscorlib arm64 cross verbose ${lowerConfiguration}"""
+                    if (!enableCorefxTesting) {
+                        buildCommands += "ROOTFS_DIR=/opt/arm64-xenial-rootfs ./build.sh skipmscorlib verbose ${lowerConfiguration} ${architecture} cross clang3.8 skipnuget ${standaloneGc}"
+                        
+                        // HACK -- Arm64 does not have corefx jobs yet.
+                        buildCommands += "git clone https://github.com/dotnet/corefx fx"
+                        buildCommands += "ROOTFS_DIR=/opt/arm64-xenial-rootfs-corefx ./fx/build-native.sh -release -buildArch=arm64 -- verbose cross clang3.8"
+                        buildCommands += "mkdir ./bin/Product/Linux.arm64.${configuration}/corefxNative"
+                        buildCommands += "cp fx/bin/Linux.arm64.Release/native/* ./bin/Product/Linux.arm64.${configuration}/corefxNative"
 
-                    // Basic archiving of the build, no pal tests
-                    Utilities.addArchival(newJob, "bin/Product/**", "bin/Product/**/.nuget/**")
+                        // Set time out
+                        setTestJobTimeOut(newJob, scenario)
+                        // Basic archiving of the build
+                        Utilities.addArchival(newJob, "bin/Product/**,bin/obj/*/tests/**/*.dylib,bin/obj/*/tests/**/*.so", "bin/Product/**/.nuget/**")
+                    }
                     break
                 case 'arm':
                     // Cross builds for ARM runs on Ubuntu, Ubuntu16.04 and Tizen currently
@@ -1747,8 +1836,12 @@ combinedScenarios.each { scenario ->
                     // Skip totally unimplemented (in CI) configurations.
                     switch (architecture) {
                         case 'arm64':
-                            // Windows only
-                            if (os != 'Windows_NT' || isBuildOnly) {
+                            if (os == 'Ubuntu16.04') {
+                                os = 'Ubuntu'
+                            }
+
+                            // Windows and Ubuntu only
+                            if ((os != 'Windows_NT' && os != 'Ubuntu') || isBuildOnly) {
                                 return
                             }
                             break
@@ -1759,6 +1852,11 @@ combinedScenarios.each { scenario ->
                             break
                         case 'x86':
                             if ((os != 'Ubuntu') && (os != 'Windows_NT')) {
+                                return
+                            }
+                            break
+                        case 'x86lb':
+                            if (os != 'Windows_NT') {
                                 return
                             }
                             break
@@ -1802,6 +1900,10 @@ combinedScenarios.each { scenario ->
                                 }
                                 // Windows: Everything implemented
                                 break
+                            case 'x86lb':
+                                // No stress modes for legacy jit.
+                                // (There's no technical reason we couldn't allow these.)
+                                return                            
                             default:
                                 return
                         }
@@ -1978,7 +2080,8 @@ combinedScenarios.each { scenario ->
                     // Create the new job
                     def newJob = job(Utilities.getFullJobName(project, jobName, isPR, folderName)) {}
 
-                    setMachineAffinity(newJob, os, architecture)
+                    def machineAffinityOptions = architecture == 'arm64' ? ['is_build_only': true] : null
+                    setMachineAffinity(newJob, os, architecture, machineAffinityOptions)
 
                     // Add all the standard options
                     Utilities.standardJobSetup(newJob, project, isPR, "*/${branch}")
@@ -2012,20 +2115,15 @@ combinedScenarios.each { scenario ->
 
                                     // Copy the Windows test binaries and the Corefx build binaries
                                     copyArtifacts(WindowTestsName) {
-                                        excludePatterns('**/testResults.xml', '**/*.ni.dll')
+                                        includePatterns('bin/tests/tests.zip')
                                         buildSelector {
                                             latestSuccessful(true)
                                         }
                                     }
 
-                                    // Defaults for Ubuntu
                                     def arm_abi = 'arm'
-                                    def corefx_os = 'ubuntu14.04'
-                                    if (os == 'Ubuntu16.04') {
-                                        arm_abi = 'arm'
-                                        corefx_os = 'ubuntu16.04'
-                                    }
-                                    else if (os == 'Tizen') {
+                                    def corefx_os = 'linux'
+                                    if (os == 'Tizen') {
                                         arm_abi = 'armel'
                                         corefx_os = 'tizen'
                                     }
@@ -2036,6 +2134,7 @@ combinedScenarios.each { scenario ->
                                     if ( lowerConfiguration == 'checked' ) {
                                         corefx_lowerConfiguration='release'
                                     }
+
                                     copyArtifacts("${corefxFolder}/${corefx_os}_${arm_abi}_cross_${corefx_lowerConfiguration}") {
                                         includePatterns('bin/build.tar.gz')
                                         buildSelector {
@@ -2062,10 +2161,22 @@ combinedScenarios.each { scenario ->
 combinedScenarios.each { scenario ->
     [true, false].each { isPR ->
         // Architectures.  x64 only at this point
-        ['x64'].each { architecture ->
+        ['x64', 'arm64'].each { architecture ->
             // Put the OS's supported for coreclr cross testing here
             Constants.crossList.each { os ->
+                if (architecture == 'arm64') {
+                    if (os != "Ubuntu") {
+                        return
+                    }
+                }
+
                 Constants.configurationList.each { configuration ->
+
+                    if (architecture == 'arm64') {
+                        if (scenario != 'default' && scenario != 'pri1r2r' && scenario != 'gcstress0x3' && scenario != 'gcstress0xc') {
+                            return
+                        }
+                    }
 
                     if (Constants.jitStressModeScenarios.containsKey(scenario)) {
                         if (configuration != 'Checked') {
@@ -2212,13 +2323,18 @@ combinedScenarios.each { scenario ->
                         testBuildScenario = 'default'
                     }
                     def inputWindowTestsBuildName = ''
+                    def inputWindowsTestBuildArch = architecture
+                    if (architecture == "arm64") {
+                        // Use the x64 test build for arm64 unix
+                        inputWindowsTestBuildArch = "x64"
+                    }
                     if (Constants.jitStressModeScenarios.containsKey(testBuildScenario)) {
                         inputWindowTestsBuildName = projectFolder + '/' +
-                            Utilities.getFullJobName(project, getJobName(configuration, architecture, 'windows_nt', 'default', true), isPR)
+                            Utilities.getFullJobName(project, getJobName(configuration, inputWindowsTestBuildArch, 'windows_nt', 'default', true), isPR)
                     }
                     else {
                         inputWindowTestsBuildName = projectFolder + '/' +
-                            Utilities.getFullJobName(project, getJobName(configuration, architecture, 'windows_nt', testBuildScenario, true), isPR)
+                            Utilities.getFullJobName(project, getJobName(configuration, inputWindowsTestBuildArch, 'windows_nt', testBuildScenario, true), isPR)
                     }
                     // Enable Server GC for Ubuntu PR builds
                     def serverGCString = ''
@@ -2460,6 +2576,13 @@ combinedScenarios.each { scenario ->
                                 // Unpack the corefx binaries
                                 shell("tar -xf ./bin/build.tar.gz -C ./bin/CoreFxBinDir")
 
+                                // HACK -- Arm64 does not have corefx jobs yet.
+                                // Clone corefx and build the native packages overwriting the x64 packages.
+                                if (architecture == 'arm64') {
+                                    shell("cp ./bin/Product/Linux.arm64.${configuration}/corefxNative/* ./bin/CoreFxBinDir")
+                                    shell("chmod +x ./bin/Product/Linux.arm64.${configuration}/corerun")
+                                }
+
                                 // Unzip the tests first.  Exit with 0
                                 shell("unzip -q -o ./bin/tests/tests.zip -d ./bin/tests/Windows_NT.${architecture}.${configuration} || exit 0")
 
@@ -2500,13 +2623,6 @@ combinedScenarios.each { scenario ->
                         }
                     }
 
-                    if (isGcReliabilityFramework(scenario))
-                    {
-                        // Both of these are emitted by the RF
-                        Utilities.addArchival(newJob, "stdout.txt")
-                        Utilities.addArchival(newJob, "Logs/**")
-                    }
-
                     if (scenario == 'coverage') {
                         // Publish coverage reports
                         Utilities.addHtmlPublisher(newJob, '${WORKSPACE}/coverage/Coverage/reports', 'Code Coverage Report', 'coreclr.html')
@@ -2529,6 +2645,11 @@ combinedScenarios.each { scenario ->
                     Utilities.standardJobSetup(newJob, project, isPR, "*/${branch}")
                     // Set timeouts to 240.
                     setTestJobTimeOut(newJob, scenario)
+
+                    if (architecture == 'arm64') {
+                        Utilities.setJobTimeout(newJob, 480)
+                    }
+
                     Utilities.addXUnitDotNETResults(newJob, '**/coreclrtests.xml')
 
                     // Create a build flow to join together the build and tests required to run this

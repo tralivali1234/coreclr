@@ -1340,7 +1340,7 @@ void Compiler::optPrintLoopRecording(unsigned loopInd)
     {
         printf(" [over V%02u", optLoopTable[loopInd].lpIterVar());
         printf(" (");
-        printf(GenTree::NodeName(optLoopTable[loopInd].lpIterOper()));
+        printf(GenTree::OpName(optLoopTable[loopInd].lpIterOper()));
         printf(" ");
         printf("%d )", optLoopTable[loopInd].lpIterConst());
 
@@ -1354,7 +1354,7 @@ void Compiler::optPrintLoopRecording(unsigned loopInd)
         }
 
         // If a simple test condition print operator and the limits */
-        printf(GenTree::NodeName(optLoopTable[loopInd].lpTestOper()));
+        printf(GenTree::OpName(optLoopTable[loopInd].lpTestOper()));
 
         if (optLoopTable[loopInd].lpFlags & LPFLG_CONST_LIMIT)
         {
@@ -3289,7 +3289,7 @@ void Compiler::optUnrollLoops()
 
 /*****************************************************************************
  *
- *  Return non-zero if there is a code path from 'topBB' to 'botBB' that will
+ *  Return false if there is a code path from 'topBB' to 'botBB' that might
  *  not execute a method call.
  */
 
@@ -5866,7 +5866,7 @@ void Compiler::optHoistThisLoop(unsigned lnum, LoopHoistContext* hoistCtxt)
     }
 #endif
 
-    VARSET_TP VARSET_INIT_NOCOPY(loopVars, VarSetOps::Intersection(this, pLoopDsc->lpVarInOut, pLoopDsc->lpVarUseDef));
+    VARSET_TP loopVars(VarSetOps::Intersection(this, pLoopDsc->lpVarInOut, pLoopDsc->lpVarUseDef));
 
     pLoopDsc->lpVarInOutCount    = VarSetOps::Count(this, pLoopDsc->lpVarInOut);
     pLoopDsc->lpLoopVarCount     = VarSetOps::Count(this, loopVars);
@@ -5880,8 +5880,8 @@ void Compiler::optHoistThisLoop(unsigned lnum, LoopHoistContext* hoistCtxt)
         // Since 64-bit variables take up two registers on 32-bit targets, we increase
         //  the Counts such that each TYP_LONG variable counts twice.
         //
-        VARSET_TP VARSET_INIT_NOCOPY(loopLongVars, VarSetOps::Intersection(this, loopVars, lvaLongVars));
-        VARSET_TP VARSET_INIT_NOCOPY(inOutLongVars, VarSetOps::Intersection(this, pLoopDsc->lpVarInOut, lvaLongVars));
+        VARSET_TP loopLongVars(VarSetOps::Intersection(this, loopVars, lvaLongVars));
+        VARSET_TP inOutLongVars(VarSetOps::Intersection(this, pLoopDsc->lpVarInOut, lvaLongVars));
 
 #ifdef DEBUG
         if (verbose)
@@ -5914,8 +5914,8 @@ void Compiler::optHoistThisLoop(unsigned lnum, LoopHoistContext* hoistCtxt)
 
     if (floatVarsCount > 0)
     {
-        VARSET_TP VARSET_INIT_NOCOPY(loopFPVars, VarSetOps::Intersection(this, loopVars, lvaFloatVars));
-        VARSET_TP VARSET_INIT_NOCOPY(inOutFPVars, VarSetOps::Intersection(this, pLoopDsc->lpVarInOut, lvaFloatVars));
+        VARSET_TP loopFPVars(VarSetOps::Intersection(this, loopVars, lvaFloatVars));
+        VARSET_TP inOutFPVars(VarSetOps::Intersection(this, pLoopDsc->lpVarInOut, lvaFloatVars));
 
         pLoopDsc->lpLoopVarFPCount     = VarSetOps::Count(this, loopFPVars);
         pLoopDsc->lpVarInOutFPCount    = VarSetOps::Count(this, inOutFPVars);
@@ -6142,9 +6142,15 @@ bool Compiler::optHoistLoopExprsForTree(GenTreePtr        tree,
         childrenCctorDependent[i] = false;
     }
 
-    // Initclass CLS_VARs are the base case of cctor dependent trees.
-    bool treeIsCctorDependent = (tree->OperIs(GT_CLS_VAR) && ((tree->gtFlags & GTF_CLS_VAR_INITCLASS) != 0));
-    bool treeIsInvariant      = true;
+    // Initclass CLS_VARs and IconHandles are the base cases of cctor dependent trees.
+    // In the IconHandle case, it's of course the dereference, rather than the constant itself, that is
+    // truly dependent on the cctor.  So a more precise approach would be to separately propagate
+    // isCctorDependent and isAddressWhoseDereferenceWouldBeCctorDependent, but we don't for simplicity/throughput;
+    // the constant itself would be considered non-hoistable anyway, since optIsCSEcandidate returns
+    // false for constants.
+    bool treeIsCctorDependent = ((tree->OperIs(GT_CLS_VAR) && ((tree->gtFlags & GTF_CLS_VAR_INITCLASS) != 0)) ||
+                                 (tree->OperIs(GT_CNS_INT) && ((tree->gtFlags & GTF_ICON_INITCLASS) != 0)));
+    bool treeIsInvariant = true;
     for (unsigned childNum = 0; childNum < nChildren; childNum++)
     {
         if (!optHoistLoopExprsForTree(tree->GetChild(childNum), lnum, hoistCtxt, pFirstBlockAndBeforeSideEffect,
@@ -6172,9 +6178,9 @@ bool Compiler::optHoistLoopExprsForTree(GenTreePtr        tree,
                         // with the static field reference.
                         treeIsCctorDependent = false;
                         // Hoisting the static field without hoisting the initialization would be
-                        // incorrect; unset childrenHoistable for the field to ensure this doesn't
-                        // happen.
-                        childrenHoistable[0] = false;
+                        // incorrect, make sure we consider the field (which we flagged as
+                        // cctor-dependent) non-hoistable.
+                        noway_assert(!childrenHoistable[childNum]);
                     }
                 }
             }
@@ -7475,7 +7481,7 @@ GenTreePtr Compiler::optFindLocalInit(BasicBlock* block,
 
     // If any local in the RHS is killed in intervening code, or RHS has an indirection, return NULL.
     varRefKinds rhsRefs = VR_NONE;
-    VARSET_TP   VARSET_INIT_NOCOPY(rhsLocals, VarSetOps::UninitVal());
+    VARSET_TP   rhsLocals(VarSetOps::UninitVal());
     bool        b = lvaLclVarRefs(rhs, nullptr, &rhsRefs, &rhsLocals);
     if (!b || !VarSetOps::IsEmptyIntersection(this, rhsLocals, *pKilledInOut) || (rhsRefs != VR_NONE))
     {
@@ -7587,7 +7593,7 @@ bool Compiler::optIdentifyLoopOptInfo(unsigned loopNum, LoopCloneContext* contex
            (pLoop->lpIterOper() == GT_SUB || pLoop->lpIterOper() == GT_ASG_SUB))))
     {
         JITDUMP("> Loop test (%s) doesn't agree with the direction (%s) of the pLoop->\n",
-                GenTree::NodeName(pLoop->lpTestOper()), GenTree::NodeName(pLoop->lpIterOper()));
+                GenTree::OpName(pLoop->lpTestOper()), GenTree::OpName(pLoop->lpIterOper()));
         return false;
     }
 
@@ -8099,7 +8105,7 @@ void Compiler::optOptimizeBoolsGcStress(BasicBlock* condBlock)
 
     // Bump up the ref-counts of any variables in 'comparandClone'
     compCurBB = condBlock;
-    fgWalkTreePre(&comparandClone, Compiler::lvaIncRefCntsCB, (void*)this, true);
+    IncLclVarRefCountsVisitor::WalkTree(this, comparandClone);
 
     noway_assert(relop->gtOp.gtOp1 == comparand);
     genTreeOps oper   = compStressCompile(STRESS_OPT_BOOLS_GC, 50) ? GT_OR : GT_AND;

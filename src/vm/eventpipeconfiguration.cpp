@@ -59,12 +59,12 @@ void EventPipeConfiguration::Initialize()
     CONTRACTL_END;
 
     // Create the configuration provider.
-    m_pConfigProvider = new EventPipeProvider(s_configurationProviderID);
+    m_pConfigProvider = EventPipe::CreateProvider(s_configurationProviderID);
 
     // Create the metadata event.
     m_pMetadataEvent = m_pConfigProvider->AddEvent(
-        0,      /* keywords */
         0,      /* eventID */
+        0,      /* keywords */
         0,      /* eventVersion */
         EventPipeEventLevel::LogAlways,
         false); /* needStack */
@@ -207,7 +207,7 @@ void EventPipeConfiguration::SetCircularBufferSize(size_t circularBufferSize)
 }
 
 void EventPipeConfiguration::Enable(
-    uint circularBufferSizeInMB,
+    unsigned int circularBufferSizeInMB,
     EventPipeProviderConfiguration *pProviders,
     int numProviders)
 {
@@ -315,7 +315,7 @@ void EventPipeConfiguration::EnableRundown()
     Enable(1 /* circularBufferSizeInMB */, rundownProviders, numRundownProviders);
 }
 
-EventPipeEventInstance* EventPipeConfiguration::BuildEventMetadataEvent(EventPipeEventInstance &sourceInstance, BYTE *pPayloadData, unsigned int payloadLength)
+EventPipeEventInstance* EventPipeConfiguration::BuildEventMetadataEvent(EventPipeEventInstance &sourceInstance)
 {
     CONTRACTL
     {
@@ -336,6 +336,8 @@ EventPipeEventInstance* EventPipeConfiguration::BuildEventMetadataEvent(EventPip
     const GUID &providerID = sourceEvent.GetProvider()->GetProviderID();
     unsigned int eventID = sourceEvent.GetEventID();
     unsigned int eventVersion = sourceEvent.GetEventVersion();
+    BYTE *pPayloadData = sourceEvent.GetMetadata();
+    unsigned int payloadLength = sourceEvent.GetMetadataLength();
     unsigned int instancePayloadSize = sizeof(providerID) + sizeof(eventID) + sizeof(eventVersion) + sizeof(payloadLength) + payloadLength;
 
     // Allocate the payload.
@@ -368,13 +370,42 @@ EventPipeEventInstance* EventPipeConfiguration::BuildEventMetadataEvent(EventPip
         *m_pMetadataEvent,
         GetCurrentThreadId(),
         pInstancePayload,
-        instancePayloadSize);
+        instancePayloadSize,
+        NULL /* pActivityId */,
+        NULL /* pRelatedActivityId */);
 
     // Set the timestamp to match the source event, because the metadata event
     // will be emitted right before the source event.
     pInstance->SetTimeStamp(sourceInstance.GetTimeStamp());
 
     return pInstance;
+}
+
+void EventPipeConfiguration::DeleteDeferredProviders()
+{
+    CONTRACTL
+    {
+        THROWS;
+        GC_TRIGGERS;
+        MODE_ANY;
+        // Lock must be held by EventPipe::Disable.
+        PRECONDITION(EventPipe::GetLock()->OwnedByCurrentThread());
+
+    }
+    CONTRACTL_END;
+
+    SListElem<EventPipeProvider*> *pElem = m_pProviderList->GetHead();
+    while(pElem != NULL)
+    {
+        EventPipeProvider *pProvider = pElem->GetValue();
+        if(pProvider->GetDeleteDeferred())
+        {
+            // The act of deleting the provider unregisters it and removes it from the list.
+            delete(pProvider);
+        }
+
+        pElem = m_pProviderList->GetNext(pElem);
+    }
 }
 
 EventPipeEnabledProviderList::EventPipeEnabledProviderList(
@@ -398,7 +429,7 @@ EventPipeEnabledProviderList::EventPipeEnabledProviderList(
     if((CLRConfig::GetConfigValue(CLRConfig::INTERNAL_PerformanceTracing) & 1) == 1)
     {
         m_pCatchAllProvider = new EventPipeEnabledProvider();
-        m_pCatchAllProvider->Set(NULL, 0xFFFFFFFF, EventPipeEventLevel::Verbose);
+        m_pCatchAllProvider->Set(NULL, 0xFFFFFFFFFFFFFFFF, EventPipeEventLevel::Verbose);
         return;
     }
 

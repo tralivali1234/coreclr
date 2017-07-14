@@ -28,7 +28,7 @@ public:
         m_lsra = (LinearScan*)lsra;
         assert(m_lsra);
     }
-    virtual void DoPhase();
+    virtual void DoPhase() override;
 
     // If requiresOverflowCheck is false, all other values will be unset
     struct CastInfo
@@ -47,7 +47,38 @@ public:
 
     static void getCastDescription(GenTreePtr treeNode, CastInfo* castInfo);
 
+    // LowerRange handles new code that is introduced by or after Lowering.
+    void LowerRange(LIR::Range&& range)
+    {
+        for (GenTree* newNode : range)
+        {
+            LowerNode(newNode);
+        }
+    }
+
 private:
+    void ContainCheckDivOrMod(GenTreeOp* node);
+    void ContainCheckReturnTrap(GenTreeOp* node);
+    void ContainCheckArrOffset(GenTreeArrOffs* node);
+    void ContainCheckLclHeap(GenTreeOp* node);
+    void ContainCheckRet(GenTreeOp* node);
+    void ContainCheckBinary(GenTreeOp* node);
+    void ContainCheckMul(GenTreeOp* node);
+    void ContainCheckShiftRotate(GenTreeOp* node);
+    void ContainCheckStoreLoc(GenTreeLclVarCommon* storeLoc);
+    void ContainCheckIndir(GenTreeIndir* indirNode);
+    void ContainCheckCast(GenTreeCast* node);
+    void ContainCheckCompare(GenTreeOp* node);
+    void ContainCheckBoundsChk(GenTreeBoundsChk* node);
+#ifdef _TARGET_XARCH_
+    void ContainCheckFloatBinary(GenTreeOp* node);
+    void ContainCheckIntrinsic(GenTreeOp* node);
+#endif // _TARGET_XARCH_
+#ifdef FEATURE_SIMD
+    void ContainCheckJTrue(GenTreeOp* node);
+    void ContainCheckSIMD(GenTreeSIMD* simdNode);
+#endif // FEATURE_SIMD
+
 #ifdef DEBUG
     static void CheckCallArg(GenTree* arg);
     static void CheckCall(GenTreeCall* call);
@@ -57,6 +88,7 @@ private:
 
     void LowerBlock(BasicBlock* block);
     GenTree* LowerNode(GenTree* node);
+
     void CheckVSQuirkStackPaddingNeeded(GenTreeCall* call);
 
     // ------------------------------
@@ -104,11 +136,6 @@ private:
         return comp->gtNewPhysRegNode(reg, type);
     }
 
-    GenTree* PhysRegDst(regNumber reg, GenTree* src)
-    {
-        return comp->gtNewPhysRegNode(reg, src);
-    }
-
     GenTree* ThisReg(GenTreeCall* call)
     {
         return PhysReg(comp->codeGen->genGetThisArgReg(call), TYP_REF);
@@ -133,6 +160,8 @@ private:
     void TreeNodeInfoInit(GenTree* stmt);
 
     void TreeNodeInfoInitCheckByteable(GenTree* tree);
+
+    void SetDelayFree(GenTree* delayUseSrc);
 
 #if defined(_TARGET_XARCH_)
     void TreeNodeInfoInitSimple(GenTree* tree);
@@ -178,20 +207,30 @@ private:
     {
         assert(GenTree::OperIsBinary(tree->OperGet()));
 
-        GenTree* op1 = tree->gtGetOp1();
-        GenTree* op2 = tree->gtGetOp2();
+        GenTree* const op1 = tree->gtGetOp1();
+        GenTree* const op2 = tree->gtGetOp2();
 
-        if (tree->OperIsCommutative() && tree->TypeGet() == op1->TypeGet())
+        const unsigned operatorSize = genTypeSize(tree->TypeGet());
+
+        const bool op1Legal = tree->OperIsCommutative() && (operatorSize == genTypeSize(op1->TypeGet()));
+        const bool op2Legal = operatorSize == genTypeSize(op2->TypeGet());
+
+        if (op1Legal)
         {
-            GenTree* preferredOp = PreferredRegOptionalOperand(tree);
-            SetRegOptional(preferredOp);
+            SetRegOptional(op2Legal ? PreferredRegOptionalOperand(tree) : op1);
         }
-        else if (tree->TypeGet() == op2->TypeGet())
+        else if (op2Legal)
         {
             SetRegOptional(op2);
         }
     }
 #endif // defined(_TARGET_XARCH_)
+
+    // TreeNodeInfoInit methods
+
+    int GetOperandSourceCount(GenTree* node);
+    int GetIndirSourceCount(GenTreeIndir* indirTree);
+
     void TreeNodeInfoInitStoreLoc(GenTree* tree);
     void TreeNodeInfoInitReturn(GenTree* tree);
     void TreeNodeInfoInitShiftRotate(GenTree* tree);
@@ -201,11 +240,10 @@ private:
     void TreeNodeInfoInitCmp(GenTreePtr tree);
     void TreeNodeInfoInitStructArg(GenTreePtr structArg);
     void TreeNodeInfoInitBlockStore(GenTreeBlk* blkNode);
-    void TreeNodeInfoInitLogicalOp(GenTree* tree);
     void TreeNodeInfoInitModDiv(GenTree* tree);
     void TreeNodeInfoInitIntrinsic(GenTree* tree);
     void TreeNodeInfoInitStoreLoc(GenTreeLclVarCommon* tree);
-    void TreeNodeInfoInitIndir(GenTree* indirTree);
+    void TreeNodeInfoInitIndir(GenTreeIndir* indirTree);
     void TreeNodeInfoInitGCWriteBarrier(GenTree* tree);
 #if !CPU_LOAD_STORE_ARCH
     bool TreeNodeInfoInitIfRMWMemOp(GenTreePtr storeInd);
@@ -225,6 +263,9 @@ private:
 #ifdef FEATURE_PUT_STRUCT_ARG_STK
     void LowerPutArgStk(GenTreePutArgStk* tree);
     void TreeNodeInfoInitPutArgStk(GenTreePutArgStk* tree);
+#ifdef _TARGET_ARM_
+    void TreeNodeInfoInitPutArgSplit(GenTreePutArgSplit* tree, TreeNodeInfo& info, fgArgTabEntryPtr argInfo);
+#endif
 #endif // FEATURE_PUT_STRUCT_ARG_STK
     void TreeNodeInfoInitLclHeap(GenTree* tree);
 
@@ -233,7 +274,7 @@ private:
     // Per tree node member functions
     void LowerStoreInd(GenTree* node);
     GenTree* LowerAdd(GenTree* node);
-    void LowerUnsignedDivOrMod(GenTree* node);
+    GenTree* LowerUnsignedDivOrMod(GenTreeOp* divMod);
     GenTree* LowerSignedDivOrMod(GenTree* node);
     void LowerBlockStore(GenTreeBlk* blkNode);
 
@@ -252,10 +293,14 @@ private:
     bool IsRMWIndirCandidate(GenTree* operand, GenTree* storeInd);
     bool IsBinOpInRMWStoreInd(GenTreePtr tree);
     bool IsRMWMemOpRootedAtStoreInd(GenTreePtr storeIndTree, GenTreePtr* indirCandidate, GenTreePtr* indirOpSource);
+    bool LowerRMWMemOp(GenTreeIndir* storeInd);
 #endif
+
+    void WidenSIMD12IfNecessary(GenTreeLclVarCommon* node);
     void LowerStoreLoc(GenTreeLclVarCommon* tree);
     GenTree* LowerArrElem(GenTree* node);
     void LowerRotate(GenTree* tree);
+    void LowerShift(GenTreeOp* shift);
 
     // Utility functions
     void MorphBlkIntoHelperCall(GenTreePtr pTree, GenTreePtr treeStmt);
@@ -272,6 +317,9 @@ private:
     //  by the 'parentNode' (i.e. folded into an instruction)
     //  for example small enough and non-relocatable
     bool IsContainableImmed(GenTree* parentNode, GenTree* childNode);
+
+    // Return true if 'node' is a containable memory op.
+    bool IsContainableMemoryOp(GenTree* node, bool useTracked);
 
     // Makes 'childNode' contained in the 'parentNode'
     void MakeSrcContained(GenTreePtr parentNode, GenTreePtr childNode);

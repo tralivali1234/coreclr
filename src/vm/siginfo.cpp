@@ -1200,8 +1200,6 @@ TypeHandle SigPointer::GetTypeHandleThrowing(
             PREFIX_ASSUME(pZapSigContext != NULL);
             pModule = pZapSigContext->GetZapSigModule()->GetModuleFromIndex(ix);
 
-            // For ReadyToRunCompilation we return a null TypeHandle when we reference a non-local module
-            //
             if ((pModule != NULL) && pModule->IsInCurrentVersionBubble())
             {
                 thRet = psig.GetTypeHandleThrowing(pModule, 
@@ -1211,6 +1209,12 @@ TypeHandle SigPointer::GetTypeHandleThrowing(
                                                    dropGenericArgumentLevel,
                                                    pSubst, 
                                                    pZapSigContext);
+            }
+            else
+            {
+                // For ReadyToRunCompilation we return a null TypeHandle when we reference a non-local module
+                //
+                thRet = TypeHandle();
             }
 #else
             DacNotImpl();
@@ -1348,9 +1352,9 @@ TypeHandle SigPointer::GetTypeHandleThrowing(
             if (!ClrSafeInt<DWORD>::multiply(ntypars, sizeof(TypeHandle), dwAllocaSize))
                 ThrowHR(COR_E_OVERFLOW);
 
-            if ((dwAllocaSize/PAGE_SIZE+1) >= 2)
+            if ((dwAllocaSize/GetOsPageSize()+1) >= 2)
             {
-                DO_INTERIOR_STACK_PROBE_FOR_NOTHROW_CHECK_THREAD((10+dwAllocaSize/PAGE_SIZE+1), NO_FORBIDGC_LOADER_USE_ThrowSO(););
+                DO_INTERIOR_STACK_PROBE_FOR_NOTHROW_CHECK_THREAD((10+dwAllocaSize/GetOsPageSize()+1), NO_FORBIDGC_LOADER_USE_ThrowSO(););
             }
             TypeHandle *thisinst = (TypeHandle*) _alloca(dwAllocaSize);
 
@@ -1466,11 +1470,7 @@ TypeHandle SigPointer::GetTypeHandleThrowing(
                
                 if (IsNilToken(typeToken))
                 {
-                    SString * fullTypeName = pOrigModule->IBCErrorNameString();
-                    fullTypeName->Clear();
-                    pOrigModule->LookupIbcTypeToken(pModule, ibcToken, fullTypeName);
-
-                    THROW_BAD_FORMAT(BFA_MISSING_IBC_EXTERNAL_TYPE, pOrigModule);
+                    COMPlusThrow(kTypeLoadException, IDS_IBC_MISSING_EXTERNAL_TYPE);
                 }
             }
 #endif
@@ -1634,9 +1634,9 @@ TypeHandle SigPointer::GetTypeHandleThrowing(
                     ThrowHR(COR_E_OVERFLOW);
                 }
                 
-                if ((cAllocaSize/PAGE_SIZE+1) >= 2)
+                if ((cAllocaSize/GetOsPageSize()+1) >= 2)
                 {
-                    DO_INTERIOR_STACK_PROBE_FOR_NOTHROW_CHECK_THREAD((10+cAllocaSize/PAGE_SIZE+1), NO_FORBIDGC_LOADER_USE_ThrowSO(););
+                    DO_INTERIOR_STACK_PROBE_FOR_NOTHROW_CHECK_THREAD((10+cAllocaSize/GetOsPageSize()+1), NO_FORBIDGC_LOADER_USE_ThrowSO(););
                 }
 
                 TypeHandle *retAndArgTypes = (TypeHandle*) _alloca(cAllocaSize);
@@ -1772,11 +1772,7 @@ TypeHandle SigPointer::GetGenericInstType(Module *        pModule,
 
             if (IsNilToken(typeToken))
             {
-                SString * fullTypeName = pOrigModule->IBCErrorNameString();
-                fullTypeName->Clear();
-                pOrigModule->LookupIbcTypeToken(pModule, ibcToken, fullTypeName);
-
-                THROW_BAD_FORMAT(BFA_MISSING_IBC_EXTERNAL_TYPE, pOrigModule);
+                COMPlusThrow(kTypeLoadException, IDS_IBC_MISSING_EXTERNAL_TYPE);
             }
         }
 #endif
@@ -3244,10 +3240,6 @@ BOOL IsTypeDefEquivalent(mdToken tk, Module *pModule)
         // its module might be not fully initialized in this domain
         // take care of that possibility
         pModule->EnsureAllocated();
-
-        // 5. Type is in a fully trusted assembly
-        if (!pModule->GetSecurityDescriptor()->IsFullyTrusted())
-            return FALSE;
 
         // 6. If type is nested, nesting type must be equivalent.
         if (IsTdNested(dwAttrType))

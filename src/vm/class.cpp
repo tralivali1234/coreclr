@@ -2818,13 +2818,13 @@ void EEClass::Save(DataImage *image, MethodTable *pMT)
 
         if (pInfo->m_numCTMFields > 0)
         {
-            ZapStoredStructure * pNode = image->StoreStructure(pInfo->m_pFieldMarshalers,
+            ZapStoredStructure * pNode = image->StoreStructure(pInfo->GetFieldMarshalers(),
                                             pInfo->m_numCTMFields * MAXFIELDMARSHALERSIZE,
                                             DataImage::ITEM_FIELD_MARSHALERS);
 
             for (UINT iField = 0; iField < pInfo->m_numCTMFields; iField++)
             {
-                FieldMarshaler *pFM = (FieldMarshaler*)((BYTE *)pInfo->m_pFieldMarshalers + iField * MAXFIELDMARSHALERSIZE);
+                FieldMarshaler *pFM = (FieldMarshaler*)((BYTE *)pInfo->GetFieldMarshalers() + iField * MAXFIELDMARSHALERSIZE);
                 pFM->Save(image);
 
                 if (iField > 0)
@@ -2884,7 +2884,7 @@ void EEClass::Save(DataImage *image, MethodTable *pMT)
             {
                 // make sure we don't store a GUID_NULL guid in the NGEN image
                 // instead we'll compute the GUID at runtime, and throw, if appropriate
-                m_pGuidInfo = NULL;
+                m_pGuidInfo.SetValueMaybeNull(NULL);
             }
         }
     }
@@ -2961,14 +2961,14 @@ void EEClass::Fixup(DataImage *image, MethodTable *pMT)
     }
 
     if (HasOptionalFields())
-        image->FixupPointerField(GetOptionalFields(), offsetof(EEClassOptionalFields, m_pVarianceInfo));
+        image->FixupRelativePointerField(GetOptionalFields(), offsetof(EEClassOptionalFields, m_pVarianceInfo));
 
     //
     // We pass in the method table, because some classes (e.g. remoting proxy)
     // have fake method tables set up in them & we want to restore the regular
     // one.
     //
-    image->FixupField(this, offsetof(EEClass, m_pMethodTable), pMT);
+    image->FixupField(this, offsetof(EEClass, m_pMethodTable), pMT, 0, IMAGE_REL_BASED_RelativePointer);
 
     //
     // Fixup MethodDescChunk and MethodDescs
@@ -3029,11 +3029,11 @@ void EEClass::Fixup(DataImage *image, MethodTable *pMT)
 
     if (HasLayout())
     {
-        image->FixupPointerField(this, offsetof(LayoutEEClass, m_LayoutInfo.m_pFieldMarshalers));
+        image->FixupRelativePointerField(this, offsetof(LayoutEEClass, m_LayoutInfo.m_pFieldMarshalers));
 
         EEClassLayoutInfo *pInfo = &((LayoutEEClass*)this)->m_LayoutInfo;
 
-        FieldMarshaler *pFM = pInfo->m_pFieldMarshalers;
+        FieldMarshaler *pFM = pInfo->GetFieldMarshalers();
         FieldMarshaler *pFMEnd = (FieldMarshaler*) ((BYTE *)pFM + pInfo->m_numCTMFields*MAXFIELDMARSHALERSIZE);
         while (pFM < pFMEnd)
         {
@@ -3043,9 +3043,9 @@ void EEClass::Fixup(DataImage *image, MethodTable *pMT)
     }
     else if (IsDelegate())
     {
-        image->FixupPointerField(this, offsetof(DelegateEEClass, m_pInvokeMethod));
-        image->FixupPointerField(this, offsetof(DelegateEEClass, m_pBeginInvokeMethod));
-        image->FixupPointerField(this, offsetof(DelegateEEClass, m_pEndInvokeMethod));
+        image->FixupRelativePointerField(this, offsetof(DelegateEEClass, m_pInvokeMethod));
+        image->FixupRelativePointerField(this, offsetof(DelegateEEClass, m_pBeginInvokeMethod));
+        image->FixupRelativePointerField(this, offsetof(DelegateEEClass, m_pEndInvokeMethod));
 
         image->ZeroPointerField(this, offsetof(DelegateEEClass, m_pUMThunkMarshInfo));
         image->ZeroPointerField(this, offsetof(DelegateEEClass, m_pStaticCallStub));
@@ -3078,7 +3078,7 @@ void EEClass::Fixup(DataImage *image, MethodTable *pMT)
     //
 
     if (IsInterface() && GetGuidInfo() != NULL)
-        image->FixupPointerField(this, offsetof(EEClass, m_pGuidInfo));
+        image->FixupRelativePointerField(this, offsetof(EEClass, m_pGuidInfo));
     else
         image->ZeroPointerField(this, offsetof(EEClass, m_pGuidInfo));
 

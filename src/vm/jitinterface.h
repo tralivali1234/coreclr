@@ -19,7 +19,7 @@
 #ifndef FEATURE_PAL
 #define MAX_UNCHECKED_OFFSET_FOR_NULL_OBJECT ((32*1024)-1)   // when generating JIT code
 #else // !FEATURE_PAL
-#define MAX_UNCHECKED_OFFSET_FOR_NULL_OBJECT ((OS_PAGE_SIZE / 2) - 1)
+#define MAX_UNCHECKED_OFFSET_FOR_NULL_OBJECT ((GetOsPageSize() / 2) - 1)
 #endif // !FEATURE_PAL
 
 class Stub;
@@ -215,9 +215,10 @@ extern FCDECL1(StringObject*, AllocateString_MP_FastPortable, DWORD stringLength
 extern FCDECL1(StringObject*, UnframedAllocateString, DWORD stringLength);
 extern FCDECL1(StringObject*, FramedAllocateString, DWORD stringLength);
 
-extern FCDECL2(Object*, JIT_NewArr1VC_MP_FastPortable, CORINFO_CLASS_HANDLE typeHnd_, INT_PTR size);
-extern FCDECL2(Object*, JIT_NewArr1OBJ_MP_FastPortable, CORINFO_CLASS_HANDLE typeHnd_, INT_PTR size);
-extern FCDECL2(Object*, JIT_NewArr1, CORINFO_CLASS_HANDLE typeHnd_, INT_PTR size);
+extern FCDECL2(Object*, JIT_NewArr1VC_MP_FastPortable, CORINFO_CLASS_HANDLE arrayMT, INT_PTR size);
+extern FCDECL2(Object*, JIT_NewArr1OBJ_MP_FastPortable, CORINFO_CLASS_HANDLE arrayMT, INT_PTR size);
+extern FCDECL2(Object*, JIT_NewArr1_R2R, CORINFO_CLASS_HANDLE arrayTypeHnd_, INT_PTR size);
+extern FCDECL2(Object*, JIT_NewArr1, CORINFO_CLASS_HANDLE arrayMT, INT_PTR size);
 
 #ifndef JIT_Stelem_Ref
 #define JIT_Stelem_Ref JIT_Stelem_Ref_Portable
@@ -326,8 +327,8 @@ private:
 #ifdef _WIN64
 EXTERN_C FCDECL1(Object*, JIT_TrialAllocSFastMP_InlineGetThread, CORINFO_CLASS_HANDLE typeHnd_);
 EXTERN_C FCDECL2(Object*, JIT_BoxFastMP_InlineGetThread, CORINFO_CLASS_HANDLE type, void* data);
-EXTERN_C FCDECL2(Object*, JIT_NewArr1VC_MP_InlineGetThread, CORINFO_CLASS_HANDLE typeHnd_, INT_PTR size);
-EXTERN_C FCDECL2(Object*, JIT_NewArr1OBJ_MP_InlineGetThread, CORINFO_CLASS_HANDLE typeHnd_, INT_PTR size);
+EXTERN_C FCDECL2(Object*, JIT_NewArr1VC_MP_InlineGetThread, CORINFO_CLASS_HANDLE arrayMT, INT_PTR size);
+EXTERN_C FCDECL2(Object*, JIT_NewArr1OBJ_MP_InlineGetThread, CORINFO_CLASS_HANDLE arrayMT, INT_PTR size);
 
 #endif // _WIN64
 
@@ -741,6 +742,10 @@ public:
         CORINFO_CONTEXT_HANDLE ownerType
         );
 
+    void expandRawHandleIntrinsic(
+        CORINFO_RESOLVED_TOKEN *        pResolvedToken,
+        CORINFO_GENERICHANDLE_RESULT *  pResult);
+
     CorInfoIntrinsics getIntrinsicID(CORINFO_METHOD_HANDLE method,
                                      bool * pMustExpand = NULL);
 
@@ -776,11 +781,6 @@ public:
             CORINFO_METHOD_HANDLE       method,
             CORINFO_CLASS_HANDLE        delegateCls,
             BOOL*                       pfIsOpenDelegate);
-
-    // Determines whether the delegate creation obeys security transparency rules
-    BOOL isDelegateCreationAllowed (
-            CORINFO_CLASS_HANDLE        delegateHnd,
-            CORINFO_METHOD_HANDLE       calleeHnd);
 
     // ICorFieldInfo stuff
     const char* getFieldName (CORINFO_FIELD_HANDLE field,
@@ -897,10 +897,6 @@ public:
 
     DWORD getThreadTLSIndex(void **ppIndirection);
     const void * getInlinedCallFrameVptr(void **ppIndirection);
-
-    // Returns the address of the domain neutral module id. This only makes sense for domain neutral (shared)
-    // modules
-    SIZE_T* getAddrModuleDomainID(CORINFO_MODULE_HANDLE   module);
 
     LONG * getAddrOfCaptureThreadGlobal(void **ppIndirection);
     void* getHelperFtn(CorInfoHelpFunc    ftnNum,                 /* IN  */
@@ -1549,41 +1545,6 @@ class TailCallFrame;
 EXTERN_C void JIT_TailCallHelperStub_ReturnAddress();
 
 #endif // _TARGET_AMD64_ || _TARGET_ARM_
-
-
-#ifdef _TARGET_X86_
-
-class JIT_TrialAlloc
-{
-public:
-    enum Flags
-    {
-        NORMAL       = 0x0,
-        MP_ALLOCATOR = 0x1,
-        SIZE_IN_EAX  = 0x2,
-        OBJ_ARRAY    = 0x4,
-        ALIGN8       = 0x8,     // insert a dummy object to insure 8 byte alignment (until the next GC)
-        ALIGN8OBJ    = 0x10,
-        NO_FRAME     = 0x20,    // call is from unmanaged code - don't try to put up a frame
-    };
-
-    static void *GenAllocSFast(Flags flags);
-    static void *GenBox(Flags flags);
-    static void *GenAllocArray(Flags flags);
-    static void *GenAllocString(Flags flags);
-
-private:
-    static void EmitAlignmentRoundup(CPUSTUBLINKER *psl,X86Reg regTestAlign, X86Reg regToAdj, Flags flags);
-    static void EmitDummyObject(CPUSTUBLINKER *psl, X86Reg regTestAlign, Flags flags);
-    static void EmitCore(CPUSTUBLINKER *psl, CodeLabel *noLock, CodeLabel *noAlloc, Flags flags);
-    static void EmitNoAllocCode(CPUSTUBLINKER *psl, Flags flags);
-
-#if CHECK_APP_DOMAIN_LEAKS
-    static void EmitSetAppDomain(CPUSTUBLINKER *psl);
-    static void EmitCheckRestore(CPUSTUBLINKER *psl);
-#endif
-};
-#endif // _TARGET_X86_
 
 void *GenFastGetSharedStaticBase(bool bCheckCCtor);
 

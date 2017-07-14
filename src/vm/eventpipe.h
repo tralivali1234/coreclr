@@ -14,6 +14,7 @@ class EventPipeFile;
 class EventPipeJsonFile;
 class EventPipeBuffer;
 class EventPipeBufferManager;
+class EventPipeProvider;
 class MethodDesc;
 class SampleProfilerEventInstance;
 struct EventPipeProviderConfiguration;
@@ -169,7 +170,7 @@ class EventPipe
         // Enable tracing via the event pipe.
         static void Enable(
             LPCWSTR strOutputPath,
-            uint circularBufferSizeInMB,
+            unsigned int circularBufferSizeInMB,
             EventPipeProviderConfiguration *pProviders,
             int numProviders);
 
@@ -179,12 +180,18 @@ class EventPipe
         // Specifies whether or not the event pipe is enabled.
         static bool Enabled();
 
+        // Create a provider.
+        static EventPipeProvider* CreateProvider(const GUID &providerID, EventPipeCallback pCallbackFunction = NULL, void *pCallbackData = NULL);
+
+        // Delete a provider.
+        static void DeleteProvider(EventPipeProvider *pProvider);
+
         // Write out an event.
         // Data is written as a serialized blob matching the ETW serialization conventions.
-        static void WriteEvent(EventPipeEvent &event, BYTE *pData, unsigned int length);
+        static void WriteEvent(EventPipeEvent &event, BYTE *pData, unsigned int length, LPCGUID pActivityId = NULL, LPCGUID pRelatedActivityId = NULL);
 
         // Write out a sample profile event.
-        static void WriteSampleProfileEvent(Thread *pSamplingThread, Thread *pTargetThread, StackContents &stackContents);
+        static void WriteSampleProfileEvent(Thread *pSamplingThread, EventPipeEvent *pEvent, Thread *pTargetThread, StackContents &stackContents, BYTE *pData = NULL, unsigned int length = 0);
         
         // Get the managed call stack for the current thread.
         static bool WalkManagedStackForCurrentThread(StackContents &stackContents);
@@ -282,21 +289,24 @@ public:
         GUID providerID,
         EventPipeCallback pCallbackFunc);
 
-    static INT_PTR QCALLTYPE AddEvent(
+    static INT_PTR QCALLTYPE DefineEvent(
         INT_PTR provHandle,
-        __int64 keywords,
         unsigned int eventID,
+        __int64 keywords,
         unsigned int eventVersion,
         unsigned int level,
-        bool needStack);
+        void *pMetadata,
+        unsigned int metadataLength);
 
     static void QCALLTYPE DeleteProvider(
         INT_PTR provHandle);
 
     static void QCALLTYPE WriteEvent(
         INT_PTR eventHandle,
+        unsigned int eventID,
         void *pData,
-        unsigned int length);
+        unsigned int length,
+        LPCGUID pActivityId, LPCGUID pRelatedActivityId);
 };
 
 #endif // FEATURE_PERFTRACING

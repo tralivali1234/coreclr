@@ -52,7 +52,7 @@ public:
 
     // Enable the event pipe.
     void Enable(
-        uint circularBufferSizeInMB,
+        unsigned int circularBufferSizeInMB,
         EventPipeProviderConfiguration *pProviders,
         int numProviders);
 
@@ -69,7 +69,10 @@ public:
     void EnableRundown();
 
     // Get the event used to write metadata to the event stream.
-    EventPipeEventInstance* BuildEventMetadataEvent(EventPipeEventInstance &sourceInstance, BYTE *pPayloadData = NULL, unsigned int payloadLength = 0);
+    EventPipeEventInstance* BuildEventMetadataEvent(EventPipeEventInstance &sourceInstance);
+
+    // Delete deferred providers.
+    void DeleteDeferredProviders();
 
 private:
 

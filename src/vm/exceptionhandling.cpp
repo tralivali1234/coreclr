@@ -41,6 +41,14 @@
 #define ESTABLISHER_FRAME_ADDRESS_IS_CALLER_SP
 #endif // _TARGET_ARM_ || _TARGET_ARM64_ || _TARGET_X86_
 
+#ifndef FEATURE_PAL
+void __declspec(noinline)
+ClrUnwindEx(EXCEPTION_RECORD* pExceptionRecord,
+                 UINT_PTR          ReturnValue,
+                 UINT_PTR          TargetIP,
+                 UINT_PTR          TargetFrameSp);
+#endif // !FEATURE_PAL
+
 #ifdef USE_CURRENT_CONTEXT_IN_FILTER
 inline void CaptureNonvolatileRegisters(PKNONVOLATILE_CONTEXT pNonvolatileContext, PCONTEXT pContext)
 {
@@ -1482,7 +1490,7 @@ void ExceptionTracker::InitializeCrawlFrame(CrawlFrame* pcfThisFrame, Thread* pT
 #endif // ESTABLISHER_FRAME_ADDRESS_IS_CALLER_SP
     }
 
-#if defined(_TARGET_ARM_) || defined(_TARGET_ARM64_)
+#ifdef ADJUST_PC_UNWOUND_TO_CALL
     // Further below, we will adjust the ControlPC based upon whether we are at a callsite or not.
     // We need to do this for "RegDisplay.ControlPC" field as well so that when data structures like
     // EECodeInfo initialize themselves using this field, they will have the correct absolute value
@@ -1501,12 +1509,12 @@ void ExceptionTracker::InitializeCrawlFrame(CrawlFrame* pcfThisFrame, Thread* pT
         fAdjustRegdisplayControlPC = true;
 
     }
+#endif // ADJUST_PC_UNWOUND_TO_CALL
 
 #if defined(_TARGET_ARM_)
     // Remove the Thumb bit
     ControlPCForEHSearch = ThumbCodeToDataPointer<DWORD_PTR, DWORD_PTR>(ControlPCForEHSearch);
 #endif
-#endif // _TARGET_ARM_ || _TARGET_ARM64_
 
 #ifdef ADJUST_PC_UNWOUND_TO_CALL
     // If the OS indicated that the IP is a callsite, then adjust the ControlPC by decrementing it
@@ -3274,6 +3282,8 @@ lExit:
 #undef OPTIONAL_SO_CLEANUP_UNWIND
 
 #define OPTIONAL_SO_CLEANUP_UNWIND(pThread, pFrame)  if (pThread->GetFrame() < pFrame) { UnwindFrameChain(pThread, pFrame); }
+
+typedef DWORD_PTR (HandlerFn)(UINT_PTR uStackFrame, Object* pExceptionObj);
 
 #ifdef USE_FUNCLET_CALL_HELPER
 // This is an assembly helper that enables us to call into EH funclets.

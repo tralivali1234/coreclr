@@ -51,6 +51,8 @@
       <WindowsNativeFile Include="@(NativeWithSymbolFile)"
                          Condition="'%(NativeWithSymbolFile.Extension)'=='.dll' OR '%(NativeWithSymbolFile.Extension)'=='.exe'" />
       <WindowsSymbolFile Include="@(WindowsNativeFile -> '%(RootDir)%(Directory)PDB\%(Filename).pdb')" />
+      <!-- Crossgened files (on windows) have both a *.pdb and a *.ni.pdb symbol file.  Include the *.ni.pdb file as well if it exists. -->
+      <WindowsSymbolFile Include="@(WindowsNativeFile -> '%(RootDir)%(Directory)PDB\%(Filename).ni.pdb')" />
 
       <!--
         Search for all xplat symbol file extensions on every xplat native binary. Some binaries have
@@ -87,7 +89,7 @@
   <!-- OverrideLicenseUrl is temporary till we update the buildtools to v2 -->  
   <Target Name="OverrideLicenseUrl" BeforeTargets="GenerateNuSpec">
     <PropertyGroup>
-      <LicenseUrl>https://github.com/dotnet/corefx/blob/master/LICENSE</LicenseUrl>
+      <LicenseUrl>https://github.com/dotnet/coreclr/blob/master/LICENSE.TXT</LicenseUrl>
     </PropertyGroup>
   </Target>
 

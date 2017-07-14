@@ -53,6 +53,7 @@ check_include_files(gnu/lib-names.h HAVE_GNU_LIBNAMES_H)
 check_function_exists(kqueue HAVE_KQUEUE)
 check_function_exists(getpwuid_r HAVE_GETPWUID_R)
 
+check_library_exists(c sched_getaffinity "" HAVE_SCHED_GETAFFINITY)
 check_library_exists(pthread pthread_create "" HAVE_LIBPTHREAD)
 check_library_exists(c pthread_create "" HAVE_PTHREAD_IN_LIBC)
 
@@ -99,6 +100,7 @@ check_function_exists(directio HAVE_DIRECTIO)
 check_function_exists(semget HAS_SYSV_SEMAPHORES)
 check_function_exists(pthread_mutex_init HAS_PTHREAD_MUTEXES)
 check_function_exists(ttrace HAVE_TTRACE)
+check_function_exists(pipe2 HAVE_PIPE2)
 set(CMAKE_REQUIRED_LIBRARIES unwind unwind-generic)
 check_cxx_source_compiles("
 #include <libunwind.h>

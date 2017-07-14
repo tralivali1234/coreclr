@@ -32,6 +32,7 @@ function print_usage {
     echo '                                     specified by --testRootDir. Multiple of this switch may be specified.'
     echo '  --testDirFile=<path>             : Run tests only in the directories specified by the file at <path>. Paths are listed'
     echo '                                     one line, relative to the directory specified by --testRootDir.'
+    echo '  --build-overlay-only             : Build coreoverlay only, and skip running tests.'
     echo '  --runFailingTestsOnly            : Run only the tests that are disabled on this platform due to unexpected failures.'
     echo '                                     Failing tests are listed in coreclr/tests/failingTestsOutsideWindows.txt, one per'
     echo '                                     line, as paths to .sh files relative to the directory specified by --testRootDir.'
@@ -60,7 +61,6 @@ function print_usage {
     echo '  --link <ILlink>                  : Runs the tests after linking via ILlink'
     echo '  --show-time                      : Print execution sequence and running time for each test'
     echo '  --no-lf-conversion               : Do not execute LF conversion before running test script'
-    echo '  --build-overlay-only             : Exit after overlay directory is populated'
     echo '  --limitedDumpGeneration          : Enables the generation of a limited number of core dumps if test(s) crash, even if ulimit'
     echo '                                     is zero when launching this script. This option is intended for use in CI.'
     echo '  --xunitOutputPath=<path>         : Create xUnit XML report at the specifed path (default: <test root>/coreclrtests.xml)'
@@ -477,6 +477,10 @@ function load_unsupported_tests {
 function load_failing_tests {
     # Load the list of tests that fail on this platform. These tests are disabled (skipped) temporarily, pending investigation.
     failingTests=($(read_array "$(dirname "$0")/testsFailingOutsideWindows.txt"))
+   
+    if [ "$ARCH" == "arm64" ]; then
+        failingTests+=($(read_array "$(dirname "$0")/testsFailingOnArm64.txt"))
+    fi
 }
 
 function load_playlist_tests {
@@ -571,6 +575,14 @@ function set_up_core_dump_generation {
 }
 
 function print_info_from_core_file {
+
+    #### temporary
+    if [ "$ARCH" == "arm64" ]; then
+        echo "Not inspecting core dumps on arm64 at the moment."
+        return
+    fi
+    ####
+
     local core_file_name=$1
     local executable_name=$2
 
@@ -1206,7 +1218,7 @@ fi
 if [ "$ARCH" == "x64" ]
 then
     scriptPath=$(dirname $0)
-    ${scriptPath}/setup-runtime-dependencies.sh --outputDir=$coreOverlayDir
+    ${scriptPath}/setup-stress-dependencies.sh --outputDir=$coreOverlayDir
 else
     if [ "$ARCH" != "arm64" ]
     then

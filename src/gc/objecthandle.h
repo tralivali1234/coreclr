@@ -72,8 +72,6 @@ uint32_t     GetVariableHandleType(OBJECTHANDLE handle);
 void         UpdateVariableHandleType(OBJECTHANDLE handle, uint32_t type);
 uint32_t     CompareExchangeVariableHandleType(OBJECTHANDLE handle, uint32_t oldType, uint32_t newType);
 
-void GCHandleValidatePinnedObject(OBJECTREF obj);
-
 /*
  * Convenience prototypes for using the global handles
  */
@@ -87,7 +85,7 @@ bool Ref_Initialize();
 void Ref_Shutdown();
 HandleTableBucket* Ref_CreateHandleTableBucket(void* context);
 bool Ref_InitializeHandleTableBucket(HandleTableBucket* bucket, void* context);
-BOOL Ref_HandleAsyncPinHandles();
+BOOL Ref_HandleAsyncPinHandles(async_pin_enum_fn callback, void* context);
 void Ref_RelocateAsyncPinHandles(HandleTableBucket *pSource, HandleTableBucket *pTarget);
 void Ref_RemoveHandleTableBucket(HandleTableBucket *pBucket);
 void Ref_DestroyHandleTableBucket(HandleTableBucket *pBucket);

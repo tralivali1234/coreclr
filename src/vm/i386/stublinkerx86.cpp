@@ -29,7 +29,6 @@
 #include "dbginterface.h"
 #include "eeprofinterfaces.h"
 #include "eeconfig.h"
-#include "securitydeclarative.h"
 #ifdef _TARGET_X86_
 #include "asmconstants.h"
 #endif // _TARGET_X86_
@@ -2538,7 +2537,7 @@ VOID StubLinkerCPU::X86EmitCurrentAppDomainFetch(X86Reg dstreg, unsigned preserv
 
 #if defined(_TARGET_X86_)
 
-#ifdef PROFILING_SUPPORTED
+#if defined(PROFILING_SUPPORTED) && !defined(FEATURE_STUBS_AS_IL)
 VOID StubLinkerCPU::EmitProfilerComCallProlog(TADDR pFrameVptr, X86Reg regFrame)
 {
     STANDARD_VM_CONTRACT;
@@ -2622,7 +2621,7 @@ VOID StubLinkerCPU::EmitProfilerComCallEpilog(TADDR pFrameVptr, X86Reg regFrame)
         _ASSERTE(!"Unrecognized vtble passed to EmitComMethodStubEpilog with profiling turned on.");
     }
 }
-#endif // PROFILING_SUPPORTED
+#endif // PROFILING_SUPPORTED && !FEATURE_STUBS_AS_IL
 
 
 #ifndef FEATURE_STUBS_AS_IL
