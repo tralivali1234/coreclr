@@ -212,6 +212,7 @@ HRESULT EEConfig::Init()
     dwSpinLimitProcFactor = 0x4E20;
     dwSpinLimitConstant = 0x0;
     dwSpinRetryCount = 0xA;
+    dwMonitorSpinCount = 0;
 
     iJitOptimizeType = OPT_DEFAULT;
     fJitFramed = false;
@@ -225,7 +226,6 @@ HRESULT EEConfig::Init()
     fLegacyApartmentInitPolicy = false;
     fLegacyComHierarchyVisibility = false;
     fLegacyComVTableLayout = false;
-    fLegacyVirtualMethodCallVerification = false;
     fNewComVTableLayout = false;
 
 #ifdef FEATURE_CORRUPTING_EXCEPTIONS
@@ -241,7 +241,6 @@ HRESULT EEConfig::Init()
     
     INDEBUG(fStressLog = true;)
 
-    fVerifyAllOnLoad = false;
 #ifdef _DEBUG
     fExpandAllOnLoad = false;
     fDebuggable = false;
@@ -382,6 +381,14 @@ HRESULT EEConfig::Init()
     fTieredCompilation = false;
 #endif
     
+#if defined(FEATURE_GDBJIT) && defined(_DEBUG)
+    pszGDBJitElfDump = NULL;
+#endif // FEATURE_GDBJIT && _DEBUG
+
+#if defined(FEATURE_GDBJIT_FRAME)
+    fGDBJitEmitDebugFrame = false;
+#endif
+
     // After initialization, register the code:#GetConfigValueCallback method with code:CLRConfig to let
     // CLRConfig access config files. This is needed because CLRConfig lives outside the VM and can't
     // statically link to EEConfig.
@@ -1007,11 +1014,20 @@ HRESULT EEConfig::sync()
 #endif
 
     dwSpinInitialDuration = CLRConfig::GetConfigValue(CLRConfig::EXTERNAL_SpinInitialDuration);
+    if (dwSpinInitialDuration < 1)
+    {
+        dwSpinInitialDuration = 1;
+    }
     dwSpinBackoffFactor = CLRConfig::GetConfigValue(CLRConfig::EXTERNAL_SpinBackoffFactor);
+    if (dwSpinBackoffFactor < 2)
+    {
+        dwSpinBackoffFactor = 2;
+    }
     dwSpinLimitProcCap = CLRConfig::GetConfigValue(CLRConfig::EXTERNAL_SpinLimitProcCap);
     dwSpinLimitProcFactor = CLRConfig::GetConfigValue(CLRConfig::EXTERNAL_SpinLimitProcFactor);
     dwSpinLimitConstant = CLRConfig::GetConfigValue(CLRConfig::EXTERNAL_SpinLimitConstant);
     dwSpinRetryCount = CLRConfig::GetConfigValue(CLRConfig::EXTERNAL_SpinRetryCount);
+    dwMonitorSpinCount = CLRConfig::GetConfigValue(CLRConfig::INTERNAL_Monitor_SpinCount);
 
     fJitFramed = (GetConfigDWORD_DontUse_(CLRConfig::UNSUPPORTED_JitFramed, fJitFramed) != 0);
     fJitAlignLoops = (GetConfigDWORD_DontUse_(CLRConfig::UNSUPPORTED_JitAlignLoops, fJitAlignLoops) != 0);
@@ -1095,9 +1111,6 @@ HRESULT EEConfig::sync()
 
     fEnableRCWCleanupOnSTAShutdown = (CLRConfig::GetConfigValue(CLRConfig::INTERNAL_EnableRCWCleanupOnSTAShutdown) != 0);
 #endif // FEATURE_COMINTEROP
-
-    //Eager verification of all assemblies.
-    fVerifyAllOnLoad = (GetConfigDWORD_DontUse_(CLRConfig::EXTERNAL_VerifyAllOnLoad, fVerifyAllOnLoad) != 0);
 
 #ifdef _DEBUG
     fExpandAllOnLoad = (GetConfigDWORD_DontUse_(CLRConfig::INTERNAL_ExpandAllOnLoad, fExpandAllOnLoad) != 0);
@@ -1240,6 +1253,17 @@ HRESULT EEConfig::sync()
     fTieredCompilation = CLRConfig::GetConfigValue(CLRConfig::UNSUPPORTED_TieredCompilation) != 0;
 #endif
 
+#if defined(FEATURE_GDBJIT) && defined(_DEBUG)
+    {
+        LPWSTR pszGDBJitElfDumpW = NULL;
+        CLRConfig::GetConfigValue(CLRConfig::INTERNAL_GDBJitElfDump, &pszGDBJitElfDumpW);
+        pszGDBJitElfDump = NarrowWideChar(pszGDBJitElfDumpW);
+    }
+#endif // FEATURE_GDBJIT && _DEBUG
+
+#if defined(FEATURE_GDBJIT_FRAME)
+    fGDBJitEmitDebugFrame = CLRConfig::GetConfigValue(CLRConfig::INTERNAL_GDBJitEmitDebugFrame) != 0;
+#endif
     return hr;
 }
 

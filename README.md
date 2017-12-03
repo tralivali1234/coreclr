@@ -68,7 +68,7 @@ It also contains the source code for the following closely related support packa
 By itself, the `Microsoft.NETCore.Runtime.CoreCLR` package is actually not enough to do much.
 One reason for this is that the CoreCLR package tries to minimize the amount of the class library that it implements.
 Only types that have a strong dependency on the internal workings of the runtime are included (e.g, 
-`System.Object`, `System.String`, `System.Thread`, `System.Threading.Tasks.Task` and most foundational interfaces).
+`System.Object`, `System.String`, `System.Threading.Thread`, `System.Threading.Tasks.Task` and most foundational interfaces).
 Instead most of the class library is implemented as independent Nuget packages that simply use the .NET Core 
 runtime as a dependency.    Many of the most familiar classes (`System.Collections`, `System.IO`, `System.Xml` and 
 so on), live in packages defined in the [dotnet/corefx](https://github.com/dotnet/corefx) repository.
@@ -102,7 +102,7 @@ make a complete application.  More on this in the [Using Your Build](Documentati
 The first step in making a build of the CoreCLR Repository is to clone it locally.   If you already know
 how to do this, just skip this section.  Otherwise if you are developing on windows you can see
 [Setting Up A Git Repository In Visual Studio 2017](https://github.com/Microsoft/perfview/blob/master/documentation/SettingUpRepoInVS.md)
-for for instructions on setting up.  This link uses a different repository as an example, but the issues (do you fork or not) and
+for instructions on setting up.  This link uses a different repository as an example, but the issues (do you fork or not) and
 the procedure are equally applicable to this repository.  
 
 --------------------------

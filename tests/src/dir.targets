@@ -50,6 +50,11 @@
     <_CLRTestNeedsProjectToRun Condition=" '$(_CLRTestNeedsToRun)' and '!$(_CLRTestBuildsExecutable)' ">true</_CLRTestNeedsProjectToRun>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!-- Since bug in Roslyn for Linux empty DebugType property leads to build failure. See issue Roslyn@20343 -->
+    <DebugType Condition=" '$(DebugType)' == '' and '$(RunningOnUnix)' == 'true' ">None</DebugType>
+  </PropertyGroup>
+
   <!--
   If it needs ProjectToRun, turn the project into a ProjectReference so it gets built
   -->
@@ -101,10 +106,9 @@
   <PropertyGroup Condition="'$(ProjectLanguage)' == ''">
     <ProjectLanguage Condition="'$(MSBuildProjectExtension)' == '.ilproj' OR '$(Language)' == 'IL'">IL</ProjectLanguage>
     <ProjectLanguage Condition="'$(MSBuildProjectExtension)' == '.csproj' OR '$(Language)' == 'C#' OR '$(ProjectLanguage)'==''">CSharp</ProjectLanguage>
-  </PropertyGroup>
-  
-  <Import Project="$(ProjectDir)src\IL.targets" Condition="'$(ProjectLanguage)' == 'IL' And '$(CLRTestPriority)' &lt;= '$(CLRTestPriorityToBuild)'" />
 
+    <SkipImportILTargets Condition="'$(CLRTestPriority)' &gt; '$(CLRTestPriorityToBuild)'">true</SkipImportILTargets>
+  </PropertyGroup>
 
   <Import Project="CLRTest.Execute.targets" />
   <Target Name="CreateExecuteScript" 

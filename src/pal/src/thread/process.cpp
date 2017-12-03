@@ -78,11 +78,14 @@ using namespace CorUnix;
 
 CObjectType CorUnix::otProcess(
                 otiProcess,
-                NULL,
-                NULL,
-                0,
+                NULL,   // No cleanup routine
+                NULL,   // No initialization routine
+                0,      // No immutable data
+                NULL,   // No immutable data copy routine
+                NULL,   // No immutable data cleanup routine
                 sizeof(CProcProcessLocalData),
-                0,
+                NULL,   // No process local data cleanup routine
+                0,      // No shared data
                 PROCESS_ALL_ACCESS,
                 CObjectType::SecuritySupported,
                 CObjectType::SecurityInfoNotPersisted,
@@ -2971,6 +2974,58 @@ PROCAbortInitialize()
 
 /*++
 Function:
+  PROCCreateCrashDumpIfEnabled
+
+  Creates crash dump of the process (if enabled). Can be
+  called from the unhandled native exception handler.
+
+(no return value)
+--*/
+VOID
+PROCCreateCrashDumpIfEnabled()
+{
+#if HAVE_PRCTL_H && HAVE_PR_SET_PTRACER
+    // If enabled, launch the create minidump utility and wait until it completes
+    if (g_argvCreateDump[0] == nullptr)
+        return;
+
+    // Fork the core dump child process.
+    pid_t childpid = fork();
+
+    // If error, write an error to trace log and abort
+    if (childpid == -1)
+    {
+        ERROR("PROCAbort: fork() FAILED %d (%s)\n", errno, strerror(errno));
+    }
+    else if (childpid == 0)
+    {
+        // Child process
+        if (execve(g_argvCreateDump[0], g_argvCreateDump, palEnvironment) == -1)
+        {
+            ERROR("PROCAbort: execve FAILED %d (%s)\n", errno, strerror(errno));
+        }
+    }
+    else
+    {
+        // Gives the child process permission to use /proc/<pid>/mem and ptrace
+        if (prctl(PR_SET_PTRACER, childpid, 0, 0, 0) == -1)
+        {
+            ERROR("PROCAbort: prctl() FAILED %d (%s)\n", errno, strerror(errno));
+        }
+        // Parent waits until the child process is done
+        int wstatus;
+        int result = waitpid(childpid, &wstatus, 0);
+        if (result != childpid)
+        {
+            ERROR("PROCAbort: waitpid FAILED result %d wstatus %d errno %d (%s)\n",
+                result, wstatus, errno, strerror(errno));
+        }
+    }
+#endif // HAVE_PRCTL_H && HAVE_PR_SET_PTRACER
+}
+
+/*++
+Function:
   PROCAbort()
 
   Aborts the process after calling the shutdown cleanup handler. This function
@@ -2985,44 +3040,8 @@ PROCAbort()
     // Do any shutdown cleanup before aborting or creating a core dump
     PROCNotifyProcessShutdown();
 
-#if HAVE_PRCTL_H && HAVE_PR_SET_PTRACER
-    // If enabled, launch the create minidump utility and wait until it completes
-    if (g_argvCreateDump[0] != nullptr)
-    {
-        // Fork the core dump child process.
-        pid_t childpid = fork();
+    PROCCreateCrashDumpIfEnabled();
 
-        // If error, write an error to trace log and abort
-        if (childpid == -1)
-        {
-            ERROR("PROCAbort: fork() FAILED %d (%s)\n", errno, strerror(errno));
-        }
-        else if (childpid == 0)
-        {
-            // Child process
-            if (execve(g_argvCreateDump[0], g_argvCreateDump, palEnvironment) == -1)
-            {
-                ERROR("PROCAbort: execve FAILED %d (%s)\n", errno, strerror(errno));
-            }
-        }
-        else
-        {
-            // Gives the child process permission to use /proc/<pid>/mem and ptrace
-            if (prctl(PR_SET_PTRACER, childpid, 0, 0, 0) == -1)
-            {
-                ERROR("PROCAbort: prctl() FAILED %d (%s)\n", errno, strerror(errno));
-            }
-            // Parent waits until the child process is done
-            int wstatus;
-            int result = waitpid(childpid, &wstatus, 0);
-            if (result != childpid)
-            {
-                ERROR("PROCAbort: waitpid FAILED result %d wstatus %d errno %d (%s)\n",
-                    result, wstatus, errno, strerror(errno));
-            }
-        }
-    }
-#endif // HAVE_PRCTL_H && HAVE_PR_SET_PTRACER
     // Abort the process after waiting for the core dump to complete
     abort();
 }

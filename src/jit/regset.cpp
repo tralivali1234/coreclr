@@ -407,6 +407,7 @@ void RegSet::rsUnlockReg(regMaskTP regMask, regMaskTP usedMask)
 }
 #endif // LEGACY_BACKEND
 
+#ifdef LEGACY_BACKEND
 /*****************************************************************************
  *
  *  Assume all registers contain garbage (called at start of codegen and when
@@ -419,6 +420,7 @@ void RegTracker::rsTrackRegClr()
     assert(RV_TRASH == 0);
     memset(rsRegValues, 0, sizeof(rsRegValues));
 }
+#endif // LEGACY_BACKEND
 
 /*****************************************************************************
  *
@@ -432,11 +434,14 @@ void RegTracker::rsTrackRegTrash(regNumber reg)
 
     regSet->rsSetRegsModified(genRegMask(reg));
 
+#ifdef LEGACY_BACKEND
     /* Record the new value for the register */
 
     rsRegValues[reg].rvdKind = RV_TRASH;
+#endif // LEGACY_BACKEND
 }
 
+#ifdef LEGACY_BACKEND
 /*****************************************************************************
  *
  *  calls rsTrackRegTrash on the set of registers in regmask
@@ -460,6 +465,7 @@ void RegTracker::rsTrackRegMaskTrash(regMaskTP regMask)
         }
     }
 }
+#endif // LEGACY_BACKEND
 
 /*****************************************************************************/
 
@@ -472,12 +478,15 @@ void RegTracker::rsTrackRegIntCns(regNumber reg, ssize_t val)
 
     regSet->rsSetRegsModified(genRegMask(reg));
 
+#ifdef LEGACY_BACKEND
     /* Record the new value for the register */
 
     rsRegValues[reg].rvdKind      = RV_INT_CNS;
     rsRegValues[reg].rvdIntCnsVal = val;
+#endif
 }
 
+#ifdef LEGACY_BACKEND
 /*****************************************************************************/
 
 // inline
@@ -556,8 +565,6 @@ void RegTracker::rsTrackRegAssign(GenTree* op1, GenTree* op2)
             }
     }
 }
-
-#ifdef LEGACY_BACKEND
 
 /*****************************************************************************
  *
@@ -869,7 +876,7 @@ void RegSet::rsMarkRegUsed(GenTreePtr tree, GenTreePtr addr)
             else
                 printf(" / Constant(0x%X)", tree->gtIntCon.gtIconVal);
         }
-        printf("]\n");
+        printf("\n");
     }
 #endif // DEBUG
 
@@ -927,7 +934,7 @@ void RegSet::rsMarkArgRegUsedByPromotedFieldArg(GenTreePtr promotedStructArg, re
             else
                 printf(" / Constant(0x%X)", promotedStructArg->gtIntCon.gtIconVal);
         }
-        printf("]\n");
+        printf("\n");
     }
 #endif
 
@@ -990,10 +997,10 @@ void RegSet::rsMarkRegPairUsed(GenTreePtr tree)
 #ifdef DEBUG
     if (m_rsCompiler->verbose)
     {
-        printf("\t\t\t\t\t\t\tThe register %s currently holds \n", m_rsCompiler->compRegVarName(regLo));
+        printf("\t\t\t\t\t\t\tThe register %s currently holds ", m_rsCompiler->compRegVarName(regLo));
         Compiler::printTreeID(tree);
         printf("/lo32\n");
-        printf("\t\t\t\t\t\t\tThe register %s currently holds \n", m_rsCompiler->compRegVarName(regHi));
+        printf("\t\t\t\t\t\t\tThe register %s currently holds ", m_rsCompiler->compRegVarName(regHi));
         Compiler::printTreeID(tree);
         printf("/hi32\n");
     }
@@ -1167,7 +1174,11 @@ void RegSet::rsMarkRegFree(regMaskTP regMask)
             {
                 printf("\t\t\t\t\t\t\tThe register %s no longer holds ", m_rsCompiler->compRegVarName(regNum));
                 Compiler::printTreeID(rsUsedTree[regNum]);
-                Compiler::printTreeID(rsUsedAddr[regNum]);
+                if (rsUsedAddr[regNum] != nullptr)
+                {
+                    Compiler::printTreeID(rsUsedAddr[regNum]);
+                }
+
                 printf("\n");
             }
 #endif
@@ -1367,9 +1378,11 @@ void RegTracker::rsTrackRegLclVar(regNumber reg, unsigned var)
 #if CPU_HAS_FP_SUPPORT
     assert(varTypeIsFloating(varDsc->TypeGet()) == false);
 #endif
+#ifdef LEGACY_BACKEND
     // Kill the register before doing anything in case we take a
     // shortcut out of here
     rsRegValues[reg].rvdKind = RV_TRASH;
+#endif
 
     if (compiler->lvaTable[var].lvAddrExposed)
     {
@@ -1380,7 +1393,7 @@ void RegTracker::rsTrackRegLclVar(regNumber reg, unsigned var)
 
     regSet->rsSetRegsModified(genRegMask(reg));
 
-#if REDUNDANT_LOAD
+#ifdef LEGACY_BACKEND
 
     /* Is the variable a pointer? */
 
@@ -1405,8 +1418,6 @@ void RegTracker::rsTrackRegLclVar(regNumber reg, unsigned var)
         return;
     }
 
-#endif
-
 #ifdef DEBUG
     if (compiler->verbose)
     {
@@ -1427,10 +1438,12 @@ void RegTracker::rsTrackRegLclVar(regNumber reg, unsigned var)
     }
 
     rsRegValues[reg].rvdLclVarNum = var;
+#endif // LEGACY_BACKEND
 }
 
 /*****************************************************************************/
 
+#ifdef LEGACY_BACKEND
 void RegTracker::rsTrackRegSwap(regNumber reg1, regNumber reg2)
 {
     RegValDsc tmp;
@@ -1439,6 +1452,7 @@ void RegTracker::rsTrackRegSwap(regNumber reg1, regNumber reg2)
     rsRegValues[reg1] = rsRegValues[reg2];
     rsRegValues[reg2] = tmp;
 }
+#endif // LEGACY_BACKEND
 
 void RegTracker::rsTrackRegCopy(regNumber reg1, regNumber reg2)
 {
@@ -1449,7 +1463,9 @@ void RegTracker::rsTrackRegCopy(regNumber reg1, regNumber reg2)
 
     regSet->rsSetRegsModified(genRegMask(reg1));
 
+#ifdef LEGACY_BACKEND
     rsRegValues[reg1] = rsRegValues[reg2];
+#endif // LEGACY_BACKEND
 }
 
 #ifdef LEGACY_BACKEND
@@ -1529,6 +1545,7 @@ void RegSet::rsSpillTree(regNumber reg, GenTreePtr tree, unsigned regIdx /* =0 *
     var_types    treeType;
 #if !defined(LEGACY_BACKEND) && defined(_TARGET_ARM_)
     GenTreePutArgSplit* splitArg = nullptr;
+    GenTreeMultiRegOp*  multiReg = nullptr;
 #endif
 
 #ifndef LEGACY_BACKEND
@@ -1543,6 +1560,11 @@ void RegSet::rsSpillTree(regNumber reg, GenTreePtr tree, unsigned regIdx /* =0 *
     {
         splitArg = tree->AsPutArgSplit();
         treeType = splitArg->GetRegType(regIdx);
+    }
+    else if (tree->OperIsMultiRegOp())
+    {
+        multiReg = tree->AsMultiRegOp();
+        treeType = multiReg->GetRegType(regIdx);
     }
 #endif // _TARGET_ARM_
     else
@@ -1601,6 +1623,12 @@ void RegSet::rsSpillTree(regNumber reg, GenTreePtr tree, unsigned regIdx /* =0 *
         assert((regFlags & GTF_SPILL) != 0);
         regFlags &= ~GTF_SPILL;
     }
+    else if (multiReg != nullptr)
+    {
+        regFlags = multiReg->GetRegSpillFlagByIdx(regIdx);
+        assert((regFlags & GTF_SPILL) != 0);
+        regFlags &= ~GTF_SPILL;
+    }
 #endif // _TARGET_ARM_
     else
     {
@@ -1623,7 +1651,8 @@ void RegSet::rsSpillTree(regNumber reg, GenTreePtr tree, unsigned regIdx /* =0 *
     }
 #elif defined(_TARGET_ARM_)
     assert(tree->gtRegNum == reg || (call != nullptr && call->GetRegNumByIdx(regIdx) == reg) ||
-           (splitArg != nullptr && splitArg->GetRegNumByIdx(regIdx) == reg));
+           (splitArg != nullptr && splitArg->GetRegNumByIdx(regIdx) == reg) ||
+           (multiReg != nullptr && multiReg->GetRegNumByIdx(regIdx) == reg));
 #else
     assert(tree->gtRegNum == reg || (call != nullptr && call->GetRegNumByIdx(regIdx) == reg));
 #endif // !CPU_LONG_USES_REGPAIR && !_TARGET_ARM_
@@ -1648,8 +1677,10 @@ void RegSet::rsSpillTree(regNumber reg, GenTreePtr tree, unsigned regIdx /* =0 *
         printf("\t\t\t\t\t\t\tThe register %s spilled with    ", m_rsCompiler->compRegVarName(reg));
         Compiler::printTreeID(spill->spillTree);
 #ifdef LEGACY_BACKEND
-        printf("/");
-        Compiler::printTreeID(spill->spillAddr);
+        if (spill->spillAddr != nullptr)
+        {
+            Compiler::printTreeID(spill->spillAddr);
+        }
 #endif // LEGACY_BACKEND
     }
 #endif
@@ -1752,6 +1783,11 @@ void RegSet::rsSpillTree(regNumber reg, GenTreePtr tree, unsigned regIdx /* =0 *
     {
         regFlags |= GTF_SPILLED;
         splitArg->SetRegSpillFlagByIdx(regFlags, regIdx);
+    }
+    else if (multiReg != nullptr)
+    {
+        regFlags |= GTF_SPILLED;
+        multiReg->SetRegSpillFlagByIdx(regFlags, regIdx);
     }
 #endif // _TARGET_ARM_
 #endif //! LEGACY_BACKEND
@@ -2336,9 +2372,13 @@ regNumber RegSet::rsUnspillOneReg(GenTreePtr tree, regNumber oldReg, KeepReg wil
             rsMaskMult |= genRegMask(newReg);
     }
 
-    /* Free the temp, it's no longer used */
-
-    m_rsCompiler->tmpRlsTemp(temp);
+    if (!multiUsed || (willKeepNewReg == KEEP_REG))
+    {
+        // Free the temp, it's no longer used.
+        // For multi-used regs that aren't (willKeepNewReg == KEEP_REG), we didn't unspill everything, so
+        // we need to leave the temp for future unspilling.
+        m_rsCompiler->tmpRlsTemp(temp);
+    }
 
     return newReg;
 }
@@ -2390,6 +2430,13 @@ TempDsc* RegSet::rsUnspillInPlace(GenTreePtr tree, regNumber oldReg, unsigned re
         unsigned            flags    = splitArg->GetRegSpillFlagByIdx(regIdx);
         flags &= ~GTF_SPILLED;
         splitArg->SetRegSpillFlagByIdx(flags, regIdx);
+    }
+    else if (tree->OperIsMultiRegOp())
+    {
+        GenTreeMultiRegOp* multiReg = tree->AsMultiRegOp();
+        unsigned           flags    = multiReg->GetRegSpillFlagByIdx(regIdx);
+        flags &= ~GTF_SPILLED;
+        multiReg->SetRegSpillFlagByIdx(flags, regIdx);
     }
 #endif // !LEGACY_BACKEND && _TARGET_ARM_
     else
@@ -2666,17 +2713,24 @@ void RegSet::rsUnspillRegPair(GenTreePtr tree, regMaskTP needReg, KeepReg keepRe
 
         if (rsIsTreeInReg(regHi, tree))
         {
-            /* Temporarily lock the high part */
-
-            rsLockUsedReg(genRegMask(regHi));
+            // Temporarily lock the high part if necessary. If this register is a multi-use register that is shared
+            // with another tree, the register may already be locked.
+            const regMaskTP regHiMask = genRegMask(regHi);
+            const bool      lockReg   = (rsMaskLock & regHiMask) == 0;
+            if (lockReg)
+            {
+                rsLockUsedReg(regHiMask);
+            }
 
             /* Pick a new home for the lower half */
 
             regLo = rsUnspillOneReg(tree, regLo, keepReg, needReg);
 
             /* We can unlock the high part now */
-
-            rsUnlockUsedReg(genRegMask(regHi));
+            if (lockReg)
+            {
+                rsUnlockUsedReg(regHiMask);
+            }
         }
         else
         {
@@ -2698,19 +2752,26 @@ void RegSet::rsUnspillRegPair(GenTreePtr tree, regMaskTP needReg, KeepReg keepRe
 
         if (!rsIsTreeInReg(regHi, tree))
         {
-            regMaskTP regLoUsed;
+            regMaskTP regLoUsed = RBM_NONE;
 
-            /* Temporarily lock the low part so it doesnt get spilled */
-
-            rsLockReg(genRegMask(regLo), &regLoUsed);
+            // Temporarily lock the low part if necessary. If this register is a multi-use register that is shared
+            // with another tree, the register may already be locked.
+            const regMaskTP regLoMask = genRegMask(regLo);
+            const bool      lockReg   = (rsMaskLock & regLoMask) == 0;
+            if (lockReg)
+            {
+                rsLockReg(regLoMask, &regLoUsed);
+            }
 
             /* Pick a new home for the upper half */
 
             regHi = rsUnspillOneReg(tree, regHi, keepReg, needReg);
 
             /* We can unlock the low register now */
-
-            rsUnlockReg(genRegMask(regLo), regLoUsed);
+            if (lockReg)
+            {
+                rsUnlockReg(regLoMask, regLoUsed);
+            }
         }
         else
         {
@@ -2855,10 +2916,7 @@ var_types RegSet::rsRmvMultiReg(regNumber reg)
     SpillDsc::freeDsc(this, dsc);
     return type;
 }
-#endif // LEGACY_BACKEND
-
 /*****************************************************************************/
-#if REDUNDANT_LOAD
 /*****************************************************************************
  *
  *  Search for a register which contains the given constant value.
@@ -3124,6 +3182,7 @@ void RegTracker::rsTrashLcl(unsigned var)
         }
     }
 }
+#endif // LEGACY_BACKEND
 
 /*****************************************************************************
  *
@@ -3148,6 +3207,7 @@ void RegTracker::rsTrashRegSet(regMaskTP regMask)
     }
 }
 
+#ifdef LEGACY_BACKEND
 /*****************************************************************************
  *
  *  Return a mask of registers that hold no useful value.
@@ -3173,7 +3233,7 @@ regMaskTP RegTracker::rsUselessRegs()
 }
 
 /*****************************************************************************/
-#endif // REDUNDANT_LOAD
+#endif // LEGACY_BACKEND
 /*****************************************************************************/
 
 /*
@@ -3796,7 +3856,7 @@ void RegSet::rsSpillChk()
 #endif
 
 /*****************************************************************************/
-#if REDUNDANT_LOAD
+#ifdef LEGACY_BACKEND
 
 // inline
 bool RegTracker::rsIconIsInReg(ssize_t val, regNumber reg)
@@ -3813,5 +3873,5 @@ bool RegTracker::rsIconIsInReg(ssize_t val, regNumber reg)
     return false;
 }
 
-#endif // REDUNDANT_LOAD
+#endif // LEGACY_BACKEND
 /*****************************************************************************/

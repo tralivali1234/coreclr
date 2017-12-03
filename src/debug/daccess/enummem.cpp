@@ -256,11 +256,6 @@ HRESULT ClrDataAccess::EnumMemCLRStatic(IN CLRDataEnumMemoryFlags flags)
         // see synblk.cpp, the pointer is pointed to a static byte[]
         SyncBlockCache::s_pSyncBlockCache.EnumMem();
 
-#ifndef FEATURE_IMPLICIT_TLS
-        ReportMem(m_globalBase + g_dacGlobals.dac__gThreadTLSIndex, sizeof(DWORD));
-        ReportMem(m_globalBase + g_dacGlobals.dac__gAppDomainTLSIndex, sizeof(DWORD));
-#endif
-
         ReportMem(m_globalBase + g_dacGlobals.dac__g_FCDynamicallyAssignedImplementations,
                   sizeof(TADDR)*ECall::NUM_DYNAMICALLY_ASSIGNED_FCALL_IMPLEMENTATIONS);
 
@@ -298,7 +293,6 @@ HRESULT ClrDataAccess::EnumMemCLRStatic(IN CLRDataEnumMemoryFlags flags)
     CATCH_ALL_EXCEPT_RETHROW_COR_E_OPERATIONCANCELLED( g_pEnumClass.EnumMem(); )
     CATCH_ALL_EXCEPT_RETHROW_COR_E_OPERATIONCANCELLED( g_pThreadClass.EnumMem(); )
     CATCH_ALL_EXCEPT_RETHROW_COR_E_OPERATIONCANCELLED( g_pFreeObjectMethodTable.EnumMem(); )
-    CATCH_ALL_EXCEPT_RETHROW_COR_E_OPERATIONCANCELLED( g_pObjectCtorMD.EnumMem(); )
     CATCH_ALL_EXCEPT_RETHROW_COR_E_OPERATIONCANCELLED( g_fHostConfig.EnumMem(); )
 
         // These two static pointers are pointed to static data of byte[]

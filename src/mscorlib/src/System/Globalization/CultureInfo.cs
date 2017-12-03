@@ -28,8 +28,6 @@
 
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.Contracts;
-using System.Runtime.Serialization;
 using System.Threading;
 
 namespace System.Globalization
@@ -50,10 +48,6 @@ namespace System.Globalization
         //                        Internal Information                        //
         //--------------------------------------------------------------------//
 
-        //--------------------------------------------------------------------//
-        // Data members to be serialized:
-        //--------------------------------------------------------------------//
-
         // We use an RFC4646 type string to construct CultureInfo.
         // This string is stored in _name and is authoritative.
         // We use the _cultureData to get the data for our object
@@ -69,13 +63,10 @@ namespace System.Globalization
         // For supported culture, this will be the CultureData instance that read data from mscorlib assembly.
         // For customized culture, this will be the CultureData instance that read data from user customized culture binary file.
         //
-        [NonSerialized]
         internal CultureData _cultureData;
 
-        [NonSerialized]
         internal bool _isInherited;
 
-        [NonSerialized]
         private CultureInfo _consoleFallbackCulture;
 
         // Names are confusing.  Here are 3 names we have:
@@ -89,20 +80,16 @@ namespace System.Globalization
         // Note that in Silverlight we ask the OS for the text and sort behavior, so the 
         // textinfo and compareinfo names are the same as the name
 
-        // Note that the name used to be serialized for Everett; it is now serialized
-        // because alernate sorts can have alternate names.
         // This has a de-DE, de-DE_phoneb or fj-FJ style name
         internal string _name;
 
         // This will hold the non sorting name to be returned from CultureInfo.Name property.
         // This has a de-DE style name even for de-DE_phoneb type cultures
-        [NonSerialized]
         private string _nonSortName;
 
         // This will hold the sorting name to be returned from CultureInfo.SortName property.
         // This might be completely unrelated to the culture name if a custom culture.  Ie en-US for fj-FJ.
         // Otherwise its the sort name, ie: de-DE or de-DE_phoneb
-        [NonSerialized]
         private string _sortName;
 
         //--------------------------------------------------------------------//
@@ -150,7 +137,6 @@ namespace System.Globalization
         private static volatile StringLcidDictionary s_LcidCachedCultures;       
 
         //The parent culture.
-        [NonSerialized]
         private CultureInfo _parent;
 
         // LOCALE constants of interest to us internally and privately for LCID functions
@@ -206,6 +192,25 @@ namespace System.Globalization
             InitializeFromName(name, useUserOverride);
         }
 
+        private CultureInfo(CultureData cultureData)
+        {
+            Debug.Assert(cultureData != null);
+            _cultureData = cultureData;
+            _name = cultureData.CultureName;
+            _isInherited = false;
+        }
+
+        private static CultureInfo CreateCultureInfoNoThrow(string name, bool useUserOverride)
+        {
+            Debug.Assert(name != null);
+            CultureData cultureData = CultureData.GetCultureData(name, useUserOverride);
+            if (cultureData == null)
+            {
+                return null;
+            }
+
+            return new CultureInfo(cultureData);
+        } 
         public CultureInfo(int culture) : this(culture, true) 
         {
         }
@@ -217,7 +222,6 @@ namespace System.Globalization
             {
                 throw new ArgumentOutOfRangeException(nameof(culture), SR.ArgumentOutOfRange_NeedPosNum);
             }
-            Contract.EndContractBlock();
 
             InitializeFromCultureId(culture, useUserOverride);
         }
@@ -270,7 +274,6 @@ namespace System.Globalization
             {
                 throw new ArgumentNullException(nameof(cultureName),SR.ArgumentNull_String);
             }
-            Contract.EndContractBlock();
 
             _cultureData = CultureData.GetCultureData(cultureName, false);
             if (_cultureData == null)
@@ -318,8 +321,6 @@ namespace System.Globalization
         //
         public static CultureInfo CreateSpecificCulture(String name)
         {
-            Contract.Ensures(Contract.Result<CultureInfo>() != null);
-
             CultureInfo culture;
 
             try
@@ -405,20 +406,6 @@ namespace System.Globalization
 
         // We need to store the override from the culture data record.
         private bool _useUserOverride;
-
-        [OnSerializing]
-        private void OnSerializing(StreamingContext ctx)
-        {
-            _name = _cultureData.CultureName;
-            _useUserOverride = _cultureData.UseUserOverride;
-        }
-
-        [OnDeserialized]
-        private void OnDeserialized(StreamingContext ctx)
-        {
-            Debug.Assert(_name != null, "[CultureInfo.OnDeserialized] _name != null");
-            InitializeFromName(_name, _useUserOverride);
-        }
         
         internal static CultureInfo GetCurrentUICultureNoAppX()
         {
@@ -439,22 +426,29 @@ namespace System.Globalization
                 return ci;
             }
 
-            // if s_userDefaultUICulture == null means CultureInfo statics didn't get initialized yet. this can happen if there early static 
-            // method get executed which eventually hit the cultureInfo code while CultureInfo statics didn’t get chance to initialize
-            if (s_userDefaultUICulture == null)
-            {
-                Init();
-            }
+            return UserDefaultUICulture;
+        }
 
-            Debug.Assert(s_userDefaultUICulture != null);
-            return s_userDefaultUICulture;
+        internal static CultureInfo UserDefaultUICulture
+        {
+            get
+            {
+                // if s_userDefaultUICulture == null means CultureInfo statics didn't get initialized yet. this can happen if there early static
+                // method get executed which eventually hit the cultureInfo code while CultureInfo statics didn’t get chance to initialize
+                if (s_userDefaultUICulture == null)
+                {
+                    Init();
+                }
+
+                Debug.Assert(s_userDefaultUICulture != null);
+                return s_userDefaultUICulture;
+            }
         }
 
         public static CultureInfo InstalledUICulture
         {
             get
             {
-                Contract.Ensures(Contract.Result<CultureInfo>() != null);
                 if (s_userDefaultCulture == null)
                 {
                     Init();
@@ -533,25 +527,22 @@ namespace System.Globalization
             {
                 if (null == _parent)
                 {
-                    try
-                    {
-                        string parentName = _cultureData.SPARENT;
+                    string parentName = _cultureData.SPARENT;
 
-                        if (String.IsNullOrEmpty(parentName))
+                    if (String.IsNullOrEmpty(parentName))
+                    {
+                        _parent = InvariantCulture;
+                    }
+                    else
+                    {
+                        _parent = CreateCultureInfoNoThrow(parentName, _cultureData.UseUserOverride);
+                        if (_parent == null)
                         {
+                            // For whatever reason our IPARENT or SPARENT wasn't correct, so use invariant
+                            // We can't allow ourselves to fail.  In case of custom cultures the parent of the
+                            // current custom culture isn't installed.
                             _parent = InvariantCulture;
                         }
-                        else
-                        {
-                            _parent = new CultureInfo(parentName, _cultureData.UseUserOverride);
-                        }
-                    }
-                    catch (ArgumentException)
-                    {
-                        // For whatever reason our IPARENT or SPARENT wasn't correct, so use invariant
-                        // We can't allow ourselves to fail.  In case of custom cultures the parent of the
-                        // current custom culture isn't installed.
-                        _parent = InvariantCulture;
                     }
                 }
                 return _parent;
@@ -576,7 +567,6 @@ namespace System.Globalization
 
         public static CultureInfo[] GetCultures(CultureTypes types)
         {
-            Contract.Ensures(Contract.Result<CultureInfo[]>() != null);
             // internally we treat UserCustomCultures as Supplementals but v2
             // treats as Supplementals and Replacements
             if ((types & CultureTypes.UserCustomCulture) == CultureTypes.UserCustomCulture)
@@ -629,8 +619,6 @@ namespace System.Globalization
         {
             get
             {
-                Contract.Ensures(Contract.Result<string>() != null);
-
                 // special case the compatibility cultures
                 switch (this.Name)
                 {
@@ -657,7 +645,6 @@ namespace System.Globalization
         {
             get
             {
-                Contract.Ensures(Contract.Result<String>() != null);
                 Debug.Assert(_name != null, "[CultureInfo.DisplayName] Always expect _name to be set");
 
                 return _cultureData.SLOCALIZEDDISPLAYNAME;
@@ -677,7 +664,6 @@ namespace System.Globalization
         {
             get
             {
-                Contract.Ensures(Contract.Result<String>() != null);
                 return (_cultureData.SNATIVEDISPLAYNAME);
             }
         }
@@ -695,7 +681,6 @@ namespace System.Globalization
         {
             get
             {
-                Contract.Ensures(Contract.Result<String>() != null);
                 return (_cultureData.SENGDISPLAYNAME);
             }
         }
@@ -705,7 +690,6 @@ namespace System.Globalization
         {
             get
             {
-                Contract.Ensures(Contract.Result<String>() != null);
                 return (_cultureData.SISO639LANGNAME);
             }
         }
@@ -715,7 +699,6 @@ namespace System.Globalization
         {
             get
             {
-                Contract.Ensures(Contract.Result<String>() != null);
                 return _cultureData.SISO639LANGNAME2;
             }
         }
@@ -732,7 +715,6 @@ namespace System.Globalization
         {
             get
             {
-                Contract.Ensures(Contract.Result<String>() != null);
                 return _cultureData.SABBREVLANGNAME;
             }
         }
@@ -1070,8 +1052,6 @@ namespace System.Globalization
         {
             get
             {
-                Contract.Ensures(Contract.Result<Calendar[]>() != null);
-
                 //
                 // This property always returns a new copy of the calendar array.
                 //
@@ -1095,8 +1075,6 @@ namespace System.Globalization
 
         public CultureInfo GetConsoleFallbackUICulture()
         {
-            Contract.Ensures(Contract.Result<CultureInfo>() != null);
-
             CultureInfo temp = _consoleFallbackCulture;
             if (temp == null)
             {
@@ -1150,8 +1128,6 @@ namespace System.Globalization
             {
                 throw new ArgumentNullException(nameof(ci));
             }
-            Contract.Ensures(Contract.Result<CultureInfo>() != null);
-            Contract.EndContractBlock();
 
             if (ci.IsReadOnly)
             {
@@ -1374,8 +1350,6 @@ namespace System.Globalization
             {
                 throw new ArgumentOutOfRangeException(nameof(culture), SR.ArgumentOutOfRange_NeedPosNum);
             }
-            Contract.Ensures(Contract.Result<CultureInfo>() != null);
-            Contract.EndContractBlock();
             CultureInfo retval = GetCultureInfoHelper(culture, null, null);
             if (null == retval)
             {
@@ -1418,8 +1392,6 @@ namespace System.Globalization
                 throw new ArgumentNullException(nameof(altName));
             }
             
-            Contract.Ensures(Contract.Result<CultureInfo>() != null);
-            Contract.EndContractBlock();
 
             CultureInfo retval = GetCultureInfoHelper(-1, name, altName);
             if (retval == null)
@@ -1433,8 +1405,6 @@ namespace System.Globalization
         // This function is deprecated, we don't like it
         public static CultureInfo GetCultureInfoByIetfLanguageTag(string name)
         {
-            Contract.Ensures(Contract.Result<CultureInfo>() != null);
-
             // Disallow old zh-CHT/zh-CHS names
             if (name == "zh-CHT" || name == "zh-CHS")
             {

@@ -23,7 +23,6 @@
 #include "object.h"
 #include "field.h"
 #include "excep.h"
-#include "security.h"
 #include "eeconfig.h"
 #include "corhost.h"
 #include "nativeoverlapped.h"
@@ -101,9 +100,6 @@ DelegateInfo *DelegateInfo::MakeDelegateInfo(AppDomain *pAppDomain,
         INJECT_FAULT(COMPlusThrowOM());
     }
     CONTRACTL_END;
-
-    // If there were any DelegateInfos waiting to be released, they'll get flushed now
-    ThreadpoolMgr::FlushQueueOfTimerInfos();
     
     DelegateInfoHolder delegateInfo = (DelegateInfo*) ThreadpoolMgr::GetRecycledMemory(ThreadpoolMgr::MEMTYPE_DelegateInfo);
     
@@ -819,10 +815,12 @@ void AppDomainTimerCallback_Worker(LPVOID ptr)
     LogCall(pMeth,"AppDomainTimerCallback");
 #endif
 
-    MethodDescCallSite(METHOD__TIMER_QUEUE__APPDOMAIN_TIMER_CALLBACK).Call(NULL);
+    ThreadpoolMgr::TimerInfoContext* pTimerInfoContext = (ThreadpoolMgr::TimerInfoContext*)ptr;
+    ARG_SLOT args[] = { PtrToArgSlot(pTimerInfoContext->TimerId) };
+    MethodDescCallSite(METHOD__TIMER_QUEUE__APPDOMAIN_TIMER_CALLBACK).Call(args);
 }
 
-VOID WINAPI AppDomainTimerCallback(PVOID delegateInfo, BOOLEAN timerOrWaitFired)
+VOID WINAPI AppDomainTimerCallback(PVOID callbackState, BOOLEAN timerOrWaitFired)
 {
     Thread* pThread = GetThread();
     if (pThread == NULL)
@@ -841,8 +839,6 @@ VOID WINAPI AppDomainTimerCallback(PVOID delegateInfo, BOOLEAN timerOrWaitFired)
         MODE_ANY;
         GC_TRIGGERS;
         SO_INTOLERANT;
-        
-        PRECONDITION(CheckPointer(delegateInfo));
     }
     CONTRACTL_END;
 
@@ -851,13 +847,14 @@ VOID WINAPI AppDomainTimerCallback(PVOID delegateInfo, BOOLEAN timerOrWaitFired)
 
     GCX_COOP();
 
-    ManagedThreadBase::ThreadPool(((DelegateInfo*)delegateInfo)->m_appDomainId, AppDomainTimerCallback_Worker, NULL);
+    ThreadpoolMgr::TimerInfoContext* pTimerInfoContext = (ThreadpoolMgr::TimerInfoContext*)callbackState;
+    ManagedThreadBase::ThreadPool(pTimerInfoContext->AppDomainId, AppDomainTimerCallback_Worker, pTimerInfoContext);
 
     // We should have released all locks.
     _ASSERTE(g_fEEShutDown || pThread->m_dwLockCount == 0 || pThread->m_fRudeAborted);
 }
 
-HANDLE QCALLTYPE AppDomainTimerNative::CreateAppDomainTimer(INT32 dueTime)
+HANDLE QCALLTYPE AppDomainTimerNative::CreateAppDomainTimer(INT32 dueTime, INT32 timerId)
 {
     QCALL_CONTRACT;
 
@@ -865,20 +862,20 @@ HANDLE QCALLTYPE AppDomainTimerNative::CreateAppDomainTimer(INT32 dueTime)
     BEGIN_QCALL;
 
     _ASSERTE(dueTime >= 0);
+    _ASSERTE(timerId >= 0);
 
     AppDomain* pAppDomain = GetThread()->GetDomain();
     ADID adid = pAppDomain->GetId();
 
-    DelegateInfoHolder delegateInfo = DelegateInfo::MakeDelegateInfo(
-        pAppDomain,
-        NULL,
-        NULL,
-        NULL);
+    ThreadpoolMgr::TimerInfoContext* timerContext = new ThreadpoolMgr::TimerInfoContext();
+    timerContext->AppDomainId = adid;
+    timerContext->TimerId = timerId;
+    NewHolder<ThreadpoolMgr::TimerInfoContext> timerContextHolder(timerContext);
 
     BOOL res = ThreadpoolMgr::CreateTimerQueueTimer(
         &hTimer,
         (WAITORTIMERCALLBACK)AppDomainTimerCallback,
-        (PVOID)delegateInfo,
+        (PVOID)timerContext,
         (ULONG)dueTime,
         (ULONG)-1 /* this timer doesn't repeat */,
         0 /* no flags */);
@@ -892,7 +889,7 @@ HANDLE QCALLTYPE AppDomainTimerNative::CreateAppDomainTimer(INT32 dueTime)
     }
     else
     {
-        delegateInfo.SuppressRelease();
+        timerContextHolder.SuppressRelease();
     }
 
     END_QCALL;

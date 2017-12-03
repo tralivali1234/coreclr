@@ -6,11 +6,8 @@ set( CORGUIDS_IDL_SOURCES
   xclrdata.idl
   corprof.idl
   corpub.idl
-  ivalidator.idl
-  ivehandler.idl
   gchost.idl
   mscorsvc.idl
-  tlbimpexp.idl
   clrprivappxhosting.idl
   clrprivbinding.idl
   clrprivhosting.idl
@@ -63,6 +60,10 @@ endforeach(IDL_SOURCE)
 
 add_compile_options(-fPIC)
 endif(WIN32)
+
+if(FEATURE_JIT_PITCHING)
+   add_definitions(-DFEATURE_JIT_PITCHING)
+endif(FEATURE_JIT_PITCHING)
 
 # Compile *_i.cpp to lib
 _add_library(corguids ${CORGUIDS_SOURCES})

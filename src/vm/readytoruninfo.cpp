@@ -456,6 +456,13 @@ PTR_ReadyToRunInfo ReadyToRunInfo::Initialize(Module * pModule, AllocMemTracker 
 
     PEFile * pFile = pModule->GetFile();
 
+    if (!IsReadyToRunEnabled())
+    {
+        // Log message is ignored in this case.
+        DoLog(NULL);
+        return NULL;
+    }
+
     // Ignore ReadyToRun for introspection-only loads
     if (pFile->IsIntrospectionOnly())
     {
@@ -476,10 +483,9 @@ PTR_ReadyToRunInfo ReadyToRunInfo::Initialize(Module * pModule, AllocMemTracker 
         return NULL;
     }
 
-    if (!IsReadyToRunEnabled())
+    if (CORProfilerDisableAllNGenImages() || CORProfilerUseProfileImages())
     {
-        // Log message is ignored in this case.
-        DoLog(NULL);
+        DoLog("Ready to Run disabled - profiler disabled native images");
         return NULL;
     }
 
@@ -487,12 +493,6 @@ PTR_ReadyToRunInfo ReadyToRunInfo::Initialize(Module * pModule, AllocMemTracker 
     {
         DoLog("Ready to Run disabled - module on exclusion list");
         return NULL;
-    }
-
-    if (!pLayout->IsNativeMachineFormat())
-    {
-        // For CoreCLR, be strict about disallowing machine mismatches.
-        COMPlusThrowHR(COR_E_BADIMAGEFORMAT);
     }
 
 #ifdef FEATURE_NATIVE_IMAGE_GENERATION
@@ -503,6 +503,12 @@ PTR_ReadyToRunInfo ReadyToRunInfo::Initialize(Module * pModule, AllocMemTracker 
         return NULL;
     }
 #endif
+
+    if (!pLayout->IsNativeMachineFormat())
+    {
+        // For CoreCLR, be strict about disallowing machine mismatches.
+        COMPlusThrowHR(COR_E_BADIMAGEFORMAT);
+    }
 
 #ifndef CROSSGEN_COMPILE
     // The file must have been loaded using LoadLibrary

@@ -39,11 +39,10 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Diagnostics;
-using System.Diagnostics.Contracts;
 
 namespace System
 {
-    [Pure]
+    [StackTraceHidden]
     internal static class ThrowHelper
     {
         internal static void ThrowArrayTypeMismatchException()
@@ -121,9 +120,9 @@ namespace System
             throw GetAddingDuplicateWithKeyArgumentException(key);
         }
 
-        internal static void ThrowKeyNotFoundException()
+        internal static void ThrowKeyNotFoundException(object key)
         {
-            throw new System.Collections.Generic.KeyNotFoundException();
+            throw new KeyNotFoundException(key.ToString());
         }
 
         internal static void ThrowArgumentException(ExceptionResource resource)
@@ -226,6 +225,11 @@ namespace System
             throw new AggregateException(exceptions);
         }
 
+        internal static void ThrowOutOfMemoryException()
+        {
+            throw new OutOfMemoryException();
+        }
+
         internal static void ThrowArgumentException_Argument_InvalidArrayType()
         {
             throw GetArgumentException(ExceptionResource.Argument_InvalidArrayType);
@@ -241,6 +245,11 @@ namespace System
             throw GetInvalidOperationException(ExceptionResource.InvalidOperation_EnumEnded);
         }
 
+        internal static void ThrowInvalidOperationException_EnumCurrent(int index)
+        {
+            throw GetInvalidOperationException_EnumCurrent(index);
+        }
+
         internal static void ThrowInvalidOperationException_InvalidOperation_EnumFailedVersion()
         {
             throw GetInvalidOperationException(ExceptionResource.InvalidOperation_EnumFailedVersion);
@@ -249,6 +258,11 @@ namespace System
         internal static void ThrowInvalidOperationException_InvalidOperation_EnumOpCantHappen()
         {
             throw GetInvalidOperationException(ExceptionResource.InvalidOperation_EnumOpCantHappen);
+        }
+
+        internal static void ThrowInvalidOperationException_InvalidOperation_NoValue()
+        {
+            throw GetInvalidOperationException(ExceptionResource.InvalidOperation_NoValue);
         }
 
         internal static void ThrowArraySegmentCtorValidationFailedExceptions(Array array, int offset, int count)
@@ -304,6 +318,14 @@ namespace System
             return new ArgumentOutOfRangeException(GetArgumentName(argument) + "[" + paramNumber.ToString() + "]", GetResourceString(resource));
         }
 
+        private static InvalidOperationException GetInvalidOperationException_EnumCurrent(int index)
+        {
+            return GetInvalidOperationException(
+                index < 0 ?
+                ExceptionResource.InvalidOperation_EnumNotStarted :
+                ExceptionResource.InvalidOperation_EnumEnded);
+        }
+
         // Allow nulls for reference types and Nullable<U>, but not for value types.
         // Aggressively inline so the jit evaluates the if in place and either drops the call altogether
         // Or just leaves null test and call to the Non-returning ThrowHelper.ThrowArgumentNullException
@@ -334,6 +356,18 @@ namespace System
 
             return SR.GetResourceString(resource.ToString());
         }
+
+        internal static void ThrowNotSupportedExceptionIfNonNumericType<T>()
+        {
+            if (typeof(T) != typeof(Byte) && typeof(T) != typeof(SByte) && 
+                typeof(T) != typeof(Int16) && typeof(T) != typeof(UInt16) && 
+                typeof(T) != typeof(Int32) && typeof(T) != typeof(UInt32) && 
+                typeof(T) != typeof(Int64) && typeof(T) != typeof(UInt64) &&
+                typeof(T) != typeof(Single) && typeof(T) != typeof(Double))
+            {
+                throw new NotSupportedException(SR.Arg_TypeNotSupported);
+            }
+        }
     }
 
     //
@@ -343,7 +377,6 @@ namespace System
     {
         obj,
         dictionary,
-        dictionaryCreationThreshold,
         array,
         info,
         key,
@@ -351,8 +384,6 @@ namespace System
         list,
         match,
         converter,
-        queue,
-        stack,
         capacity,
         index,
         startIndex,
@@ -360,7 +391,6 @@ namespace System
         count,
         arrayIndex,
         name,
-        mode,
         item,
         options,
         view,
@@ -407,16 +437,21 @@ namespace System
         beginMethod,
         continuationOptions,
         continuationAction,
-        valueFactory,
-        addValueFactory,
-        updateValueFactory,
         concurrencyLevel,
         text,
         callBack,
         type,
         stateMachine,
         pHandle,
-        values
+        values,
+        task,
+        s,
+        keyValuePair,
+        input,
+        ownedMemory,
+        pointer,
+        start,
+        format
     }
 
     //
@@ -509,12 +544,13 @@ namespace System
         TaskT_TransitionToFinal_AlreadyCompleted,
         TaskCompletionSourceT_TrySetException_NullException,
         TaskCompletionSourceT_TrySetException_NoExceptions,
+        Memory_ThrowIfDisposed,
+        Memory_OutstandingReferences,
         InvalidOperation_WrongAsyncResultOrEndCalledMultiple,
         ConcurrentDictionary_ConcurrencyLevelMustBePositive,
         ConcurrentDictionary_CapacityMustNotBeNegative,
         ConcurrentDictionary_TypeOfValueIncorrect,
         ConcurrentDictionary_TypeOfKeyIncorrect,
-        ConcurrentDictionary_SourceContainsDuplicateKeys,
         ConcurrentDictionary_KeyAlreadyExisted,
         ConcurrentDictionary_ItemKeyIsNull,
         ConcurrentDictionary_IndexIsNegative,

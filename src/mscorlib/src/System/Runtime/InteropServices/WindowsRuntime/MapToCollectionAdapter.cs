@@ -9,7 +9,6 @@ using System.Security;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.Contracts;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 
@@ -30,14 +29,13 @@ namespace System.Runtime.InteropServices.WindowsRuntime
     {
         private MapToCollectionAdapter()
         {
-            Debug.Assert(false, "This class is never instantiated");
+            Debug.Fail("This class is never instantiated");
         }
 
         // int Count { get }
-        [Pure]
         internal int Count<K, V>()
         {
-            object _this = JitHelpers.UnsafeCast<object>(this);
+            object _this = Unsafe.As<object>(this);
 
             IMap<K, V> _this_map = _this as IMap<K, V>;
             if (_this_map != null)
@@ -53,7 +51,7 @@ namespace System.Runtime.InteropServices.WindowsRuntime
             }
             else
             {
-                IVector<KeyValuePair<K, V>> _this_vector = JitHelpers.UnsafeCast<IVector<KeyValuePair<K, V>>>(this);
+                IVector<KeyValuePair<K, V>> _this_vector = Unsafe.As<IVector<KeyValuePair<K, V>>>(this);
                 uint size = _this_vector.Size;
 
                 if (((uint)Int32.MaxValue) < size)
@@ -74,7 +72,7 @@ namespace System.Runtime.InteropServices.WindowsRuntime
         // void Add(T item)
         internal void Add<K, V>(KeyValuePair<K, V> item)
         {
-            object _this = JitHelpers.UnsafeCast<object>(this);
+            object _this = Unsafe.As<object>(this);
 
             IDictionary<K, V> _this_dictionary = _this as IDictionary<K, V>;
             if (_this_dictionary != null)
@@ -83,7 +81,7 @@ namespace System.Runtime.InteropServices.WindowsRuntime
             }
             else
             {
-                IVector<KeyValuePair<K, V>> _this_vector = JitHelpers.UnsafeCast<IVector<KeyValuePair<K, V>>>(this);
+                IVector<KeyValuePair<K, V>> _this_vector = Unsafe.As<IVector<KeyValuePair<K, V>>>(this);
                 _this_vector.Append(item);
             }
         }
@@ -91,7 +89,7 @@ namespace System.Runtime.InteropServices.WindowsRuntime
         // void Clear()
         internal void Clear<K, V>()
         {
-            object _this = JitHelpers.UnsafeCast<object>(this);
+            object _this = Unsafe.As<object>(this);
 
             IMap<K, V> _this_map = _this as IMap<K, V>;
             if (_this_map != null)
@@ -100,7 +98,7 @@ namespace System.Runtime.InteropServices.WindowsRuntime
             }
             else
             {
-                IVector<KeyValuePair<K, V>> _this_vector = JitHelpers.UnsafeCast<IVector<KeyValuePair<K, V>>>(this);
+                IVector<KeyValuePair<K, V>> _this_vector = Unsafe.As<IVector<KeyValuePair<K, V>>>(this);
                 _this_vector.Clear();
             }
         }
@@ -108,7 +106,7 @@ namespace System.Runtime.InteropServices.WindowsRuntime
         // bool Contains(T item)
         internal bool Contains<K, V>(KeyValuePair<K, V> item)
         {
-            object _this = JitHelpers.UnsafeCast<object>(this);
+            object _this = Unsafe.As<object>(this);
 
             IDictionary<K, V> _this_dictionary = _this as IDictionary<K, V>;
             if (_this_dictionary != null)
@@ -123,7 +121,7 @@ namespace System.Runtime.InteropServices.WindowsRuntime
             }
             else
             {
-                IVector<KeyValuePair<K, V>> _this_vector = JitHelpers.UnsafeCast<IVector<KeyValuePair<K, V>>>(this);
+                IVector<KeyValuePair<K, V>> _this_vector = Unsafe.As<IVector<KeyValuePair<K, V>>>(this);
 
                 uint index;
                 return _this_vector.IndexOf(item, out index);
@@ -145,9 +143,8 @@ namespace System.Runtime.InteropServices.WindowsRuntime
             if (array.Length - arrayIndex < Count<K, V>())
                 throw new ArgumentException(SR.Argument_InsufficientSpaceToCopyCollection);
 
-            Contract.EndContractBlock();
 
-            IIterable<KeyValuePair<K, V>> _this = JitHelpers.UnsafeCast<IIterable<KeyValuePair<K, V>>>(this);
+            IIterable<KeyValuePair<K, V>> _this = Unsafe.As<IIterable<KeyValuePair<K, V>>>(this);
             foreach (KeyValuePair<K, V> mapping in _this)
             {
                 array[arrayIndex++] = mapping;
@@ -157,7 +154,7 @@ namespace System.Runtime.InteropServices.WindowsRuntime
         // bool Remove(T item)
         internal bool Remove<K, V>(KeyValuePair<K, V> item)
         {
-            object _this = JitHelpers.UnsafeCast<object>(this);
+            object _this = Unsafe.As<object>(this);
 
             IDictionary<K, V> _this_dictionary = _this as IDictionary<K, V>;
             if (_this_dictionary != null)
@@ -166,7 +163,7 @@ namespace System.Runtime.InteropServices.WindowsRuntime
             }
             else
             {
-                IVector<KeyValuePair<K, V>> _this_vector = JitHelpers.UnsafeCast<IVector<KeyValuePair<K, V>>>(this);
+                IVector<KeyValuePair<K, V>> _this_vector = Unsafe.As<IVector<KeyValuePair<K, V>>>(this);
                 uint index;
                 bool exists = _this_vector.IndexOf(item, out index);
 

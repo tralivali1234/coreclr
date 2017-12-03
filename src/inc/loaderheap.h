@@ -217,7 +217,7 @@ private:
 
     size_t *             m_pPrivatePerfCounter_LoaderBytes;
 
-    DWORD                m_flProtect;
+    DWORD                m_Options;
 
     LoaderHeapFreeBlock *m_pFirstFreeBlock;
 
@@ -288,7 +288,8 @@ protected:
                        SIZE_T dwReservedRegionSize,
                        size_t *pPrivatePerfCounter_LoaderBytes = NULL,
                        RangeList *pRangeList = NULL,
-                       BOOL fMakeExecutable = FALSE);
+                       BOOL fMakeExecutable = FALSE,
+                       BOOL fZeroInit = TRUE);
 
     ~UnlockedLoaderHeap();
 #endif
@@ -398,10 +399,8 @@ public:
         return m_dwTotalAlloc;
     }
 
-    BOOL IsExecutable()
-    {
-        return (PAGE_EXECUTE_READWRITE == m_flProtect);
-    }
+    BOOL IsExecutable();
+    BOOL IsZeroInit();
 
 
 public:
@@ -418,7 +417,7 @@ public:
 #endif
 
 protected:
-    void *UnlockedAllocMemForCode_NoThrow(size_t dwHeaderSize, size_t dwCodeSize, DWORD dwCodeAlignment);
+    void *UnlockedAllocMemForCode_NoThrow(size_t dwHeaderSize, size_t dwCodeSize, DWORD dwCodeAlignment, size_t dwReserveForJumpStubs);
 
     void UnlockedSetReservedRegion(BYTE* dwReservedRegionAddress, SIZE_T dwReservedRegionSize, BOOL fReleaseMemory);
 };
@@ -447,14 +446,16 @@ public:
                DWORD dwCommitBlockSize,
                size_t *pPrivatePerfCounter_LoaderBytes = NULL,
                RangeList *pRangeList = NULL,
-               BOOL fMakeExecutable = FALSE
+               BOOL fMakeExecutable = FALSE,
+               BOOL fZeroInit = TRUE
                )
       : UnlockedLoaderHeap(dwReserveBlockSize,
                            dwCommitBlockSize,
                            NULL, 0,
                            pPrivatePerfCounter_LoaderBytes,
                            pRangeList,
-                           fMakeExecutable)
+                           fMakeExecutable,
+                           fZeroInit)
     {
         WRAPPER_NO_CONTRACT;
         m_CriticalSection = NULL;
@@ -469,7 +470,8 @@ public:
                SIZE_T dwReservedRegionSize,
                size_t *pPrivatePerfCounter_LoaderBytes = NULL,
                RangeList *pRangeList = NULL,
-               BOOL fMakeExecutable = FALSE
+               BOOL fMakeExecutable = FALSE,
+               BOOL fZeroInit = TRUE
                )
       : UnlockedLoaderHeap(dwReserveBlockSize,
                            dwCommitBlockSize,
@@ -477,7 +479,8 @@ public:
                            dwReservedRegionSize,
                            pPrivatePerfCounter_LoaderBytes,
                            pRangeList,
-                           fMakeExecutable)
+                           fMakeExecutable,
+                           fZeroInit)
     {
         WRAPPER_NO_CONTRACT;
         m_CriticalSection = NULL;
@@ -835,10 +838,10 @@ public:
 
 
 public:
-    void *AllocMemForCode_NoThrow(size_t dwHeaderSize, size_t dwCodeSize, DWORD dwCodeAlignment)
+    void *AllocMemForCode_NoThrow(size_t dwHeaderSize, size_t dwCodeSize, DWORD dwCodeAlignment, size_t dwReserveForJumpStubs)
     {
         WRAPPER_NO_CONTRACT;
-        return UnlockedAllocMemForCode_NoThrow(dwHeaderSize, dwCodeSize, dwCodeAlignment);
+        return UnlockedAllocMemForCode_NoThrow(dwHeaderSize, dwCodeSize, dwCodeAlignment, dwReserveForJumpStubs);
     }
 
     void SetReservedRegion(BYTE* dwReservedRegionAddress, SIZE_T dwReservedRegionSize, BOOL fReleaseMemory)

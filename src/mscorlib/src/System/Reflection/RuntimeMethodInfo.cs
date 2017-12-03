@@ -4,7 +4,6 @@
 
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.Contracts;
 using System.Globalization;
 using System.Security;
 using System.Text;
@@ -54,29 +53,6 @@ namespace System.Reflection
                     {
                         // this should be an invocable method, determine the other flags that participate in invocation
                         invocationFlags = RuntimeMethodHandle.GetSecurityFlags(this);
-
-                        if ((invocationFlags & INVOCATION_FLAGS.INVOCATION_FLAGS_NEED_SECURITY) == 0)
-                        {
-                            if ((Attributes & MethodAttributes.MemberAccessMask) != MethodAttributes.Public ||
-                                 (declaringType != null && declaringType.NeedsReflectionSecurityCheck))
-                            {
-                                // If method is non-public, or declaring type is not visible
-                                invocationFlags |= INVOCATION_FLAGS.INVOCATION_FLAGS_NEED_SECURITY;
-                            }
-                            else if (IsGenericMethod)
-                            {
-                                Type[] genericArguments = GetGenericArguments();
-
-                                for (int i = 0; i < genericArguments.Length; i++)
-                                {
-                                    if (genericArguments[i].NeedsReflectionSecurityCheck)
-                                    {
-                                        invocationFlags |= INVOCATION_FLAGS.INVOCATION_FLAGS_NEED_SECURITY;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
                     }
 
                     m_invocationFlags = invocationFlags | INVOCATION_FLAGS.INVOCATION_FLAGS_INITIALIZED;
@@ -92,8 +68,6 @@ namespace System.Reflection
             RuntimeMethodHandleInternal handle, RuntimeType declaringType,
             RuntimeTypeCache reflectedTypeCache, MethodAttributes methodAttributes, BindingFlags bindingFlags, object keepalive)
         {
-            Contract.Ensures(!m_handle.IsNull());
-
             Debug.Assert(!handle.IsNullHandle());
             Debug.Assert(methodAttributes == RuntimeMethodHandle.GetAttributes(handle));
 
@@ -207,6 +181,7 @@ namespace System.Reflection
             return m_declaringType;
         }
 
+        internal sealed override int GenericParameterCount => RuntimeMethodHandle.GetGenericParameterCount(this);
         #endregion
 
         #region Object Overrides
@@ -280,7 +255,6 @@ namespace System.Reflection
         {
             if (attributeType == null)
                 throw new ArgumentNullException(nameof(attributeType));
-            Contract.EndContractBlock();
 
             RuntimeType attributeRuntimeType = attributeType.UnderlyingSystemType as RuntimeType;
 
@@ -294,7 +268,6 @@ namespace System.Reflection
         {
             if (attributeType == null)
                 throw new ArgumentNullException(nameof(attributeType));
-            Contract.EndContractBlock();
 
             RuntimeType attributeRuntimeType = attributeType.UnderlyingSystemType as RuntimeType;
 
@@ -378,7 +351,6 @@ namespace System.Reflection
             return m_parameters;
         }
 
-        [System.Diagnostics.Contracts.Pure]
         public override ParameterInfo[] GetParameters()
         {
             FetchNonReturnParameters();
@@ -488,7 +460,7 @@ namespace System.Reflection
         {
             object[] arguments = InvokeArgumentsCheck(obj, invokeAttr, binder, parameters, culture);
 
-            return UnsafeInvokeInternal(obj, parameters, arguments);
+            return UnsafeInvokeInternal(obj, invokeAttr, parameters, arguments);
         }
 
         [DebuggerStepThroughAttribute]
@@ -497,18 +469,19 @@ namespace System.Reflection
         {
             object[] arguments = InvokeArgumentsCheck(obj, invokeAttr, binder, parameters, culture);
 
-            return UnsafeInvokeInternal(obj, parameters, arguments);
+            return UnsafeInvokeInternal(obj, invokeAttr, parameters, arguments);
         }
 
         [DebuggerStepThroughAttribute]
         [Diagnostics.DebuggerHidden]
-        private object UnsafeInvokeInternal(Object obj, Object[] parameters, Object[] arguments)
+        private object UnsafeInvokeInternal(Object obj, BindingFlags invokeAttr, Object[] parameters, Object[] arguments)
         {
+            bool wrapExceptions = (invokeAttr & BindingFlags.DoNotWrapExceptions) == 0;
             if (arguments == null || arguments.Length == 0)
-                return RuntimeMethodHandle.InvokeMethod(obj, null, Signature, false);
+                return RuntimeMethodHandle.InvokeMethod(obj, null, Signature, false, wrapExceptions);
             else
             {
-                Object retValue = RuntimeMethodHandle.InvokeMethod(obj, arguments, Signature, false);
+                Object retValue = RuntimeMethodHandle.InvokeMethod(obj, arguments, Signature, false, wrapExceptions);
 
                 // copy out. This should be made only if ByRef are present.
                 for (int index = 0; index < arguments.Length; index++)
@@ -565,8 +538,6 @@ namespace System.Reflection
         {
             get
             {
-                Contract.Ensures(m_returnParameter != null);
-
                 FetchReturnParameter();
                 return m_returnParameter as ParameterInfo;
             }
@@ -638,7 +609,6 @@ namespace System.Reflection
             // Validate the parameters.
             if (delegateType == null)
                 throw new ArgumentNullException(nameof(delegateType));
-            Contract.EndContractBlock();
 
             RuntimeType rtType = delegateType as RuntimeType;
             if (rtType == null)
@@ -663,7 +633,6 @@ namespace System.Reflection
         {
             if (methodInstantiation == null)
                 throw new ArgumentNullException(nameof(methodInstantiation));
-            Contract.EndContractBlock();
 
             RuntimeType[] methodInstantionRuntimeType = new RuntimeType[methodInstantiation.Length];
 
@@ -732,7 +701,6 @@ namespace System.Reflection
         {
             if (!IsGenericMethod)
                 throw new InvalidOperationException();
-            Contract.EndContractBlock();
 
             return RuntimeType.GetMethodBase(m_declaringType, RuntimeMethodHandle.StripMethodInstantiation(this)) as MethodInfo;
         }

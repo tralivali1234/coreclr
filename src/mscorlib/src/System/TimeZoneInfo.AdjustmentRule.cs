@@ -2,7 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Diagnostics.Contracts;
 using System.Runtime.Serialization;
 
 namespace System
@@ -132,7 +131,7 @@ namespace System
                 _dateStart.Year == _dateEnd.Year;
 
             /// <summary>
-            /// Helper function that performs all of the validation checks for the actory methods and deserialization callback.
+            /// Helper function that performs all of the validation checks for the factory methods and deserialization callback.
             /// </summary>
             private static void ValidateAdjustmentRule(
                 DateTime dateStart,
@@ -185,7 +184,6 @@ namespace System
                 {
                     throw new ArgumentException(SR.Argument_DateTimeHasTimeOfDay, nameof(dateEnd));
                 }
-                Contract.EndContractBlock();
             }
 
             void IDeserializationCallback.OnDeserialization(object sender)
@@ -210,7 +208,6 @@ namespace System
                 {
                     throw new ArgumentNullException(nameof(info));
                 }
-                Contract.EndContractBlock();
 
                 info.AddValue("DateStart", _dateStart); // Do not rename (binary serialization)
                 info.AddValue("DateEnd", _dateEnd); // Do not rename (binary serialization)

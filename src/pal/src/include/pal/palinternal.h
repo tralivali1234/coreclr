@@ -153,6 +153,11 @@ function_name() to call the system's implementation
 #define _ENABLE_DEBUG_MESSAGES_ 0
 #endif
 
+/* Include type_traits before including the pal.h. On newer glibcxx versions,
+   the type_traits fail to compile if we redefine the wchar_t before including 
+   the header */
+#include <type_traits>
+
 #ifdef PAL_PERF
 #include "pal_perf.h"
 #endif
@@ -534,6 +539,9 @@ function_name() to call the system's implementation
 
 #undef ctime
 
+#undef min
+#undef max
+
 #undef SCHAR_MIN
 #undef SCHAR_MAX
 #undef UCHAR_MAX
@@ -636,6 +644,9 @@ typedef enum _TimeConversionConstants
 
 #ifdef __cplusplus
 }
+
+bool
+ReadMemoryValueFromFile(const char* filename, size_t* val);
 
 /* This is duplicated in utilcode.h for CLR, with cooler type-traits */
 template <typename T>

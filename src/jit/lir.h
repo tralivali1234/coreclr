@@ -32,12 +32,12 @@ public:
                          // a more expensive data structure when processing a set
                          // of LIR nodes. See for example `LIR::GetTreeRange`.
 
-            IsUnusedValue = 0x02, // Set on a node if it produces a value that is not
-                                  // subsequently used. Should never be set on nodes
-                                  // that return `false` for `GenTree::IsValue`. Note
-                                  // that this bit should not be assumed to be valid
-                                  // at all points during compilation: it is currently
-                                  // only computed during target-dependent lowering.
+            UnusedValue = 0x02, // Set on a node if it produces a value that is not
+                                // subsequently used. Should never be set on nodes
+                                // that return `false` for `GenTree::IsValue`. Note
+                                // that this bit should not be assumed to be valid
+                                // at all points during compilation: it is currently
+                                // only computed during target-dependent lowering.
         };
     };
 
@@ -112,12 +112,12 @@ public:
         GenTree* m_firstNode;
         GenTree* m_lastNode;
 
-        ReadOnlyRange(GenTree* firstNode, GenTree* lastNode);
-
         ReadOnlyRange(const ReadOnlyRange& other) = delete;
         ReadOnlyRange& operator=(const ReadOnlyRange& other) = delete;
 
     public:
+        ReadOnlyRange(GenTree* firstNode, GenTree* lastNode);
+
         class Iterator
         {
             friend class ReadOnlyRange;
@@ -308,5 +308,23 @@ public:
 
     static void InsertBeforeTerminator(BasicBlock* block, LIR::Range&& range);
 };
+
+inline void GenTree::SetUnusedValue()
+{
+    gtLIRFlags |= LIR::Flags::UnusedValue;
+#ifndef LEGACY_BACKEND
+    ClearContained();
+#endif
+}
+
+inline void GenTree::ClearUnusedValue()
+{
+    gtLIRFlags &= ~LIR::Flags::UnusedValue;
+}
+
+inline bool GenTree::IsUnusedValue() const
+{
+    return (gtLIRFlags & LIR::Flags::UnusedValue) != 0;
+}
 
 #endif // _LIR_H_

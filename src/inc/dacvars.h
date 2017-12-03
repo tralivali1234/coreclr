@@ -127,7 +127,7 @@ DEFINE_DACVAR(ULONG, BOOL, SystemDomain__s_fForceInstrument, SystemDomain::s_fFo
 DEFINE_DACVAR(ULONG, PTR_SharedDomain, SharedDomain__m_pSharedDomain, SharedDomain::m_pSharedDomain)
 
 
-DEFINE_DACVAR(ULONG, DWORD, CExecutionEngine__TlsIndex, CExecutionEngine::TlsIndex)
+DEFINE_DACVAR(ULONG, DWORD, dac__g_TlsIndex, g_TlsIndex)
 
 #if defined(FEATURE_WINDOWSPHONE)
 DEFINE_DACVAR(ULONG, int, CCLRErrorReportingManager__g_ECustomDumpFlavor, CCLRErrorReportingManager::g_ECustomDumpFlavor)
@@ -149,11 +149,6 @@ DEFINE_DACVAR(ULONG, BOOL, StackwalkCache__s_Enabled, StackwalkCache::s_Enabled)
 DEFINE_DACVAR(ULONG, PTR_JITNotification, dac__g_pNotificationTable, ::g_pNotificationTable)
 DEFINE_DACVAR(ULONG, ULONG32, dac__g_dacNotificationFlags, ::g_dacNotificationFlags)
 DEFINE_DACVAR(ULONG, PTR_GcNotification, dac__g_pGcNotificationTable, ::g_pGcNotificationTable)
-
-#ifndef FEATURE_IMPLICIT_TLS
-DEFINE_DACVAR(ULONG, DWORD, dac__gThreadTLSIndex, ::gThreadTLSIndex)
-DEFINE_DACVAR(ULONG, DWORD, dac__gAppDomainTLSIndex, ::gAppDomainTLSIndex)
-#endif
 
 DEFINE_DACVAR(ULONG, PTR_EEConfig, dac__g_pConfig, ::g_pConfig)
 
@@ -206,7 +201,6 @@ DEFINE_DACVAR(ULONG, UNKNOWN_POINTER_TYPE, dac__g_pICastableInterface, ::g_pICas
 
 DEFINE_DACVAR(ULONG, UNKNOWN_POINTER_TYPE, dac__g_pExecuteBackoutCodeHelperMethod, ::g_pExecuteBackoutCodeHelperMethod)
 
-DEFINE_DACVAR(ULONG, UNKNOWN_POINTER_TYPE, dac__g_pObjectCtorMD, ::g_pObjectCtorMD)
 DEFINE_DACVAR(ULONG, UNKNOWN_POINTER_TYPE, dac__g_pObjectFinalizerMD, ::g_pObjectFinalizerMD)
 
 DEFINE_DACVAR(ULONG, bool, dac__g_fProcessDetach, ::g_fProcessDetach)
@@ -242,7 +236,6 @@ DEFINE_DACVAR(ULONG, SIZE_T, dac__g_runtimeVirtualSize, ::g_runtimeVirtualSize)
 
 DEFINE_DACVAR(ULONG, SyncBlockCache *, SyncBlockCache__s_pSyncBlockCache, SyncBlockCache::s_pSyncBlockCache)
 
-DEFINE_DACVAR(ULONG, HandleTableMap, dac__g_HandleTableMap, ::g_HandleTableMap)
 DEFINE_DACVAR(ULONG, UNKNOWN_POINTER_TYPE, dac__g_pStressLog, ::g_pStressLog)
 
 DEFINE_DACVAR(ULONG, SIZE_T, dac__s_gsCookie, ::s_gsCookie)

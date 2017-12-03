@@ -4,7 +4,6 @@
 
 using System.Diagnostics;
 using System.Globalization;
-using System.Diagnostics.Contracts;
 using System.Threading;
 using System.Runtime.Serialization;
 using System.Diagnostics.CodeAnalysis;
@@ -178,7 +177,6 @@ namespace System.Text
             {
                 throw new ArgumentOutOfRangeException(nameof(codePage));
             }
-            Contract.EndContractBlock();
 
             // Remember code page
             _codePage = codePage;
@@ -197,7 +195,6 @@ namespace System.Text
             {
                 throw new ArgumentOutOfRangeException(nameof(codePage));
             }
-            Contract.EndContractBlock();
 
             // Remember code page
             _codePage = codePage;
@@ -220,13 +217,11 @@ namespace System.Text
         // dstEncoding, and the returned value is a new byte array
         // containing the result of the conversion.
         //
-        [Pure]
         public static byte[] Convert(Encoding srcEncoding, Encoding dstEncoding,
             byte[] bytes)
         {
             if (bytes == null)
                 throw new ArgumentNullException(nameof(bytes));
-            Contract.Ensures(Contract.Result<byte[]>() != null);
 
             return Convert(srcEncoding, dstEncoding, bytes, 0, bytes.Length);
         }
@@ -236,7 +231,6 @@ namespace System.Text
         // index index from srcEncoding to dstEncoding, and
         // returns a new byte array containing the result of the conversion.
         //
-        [Pure]
         public static byte[] Convert(Encoding srcEncoding, Encoding dstEncoding,
             byte[] bytes, int index, int count)
         {
@@ -250,7 +244,6 @@ namespace System.Text
                 throw new ArgumentNullException(nameof(bytes),
                     SR.ArgumentNull_Array);
             }
-            Contract.Ensures(Contract.Result<byte[]>() != null);
 
             return dstEncoding.GetBytes(srcEncoding.GetChars(bytes, index, count));
         }
@@ -261,7 +254,6 @@ namespace System.Text
             EncodingProvider.AddProvider(provider);
         }
 
-        [Pure]
         public static Encoding GetEncoding(int codepage)
         {
             Encoding result = EncodingProvider.GetEncodingFromProvider(codepage);
@@ -280,7 +272,6 @@ namespace System.Text
                     nameof(codepage), SR.Format(SR.ArgumentOutOfRange_Range, 0, 65535));
             }
 
-            Contract.EndContractBlock();
 
             switch (codepage)
             {
@@ -312,7 +303,6 @@ namespace System.Text
             return UTF8;
         }
 
-        [Pure]
         public static Encoding GetEncoding(int codepage,
             EncoderFallback encoderFallback, DecoderFallback decoderFallback)
         {
@@ -334,7 +324,6 @@ namespace System.Text
 
         // Returns an Encoding object for a given name or a given code page value.
         //
-        [Pure]
         public static Encoding GetEncoding(String name)
         {
             Encoding baseEncoding = EncodingProvider.GetEncodingFromProvider(name);
@@ -352,7 +341,6 @@ namespace System.Text
 
         // Returns an Encoding object for a given name or a given code page value.
         //
-        [Pure]
         public static Encoding GetEncoding(String name,
             EncoderFallback encoderFallback, DecoderFallback decoderFallback)
         {
@@ -370,17 +358,17 @@ namespace System.Text
         }
 
         // Return a list of all EncodingInfo objects describing all of our encodings
-        [Pure]
         public static EncodingInfo[] GetEncodings()
         {
             return EncodingTable.GetEncodings();
         }
 
-        [Pure]
         public virtual byte[] GetPreamble()
         {
             return Array.Empty<byte>();
         }
+
+        public virtual ReadOnlySpan<byte> Preamble => GetPreamble();
 
         private void GetDataItem()
         {
@@ -588,7 +576,6 @@ namespace System.Text
 
                 if (value == null)
                     throw new ArgumentNullException(nameof(value));
-                Contract.EndContractBlock();
 
                 encoderFallback = value;
             }
@@ -609,7 +596,6 @@ namespace System.Text
 
                 if (value == null)
                     throw new ArgumentNullException(nameof(value));
-                Contract.EndContractBlock();
 
                 decoderFallback = value;
             }
@@ -648,7 +634,6 @@ namespace System.Text
         // Returns the number of bytes required to encode the given character
         // array.
         //
-        [Pure]
         public virtual int GetByteCount(char[] chars)
         {
             if (chars == null)
@@ -656,17 +641,14 @@ namespace System.Text
                 throw new ArgumentNullException(nameof(chars),
                     SR.ArgumentNull_Array);
             }
-            Contract.EndContractBlock();
 
             return GetByteCount(chars, 0, chars.Length);
         }
 
-        [Pure]
         public virtual int GetByteCount(String s)
         {
             if (s == null)
                 throw new ArgumentNullException(nameof(s));
-            Contract.EndContractBlock();
 
             char[] chars = s.ToCharArray();
             return GetByteCount(chars, 0, chars.Length);
@@ -675,12 +657,10 @@ namespace System.Text
         // Returns the number of bytes required to encode a range of characters in
         // a character array.
         //
-        [Pure]
         public abstract int GetByteCount(char[] chars, int index, int count);
 
         // Returns the number of bytes required to encode a string range.
         //
-        [Pure]
         public int GetByteCount(string s, int index, int count)
         {
             if (s == null)
@@ -695,7 +675,6 @@ namespace System.Text
             if (index > s.Length - count)
                 throw new ArgumentOutOfRangeException(nameof(index),
                       SR.ArgumentOutOfRange_IndexCount);
-            Contract.EndContractBlock();
 
             unsafe
             {
@@ -710,7 +689,6 @@ namespace System.Text
         // unfortunately for existing overrides, it has to call the [] version,
         // which is really slow, so this method should be avoided if you're calling
         // a 3rd party encoding.
-        [Pure]
         [CLSCompliant(false)]
         public virtual unsafe int GetByteCount(char* chars, int count)
         {
@@ -722,7 +700,6 @@ namespace System.Text
             if (count < 0)
                 throw new ArgumentOutOfRangeException(nameof(count),
                       SR.ArgumentOutOfRange_NeedNonNegNum);
-            Contract.EndContractBlock();
 
             char[] arrChar = new char[count];
             int index;
@@ -731,6 +708,14 @@ namespace System.Text
                 arrChar[index] = chars[index];
 
             return GetByteCount(arrChar, 0, count);
+        }
+
+        public virtual unsafe int GetByteCount(ReadOnlySpan<char> chars)
+        {
+            fixed (char* charsPtr = &chars.DangerousGetPinnableReference())
+            {
+                return GetByteCount(charsPtr, chars.Length);
+            }
         }
 
         // For NLS Encodings, workhorse takes an encoder (may be null)
@@ -746,7 +731,6 @@ namespace System.Text
         // Returns a byte array containing the encoded representation of the given
         // character array.
         //
-        [Pure]
         public virtual byte[] GetBytes(char[] chars)
         {
             if (chars == null)
@@ -754,14 +738,12 @@ namespace System.Text
                 throw new ArgumentNullException(nameof(chars),
                     SR.ArgumentNull_Array);
             }
-            Contract.EndContractBlock();
             return GetBytes(chars, 0, chars.Length);
         }
 
         // Returns a byte array containing the encoded representation of a range
         // of characters in a character array.
         //
-        [Pure]
         public virtual byte[] GetBytes(char[] chars, int index, int count)
         {
             byte[] result = new byte[GetByteCount(chars, index, count)];
@@ -784,13 +766,11 @@ namespace System.Text
         // Returns a byte array containing the encoded representation of the given
         // string.
         //
-        [Pure]
         public virtual byte[] GetBytes(String s)
         {
             if (s == null)
                 throw new ArgumentNullException(nameof(s),
                     SR.ArgumentNull_String);
-            Contract.EndContractBlock();
 
             int byteCount = GetByteCount(s);
             byte[] bytes = new byte[byteCount];
@@ -802,7 +782,6 @@ namespace System.Text
         // Returns a byte array containing the encoded representation of the given
         // string range.
         //
-        [Pure]
         public byte[] GetBytes(string s, int index, int count)
         {
             if (s == null)
@@ -817,7 +796,6 @@ namespace System.Text
             if (index > s.Length - count)
                 throw new ArgumentOutOfRangeException(nameof(index),
                       SR.ArgumentOutOfRange_IndexCount);
-            Contract.EndContractBlock();
 
             unsafe
             {
@@ -843,7 +821,6 @@ namespace System.Text
         {
             if (s == null)
                 throw new ArgumentNullException(nameof(s));
-            Contract.EndContractBlock();
             return GetBytes(s.ToCharArray(), charIndex, charCount, bytes, byteIndex);
         }
 
@@ -884,7 +861,6 @@ namespace System.Text
             if (charCount < 0 || byteCount < 0)
                 throw new ArgumentOutOfRangeException((charCount < 0 ? nameof(charCount) : nameof(byteCount)),
                     SR.ArgumentOutOfRange_NeedNonNegNum);
-            Contract.EndContractBlock();
 
             // Get the char array to convert
             char[] arrChar = new char[charCount];
@@ -916,10 +892,18 @@ namespace System.Text
             return byteCount;
         }
 
+        public virtual unsafe int GetBytes(ReadOnlySpan<char> chars, Span<byte> bytes)
+        {
+            fixed (char* charsPtr = &chars.DangerousGetPinnableReference())
+            fixed (byte* bytesPtr = &bytes.DangerousGetPinnableReference())
+            {
+                return GetBytes(charsPtr, chars.Length, bytesPtr, bytes.Length);
+            }
+        }
+
         // Returns the number of characters produced by decoding the given byte
         // array.
         //
-        [Pure]
         public virtual int GetCharCount(byte[] bytes)
         {
             if (bytes == null)
@@ -927,19 +911,16 @@ namespace System.Text
                 throw new ArgumentNullException(nameof(bytes),
                     SR.ArgumentNull_Array);
             }
-            Contract.EndContractBlock();
             return GetCharCount(bytes, 0, bytes.Length);
         }
 
         // Returns the number of characters produced by decoding a range of bytes
         // in a byte array.
         //
-        [Pure]
         public abstract int GetCharCount(byte[] bytes, int index, int count);
 
         // We expect this to be the workhorse for NLS Encodings, but for existing
         // ones we need a working (if slow) default implementation)
-        [Pure]
         [CLSCompliant(false)]
         public virtual unsafe int GetCharCount(byte* bytes, int count)
         {
@@ -951,7 +932,6 @@ namespace System.Text
             if (count < 0)
                 throw new ArgumentOutOfRangeException(nameof(count),
                       SR.ArgumentOutOfRange_NeedNonNegNum);
-            Contract.EndContractBlock();
 
             byte[] arrbyte = new byte[count];
             int index;
@@ -960,6 +940,14 @@ namespace System.Text
                 arrbyte[index] = bytes[index];
 
             return GetCharCount(arrbyte, 0, count);
+        }
+
+        public virtual unsafe int GetCharCount(ReadOnlySpan<byte> bytes)
+        {
+            fixed (byte* bytesPtr = &bytes.DangerousGetPinnableReference())
+            {
+                return GetCharCount(bytesPtr, bytes.Length);
+            }
         }
 
         // This is our internal workhorse
@@ -972,7 +960,6 @@ namespace System.Text
         // Returns a character array containing the decoded representation of a
         // given byte array.
         //
-        [Pure]
         public virtual char[] GetChars(byte[] bytes)
         {
             if (bytes == null)
@@ -980,14 +967,12 @@ namespace System.Text
                 throw new ArgumentNullException(nameof(bytes),
                     SR.ArgumentNull_Array);
             }
-            Contract.EndContractBlock();
             return GetChars(bytes, 0, bytes.Length);
         }
 
         // Returns a character array containing the decoded representation of a
         // range of bytes in a byte array.
         //
-        [Pure]
         public virtual char[] GetChars(byte[] bytes, int index, int count)
         {
             char[] result = new char[GetCharCount(bytes, index, count)];
@@ -1001,7 +986,7 @@ namespace System.Text
         // GetCharCount method can be used to determine the exact number of
         // characters that will be produced for a given range of bytes.
         // Alternatively, the GetMaxCharCount method can be used to
-        // determine the maximum number of characterss that will be produced for a
+        // determine the maximum number of characters that will be produced for a
         // given number of bytes, regardless of the actual byte values.
         //
 
@@ -1038,7 +1023,6 @@ namespace System.Text
             if (byteCount < 0 || charCount < 0)
                 throw new ArgumentOutOfRangeException((byteCount < 0 ? nameof(byteCount) : nameof(charCount)),
                     SR.ArgumentOutOfRange_NeedNonNegNum);
-            Contract.EndContractBlock();
 
             // Get the byte array to convert
             byte[] arrByte = new byte[byteCount];
@@ -1070,6 +1054,14 @@ namespace System.Text
             return charCount;
         }
 
+        public virtual unsafe int GetChars(ReadOnlySpan<byte> bytes, Span<char> chars)
+        {
+            fixed (byte* bytesPtr = &bytes.DangerousGetPinnableReference())
+            fixed (char* charsPtr = &chars.DangerousGetPinnableReference())
+            {
+                return GetChars(bytesPtr, bytes.Length, charsPtr, chars.Length);
+            }
+        }
 
         // This is our internal workhorse
         // Always validate parameters before calling internal version, which will only assert.
@@ -1088,10 +1080,18 @@ namespace System.Text
 
             if (byteCount < 0)
                 throw new ArgumentOutOfRangeException(nameof(byteCount), SR.ArgumentOutOfRange_NeedNonNegNum);
-            Contract.EndContractBlock();
 
             return String.CreateStringFromEncoding(bytes, byteCount, this);
         }
+
+        public unsafe string GetString(ReadOnlySpan<byte> bytes)
+        {
+            fixed (byte* bytesPtr = &bytes.DangerousGetPinnableReference())
+            {
+                return GetString(bytesPtr, bytes.Length);
+            }
+        }
+
 
         // Returns the code page identifier of this encoding. The returned value is
         // an integer between 0 and 65535 if the encoding has a code page
@@ -1108,13 +1108,11 @@ namespace System.Text
 
         // IsAlwaysNormalized
         // Returns true if the encoding is always normalized for the specified encoding form
-        [Pure]
         public bool IsAlwaysNormalized()
         {
             return this.IsAlwaysNormalized(NormalizationForm.FormC);
         }
 
-        [Pure]
         public virtual bool IsAlwaysNormalized(NormalizationForm form)
         {
             // Assume false unless the encoding knows otherwise
@@ -1170,7 +1168,6 @@ namespace System.Text
         // WARNING: If you're using something besides the default replacement encoder fallback,
         // then you could have more bytes than this returned from an actual call to GetBytes().
         //
-        [Pure]
         public abstract int GetMaxByteCount(int charCount);
 
         // Returns the maximum number of characters produced by decoding a given
@@ -1181,19 +1178,16 @@ namespace System.Text
         // exceptions will occur if buffers are sized according to the results of
         // this method.
         //
-        [Pure]
         public abstract int GetMaxCharCount(int byteCount);
 
         // Returns a string containing the decoded representation of a given byte
         // array.
         //
-        [Pure]
         public virtual String GetString(byte[] bytes)
         {
             if (bytes == null)
                 throw new ArgumentNullException(nameof(bytes),
                     SR.ArgumentNull_Array);
-            Contract.EndContractBlock();
 
             return GetString(bytes, 0, bytes.Length);
         }
@@ -1203,7 +1197,6 @@ namespace System.Text
         //
         // Internally we override this for performance
         //
-        [Pure]
         public virtual String GetString(byte[] bytes, int index, int count)
         {
             return new String(GetChars(bytes, index, count));
@@ -1278,19 +1271,19 @@ namespace System.Text
         internal void ThrowBytesOverflow()
         {
             // Special message to include fallback type in case fallback's GetMaxCharCount is broken
-            // This happens if user has implimented an encoder fallback with a broken GetMaxCharCount
+            // This happens if user has implemented an encoder fallback with a broken GetMaxCharCount
             throw new ArgumentException(
                 SR.Format(SR.Argument_EncodingConversionOverflowBytes, EncodingName, EncoderFallback.GetType()), "bytes");
         }
 
         internal void ThrowBytesOverflow(EncoderNLS encoder, bool nothingEncoded)
         {
-            if (encoder == null || encoder.m_throwOnOverflow || nothingEncoded)
+            if (encoder == null || encoder._throwOnOverflow || nothingEncoded)
             {
                 if (encoder != null && encoder.InternalHasFallbackBuffer)
                     encoder.FallbackBuffer.InternalReset();
                 // Special message to include fallback type in case fallback's GetMaxCharCount is broken
-                // This happens if user has implimented an encoder fallback with a broken GetMaxCharCount
+                // This happens if user has implemented an encoder fallback with a broken GetMaxCharCount
                 ThrowBytesOverflow();
             }
 
@@ -1301,20 +1294,20 @@ namespace System.Text
         internal void ThrowCharsOverflow()
         {
             // Special message to include fallback type in case fallback's GetMaxCharCount is broken
-            // This happens if user has implimented a decoder fallback with a broken GetMaxCharCount
+            // This happens if user has implemented a decoder fallback with a broken GetMaxCharCount
             throw new ArgumentException(
                 SR.Format(SR.Argument_EncodingConversionOverflowChars, EncodingName, DecoderFallback.GetType()), "chars");
         }
 
         internal void ThrowCharsOverflow(DecoderNLS decoder, bool nothingDecoded)
         {
-            if (decoder == null || decoder.m_throwOnOverflow || nothingDecoded)
+            if (decoder == null || decoder._throwOnOverflow || nothingDecoded)
             {
                 if (decoder != null && decoder.InternalHasFallbackBuffer)
                     decoder.FallbackBuffer.InternalReset();
 
                 // Special message to include fallback type in case fallback's GetMaxCharCount is broken
-                // This happens if user has implimented a decoder fallback with a broken GetMaxCharCount
+                // This happens if user has implemented a decoder fallback with a broken GetMaxCharCount
                 ThrowCharsOverflow();
             }
 
@@ -1322,22 +1315,16 @@ namespace System.Text
             decoder.ClearMustFlush();
         }
 
-        internal sealed class DefaultEncoder : Encoder, IObjectReference, ISerializable
+        internal sealed class DefaultEncoder : Encoder, IObjectReference
         {
-            private Encoding m_encoding;
+            private Encoding _encoding;
 
             public DefaultEncoder(Encoding encoding)
             {
-                m_encoding = encoding;
+                _encoding = encoding;
             }
             
             public Object GetRealObject(StreamingContext context)
-            {
-                throw new PlatformNotSupportedException();
-            }
-
-            // ISerializable implementation, get data for this object
-            void ISerializable.GetObjectData(SerializationInfo info, StreamingContext context)
             {
                 throw new PlatformNotSupportedException();
             }
@@ -1352,13 +1339,12 @@ namespace System.Text
 
             public override int GetByteCount(char[] chars, int index, int count, bool flush)
             {
-                return m_encoding.GetByteCount(chars, index, count);
+                return _encoding.GetByteCount(chars, index, count);
             }
 
-            [SuppressMessage("Microsoft.Contracts", "CC1055")]  // Skip extra error checking to avoid *potential* AppCompat problems.
             public unsafe override int GetByteCount(char* chars, int count, bool flush)
             {
-                return m_encoding.GetByteCount(chars, count);
+                return _encoding.GetByteCount(chars, count);
             }
 
             // Encodes a range of characters in a character array into a range of bytes
@@ -1384,33 +1370,26 @@ namespace System.Text
             public override int GetBytes(char[] chars, int charIndex, int charCount,
                                           byte[] bytes, int byteIndex, bool flush)
             {
-                return m_encoding.GetBytes(chars, charIndex, charCount, bytes, byteIndex);
+                return _encoding.GetBytes(chars, charIndex, charCount, bytes, byteIndex);
             }
 
-            [SuppressMessage("Microsoft.Contracts", "CC1055")]  // Skip extra error checking to avoid *potential* AppCompat problems.
             public unsafe override int GetBytes(char* chars, int charCount,
                                                  byte* bytes, int byteCount, bool flush)
             {
-                return m_encoding.GetBytes(chars, charCount, bytes, byteCount);
+                return _encoding.GetBytes(chars, charCount, bytes, byteCount);
             }
         }
 
-        internal sealed class DefaultDecoder : Decoder, IObjectReference, ISerializable
+        internal sealed class DefaultDecoder : Decoder, IObjectReference
         {
-            private Encoding m_encoding;
+            private Encoding _encoding;
 
             public DefaultDecoder(Encoding encoding)
             {
-                m_encoding = encoding;
+                _encoding = encoding;
             }
 
             public Object GetRealObject(StreamingContext context)
-            {
-                throw new PlatformNotSupportedException();
-            }
-
-            // ISerializable implementation
-            void ISerializable.GetObjectData(SerializationInfo info, StreamingContext context)
             {
                 throw new PlatformNotSupportedException();
             }
@@ -1429,14 +1408,13 @@ namespace System.Text
 
             public override int GetCharCount(byte[] bytes, int index, int count, bool flush)
             {
-                return m_encoding.GetCharCount(bytes, index, count);
+                return _encoding.GetCharCount(bytes, index, count);
             }
 
-            [SuppressMessage("Microsoft.Contracts", "CC1055")]  // Skip extra error checking to avoid *potential* AppCompat problems.
             public unsafe override int GetCharCount(byte* bytes, int count, bool flush)
             {
                 // By default just call the encoding version, no flush by default
-                return m_encoding.GetCharCount(bytes, count);
+                return _encoding.GetCharCount(bytes, count);
             }
 
             // Decodes a range of bytes in a byte array into a range of characters
@@ -1465,15 +1443,14 @@ namespace System.Text
             public override int GetChars(byte[] bytes, int byteIndex, int byteCount,
                                            char[] chars, int charIndex, bool flush)
             {
-                return m_encoding.GetChars(bytes, byteIndex, byteCount, chars, charIndex);
+                return _encoding.GetChars(bytes, byteIndex, byteCount, chars, charIndex);
             }
 
-            [SuppressMessage("Microsoft.Contracts", "CC1055")]  // Skip extra error checking to avoid *potential* AppCompat problems.
             public unsafe override int GetChars(byte* bytes, int byteCount,
                                                   char* chars, int charCount, bool flush)
             {
                 // By default just call the encoding's version
-                return m_encoding.GetChars(bytes, byteCount, chars, charCount);
+                return _encoding.GetChars(bytes, byteCount, chars, charCount);
             }
         }
 
@@ -1683,7 +1660,7 @@ namespace System.Text
                 {
                     this.fallbackBuffer = _encoder.FallbackBuffer;
                     // If we're not converting we must not have data in our fallback buffer
-                    if (_encoder.m_throwOnOverflow && _encoder.InternalHasFallbackBuffer &&
+                    if (_encoder._throwOnOverflow && _encoder.InternalHasFallbackBuffer &&
                         this.fallbackBuffer.Remaining > 0)
                         throw new ArgumentException(SR.Format(SR.Argument_EncoderFallbackNotEmpty,
                             _encoder.Encoding.EncodingName, _encoder.Fallback.GetType()));

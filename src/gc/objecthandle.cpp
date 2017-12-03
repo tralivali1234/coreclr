@@ -21,14 +21,13 @@
 
 #include "gchandletableimpl.h"
 
+#ifndef BUILD_AS_STANDALONE
 #ifdef FEATURE_COMINTEROP
 #include "comcallablewrapper.h"
 #endif // FEATURE_COMINTEROP
-#ifndef FEATURE_REDHAWK
-#include "nativeoverlapped.h"
-#endif // FEATURE_REDHAWK
+#endif // BUILD_AS_STANDALONE
 
-GVAL_IMPL(HandleTableMap, g_HandleTableMap);
+HandleTableMap g_HandleTableMap;
 
 // Array of contexts used while scanning dependent handles for promotion. There are as many contexts as GC
 // heaps and they're allocated by Ref_Initialize and initialized during each GC by GcDhInitialScan.
@@ -137,7 +136,7 @@ void CALLBACK TraceDependentHandle(_UNCHECKED_OBJECTREF *pObjRef, uintptr_t *pEx
     // At this point, it's possible that either or both of the primary and secondary
     // objects are NULL.  However, if the secondary object is non-NULL, then the primary
     // object should also be non-NULL.
-    _ASSERTE(*pExtraInfo == NULL || *pObjRef != NULL);
+    _ASSERTE(*pExtraInfo == 0 || *pObjRef != NULL);
 
     struct DIAG_DEPSCANINFO *pInfo = (struct DIAG_DEPSCANINFO*)lp2;
 
@@ -275,40 +274,23 @@ void CALLBACK PinObject(_UNCHECKED_OBJECTREF *pObjRef, uintptr_t *pExtraInfo, ui
     _ASSERTE(lp2);
     promote_func* callback = (promote_func*) lp2;
     callback(pRef, (ScanContext *)lp1, GC_CALL_PINNED);
+}
 
-#ifndef FEATURE_REDHAWK
-    Object * pPinnedObj = *pRef;
+void CALLBACK AsyncPinObject(_UNCHECKED_OBJECTREF *pObjRef, uintptr_t *pExtraInfo, uintptr_t lp1, uintptr_t lp2)
+{
+    UNREFERENCED_PARAMETER(pExtraInfo);
 
-    if (!HndIsNullOrDestroyedHandle(pPinnedObj) && pPinnedObj->GetGCSafeMethodTable() == g_pOverlappedDataClass)
+    LOG((LF_GC, LL_WARNING, LOG_HANDLE_OBJECT_CLASS("WARNING: ", pObjRef, "causes (async) pinning of ", *pObjRef)));
+
+    Object **pRef = (Object **)pObjRef;
+    _ASSERTE(lp2);
+    promote_func* callback = (promote_func*)lp2;
+    callback(pRef, (ScanContext *)lp2, GC_CALL_PINNED);
+    Object* pPinnedObj = *pRef;
+    if (!HndIsNullOrDestroyedHandle(pPinnedObj))
     {
-        // reporting the pinned user objects
-        OverlappedDataObject *pOverlapped = (OverlappedDataObject *)pPinnedObj;
-        if (pOverlapped->m_userObject != NULL)
-        {
-            //callback(OBJECTREF_TO_UNCHECKED_OBJECTREF(pOverlapped->m_userObject), (ScanContext *)lp1, GC_CALL_PINNED);
-            if (pOverlapped->m_isArray)
-            {
-                pOverlapped->m_userObjectInternal = static_cast<void*>(OBJECTREFToObject(pOverlapped->m_userObject));
-                ArrayBase* pUserObject = (ArrayBase*)OBJECTREFToObject(pOverlapped->m_userObject);
-                Object **ppObj = (Object**)pUserObject->GetDataPtr(TRUE);
-                size_t num = pUserObject->GetNumComponents();
-                for (size_t i = 0; i < num; i ++)
-                {
-                    callback(ppObj + i, (ScanContext *)lp1, GC_CALL_PINNED);
-                }
-            }
-            else
-            {
-                callback(&OBJECTREF_TO_UNCHECKED_OBJECTREF(pOverlapped->m_userObject), (ScanContext *)lp1, GC_CALL_PINNED);
-            }
-        }
-
-        if (pOverlapped->GetAppDomainId() !=  DefaultADID && pOverlapped->GetAppDomainIndex().m_dwIndex == DefaultADID)
-        {
-            OverlappedDataObject::MarkCleanupNeededFromGC();
-        }
+        GCToEEInterface::WalkAsyncPinnedForPromotion(pPinnedObj, (ScanContext *)lp1, callback);
     }
-#endif // !FEATURE_REDHAWK
 }
 
 
@@ -422,14 +404,12 @@ void CALLBACK UpdatePointer(_UNCHECKED_OBJECTREF *pObjRef, uintptr_t *pExtraInfo
  */
 void CALLBACK ScanPointerForProfilerAndETW(_UNCHECKED_OBJECTREF *pObjRef, uintptr_t *pExtraInfo, uintptr_t lp1, uintptr_t lp2)
 {
-#ifndef FEATURE_REDHAWK
     CONTRACTL
     {
         NOTHROW;
         GC_NOTRIGGER;
     }
     CONTRACTL_END;
-#endif // FEATURE_REDHAWK
     UNREFERENCED_PARAMETER(pExtraInfo);
     handle_scan_fn fn = (handle_scan_fn)lp2;
 
@@ -1093,7 +1073,12 @@ void Ref_TracePinningRoots(uint32_t condemned, uint32_t maxgen, ScanContext* sc,
                         sc->pCurrentDomain = SystemDomain::GetAppDomainAtIndex(HndGetHandleTableADIndex(hTable));
                     }
 #endif //FEATURE_APPDOMAIN_RESOURCE_MONITORING
-                    HndScanHandlesForGC(hTable, PinObject, uintptr_t(sc), uintptr_t(fn), types, _countof(types), condemned, maxgen, flags);
+
+                    // Pinned handles and async pinned handles are scanned in separate passes, since async pinned
+                    // handles may require a callback into the EE in order to fully trace an async pinned
+                    // object's object graph.
+                    HndScanHandlesForGC(hTable, PinObject, uintptr_t(sc), uintptr_t(fn), &types[0], 1, condemned, maxgen, flags);
+                    HndScanHandlesForGC(hTable, AsyncPinObject, uintptr_t(sc), uintptr_t(fn), &types[1], 1, condemned, maxgen, flags);
                 }
             }
         walk = walk->pNext;
@@ -1894,9 +1879,24 @@ bool HandleTableBucket::Contains(OBJECTHANDLE handle)
 
 #endif // !DACCESS_COMPILE
 
+GC_DAC_VISIBLE
 OBJECTREF GetDependentHandleSecondary(OBJECTHANDLE handle)
 { 
     WRAPPER_NO_CONTRACT;
 
     return UNCHECKED_OBJECTREF_TO_OBJECTREF((_UNCHECKED_OBJECTREF)HndGetHandleExtraInfo(handle));
+}
+
+void PopulateHandleTableDacVars(GcDacVars* gcDacVars)
+{
+    static_assert(offsetof(HandleTableMap, pBuckets) == offsetof(dac_handle_table_map, pBuckets), "handle table map DAC layout mismatch");
+    static_assert(offsetof(HandleTableMap, pNext) == offsetof(dac_handle_table_map, pNext), "handle table map DAC layout mismatch");
+    static_assert(offsetof(HandleTableMap, dwMaxIndex) == offsetof(dac_handle_table_map, dwMaxIndex), "handle table map DAC layout mismatch");
+    static_assert(offsetof(HandleTableBucket, pTable) == offsetof(dac_handle_table_bucket, pTable), "handle table bucket DAC layout mismatch");
+    static_assert(offsetof(HandleTableBucket, HandleTableIndex) == offsetof(dac_handle_table_bucket, HandleTableIndex), "handle table bucket DAC layout mismatch");
+    static_assert(offsetof(HandleTable, uADIndex) == offsetof(dac_handle_table, uADIndex), "handle table DAC layout mismatch");
+
+#ifndef DACCESS_COMPILE
+    gcDacVars->handle_table_map = reinterpret_cast<dac_handle_table_map*>(&g_HandleTableMap);
+#endif // DACCESS_COMPILE
 }

@@ -213,11 +213,11 @@ TODO: Talk about initializing strutures before use
     #define SELECTANY extern __declspec(selectany)
 #endif
 
-SELECTANY const GUID JITEEVersionIdentifier = { /* 28eb875f-b6a9-4a04-9ba7-69ba59deed46 */
-    0x28eb875f,
-    0xb6a9,
-    0x4a04,
-    { 0x9b, 0xa7, 0x69, 0xba, 0x59, 0xde, 0xed, 0x46 }
+SELECTANY const GUID JITEEVersionIdentifier = { /* b6af83a1-ca48-46c6-b7b0-5d7d6a79a5c5 */
+    0xb6af83a1,
+    0xca48,
+    0x46c6,
+    {0xb7, 0xb0, 0x5d, 0x7d, 0x6a, 0x79, 0xa5, 0xc5}
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -642,6 +642,7 @@ enum CorInfoHelpFunc
 
     CORINFO_HELP_THROW_ARGUMENTEXCEPTION,           // throw ArgumentException
     CORINFO_HELP_THROW_ARGUMENTOUTOFRANGEEXCEPTION, // throw ArgumentOutOfRangeException
+    CORINFO_HELP_THROW_PLATFORM_NOT_SUPPORTED,      // throw PlatformNotSupportedException
 
     CORINFO_HELP_JIT_PINVOKE_BEGIN, // Transition to preemptive mode before a P/Invoke, frame is the first argument
     CORINFO_HELP_JIT_PINVOKE_END,   // Transition to cooperative mode after a P/Invoke, frame is the first argument
@@ -827,7 +828,7 @@ enum CorInfoFlag
     CORINFO_FLG_NOSECURITYWRAP        = 0x04000000, // The method requires no security checks
     CORINFO_FLG_DONT_INLINE           = 0x10000000, // The method should not be inlined
     CORINFO_FLG_DONT_INLINE_CALLER    = 0x20000000, // The method should not be inlined, nor should its callers. It cannot be tail called.
-//  CORINFO_FLG_UNUSED                = 0x40000000,
+    CORINFO_FLG_JIT_INTRINSIC         = 0x40000000, // Method is a potential jit intrinsic; verify identity by name check
 
     // These are internal flags that can only be on Classes
     CORINFO_FLG_VALUECLASS            = 0x00010000, // is the class a value class
@@ -1332,6 +1333,13 @@ struct CORINFO_RUNTIME_LOOKUP
     // 1 means that value stored at first offset (offsets[0]) from pointer is offset1, and the next pointer is
     // stored at pointer+offsets[0]+offset1.
     bool                indirectFirstOffset;
+
+    // If set, second offset is indirect.
+    // 0 means that value stored at second offset (offsets[1]) from pointer is next pointer, to which the next offset
+    // (offsets[2]) is added and so on.
+    // 1 means that value stored at second offset (offsets[1]) from pointer is offset2, and the next pointer is
+    // stored at pointer+offsets[1]+offset2.
+    bool                indirectSecondOffset;
 } ;
 
 // Result of calling embedGenericHandle
@@ -1947,6 +1955,14 @@ typedef SIZE_T GSCookie;
 
 const int MAX_EnC_HANDLER_NESTING_LEVEL = 6;
 
+// Results from type comparison queries
+enum class TypeCompareState
+{
+    MustNot = -1, // types are not equal
+    May = 0,      // types may be equal (must test at runtime)
+    Must = 1,     // type are equal
+};
+
 //
 // This interface is logically split into sections for each class of information 
 // (ICorMethodInfo, ICorModuleInfo, etc.). This split used to exist physically as well
@@ -2062,7 +2078,8 @@ public:
     virtual void getMethodVTableOffset (
             CORINFO_METHOD_HANDLE       method,                 /* IN */
             unsigned*                   offsetOfIndirection,    /* OUT */
-            unsigned*                   offsetAfterIndirection  /* OUT */
+            unsigned*                   offsetAfterIndirection, /* OUT */
+            bool*                       isRelative              /* OUT */
             ) = 0;
 
     // Find the virtual method in implementingClass that overrides virtualMethod,
@@ -2075,6 +2092,18 @@ public:
             CORINFO_METHOD_HANDLE       virtualMethod,          /* IN */
             CORINFO_CLASS_HANDLE        implementingClass,      /* IN */
             CORINFO_CONTEXT_HANDLE      ownerType = NULL        /* IN */
+            ) = 0;
+
+    // Get the unboxed entry point for a method, if possible.
+    virtual CORINFO_METHOD_HANDLE getUnboxedEntry(
+        CORINFO_METHOD_HANDLE ftn,
+        bool* requiresInstMethodTableArg = NULL /* OUT */
+        ) = 0;
+
+    // Given T, return the type of the default EqualityComparer<T>.
+    // Returns null if the type can't be determined exactly.
+    virtual CORINFO_CLASS_HANDLE getDefaultEqualityComparerClass(
+            CORINFO_CLASS_HANDLE elemType
             ) = 0;
 
     // Given resolved token that corresponds to an intrinsic classified as
@@ -2251,7 +2280,6 @@ public:
     virtual const char* getClassName (
             CORINFO_CLASS_HANDLE    cls
             ) = 0;
-
 
     // Append a (possibly truncated) representation of the type cls to the preallocated buffer ppBuf of length pnBufLen
     // If fNamespace=TRUE, include the namespace/enclosing classes
@@ -2474,6 +2502,20 @@ public:
 
     // TRUE if cls1 and cls2 are considered equivalent types.
     virtual BOOL areTypesEquivalent(
+            CORINFO_CLASS_HANDLE        cls1,
+            CORINFO_CLASS_HANDLE        cls2
+            ) = 0;
+
+    // See if a cast from fromClass to toClass will succeed, fail, or needs
+    // to be resolved at runtime.
+    virtual TypeCompareState compareTypesForCast(
+            CORINFO_CLASS_HANDLE        fromClass,
+            CORINFO_CLASS_HANDLE        toClass
+            ) = 0;
+
+    // See if types represented by cls1 and cls2 compare equal, not
+    // equal, or the comparison needs to be resolved at runtime.
+    virtual TypeCompareState compareTypesForEquality(
             CORINFO_CLASS_HANDLE        cls1,
             CORINFO_CLASS_HANDLE        cls2
             ) = 0;
@@ -2781,6 +2823,15 @@ public:
     virtual const char* getMethodName (
             CORINFO_METHOD_HANDLE       ftn,        /* IN */
             const char                **moduleName  /* OUT */
+            ) = 0;
+
+    // Return method name as in metadata, or nullptr if there is none,
+    // and optionally return the class and namespace names as in metadata.
+    // Suitable for non-debugging use.
+    virtual const char* getMethodNameFromMetadata(
+            CORINFO_METHOD_HANDLE       ftn,            /* IN */
+            const char                **className,      /* OUT */
+            const char                **namespaceName   /* OUT */
             ) = 0;
 
     // this function is for debugging only.  It returns a value that

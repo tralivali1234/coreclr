@@ -274,31 +274,7 @@ GenTree* DecomposeLongs::DecomposeNode(GenTree* tree)
     // element into two elements: one for each half of the GT_LONG.
     if ((use.Def()->OperGet() == GT_LONG) && !use.IsDummyUse() && (use.User()->OperGet() == GT_FIELD_LIST))
     {
-        GenTreeOp* value = use.Def()->AsOp();
-        Range().Remove(value);
-
-        // The node returned by `use.User()` is the head of the field list. We need to find the actual node that uses
-        // the `GT_LONG` so that we can split it.
-        GenTreeFieldList* listNode = use.User()->AsFieldList();
-        for (; listNode != nullptr; listNode = listNode->Rest())
-        {
-            if (listNode->Current() == value)
-            {
-                break;
-            }
-        }
-
-        assert(listNode != nullptr);
-        GenTree* rest = listNode->gtOp2;
-
-        GenTreeFieldList* loNode = listNode;
-        loNode->gtOp1            = value->gtOp1;
-        loNode->gtFieldType      = TYP_INT;
-
-        GenTreeFieldList* hiNode =
-            new (m_compiler, GT_FIELD_LIST) GenTreeFieldList(value->gtOp2, loNode->gtFieldOffset + 4, TYP_INT, loNode);
-
-        hiNode->gtOp2 = rest;
+        DecomposeFieldList(use.User()->AsFieldList(), use.Def()->AsOp());
     }
 
 #ifdef DEBUG
@@ -341,11 +317,11 @@ GenTree* DecomposeLongs::FinalizeDecomposition(LIR::Use& use,
     GenTree* gtLong = new (m_compiler, GT_LONG) GenTreeOp(GT_LONG, TYP_LONG, loResult, hiResult);
     if (use.IsDummyUse())
     {
-        gtLong->gtLIRFlags |= LIR::Flags::IsUnusedValue;
+        gtLong->SetUnusedValue();
     }
 
-    loResult->gtLIRFlags &= ~LIR::Flags::IsUnusedValue;
-    hiResult->gtLIRFlags &= ~LIR::Flags::IsUnusedValue;
+    loResult->ClearUnusedValue();
+    hiResult->ClearUnusedValue();
 
     Range().InsertAfter(insertResultAfter, gtLong);
 
@@ -607,7 +583,8 @@ GenTree* DecomposeLongs::DecomposeCast(LIR::Use& use)
             // check provided by codegen.
             //
 
-            loResult = loSrcOp;
+            const bool signExtend = (cast->gtFlags & GTF_UNSIGNED) == 0;
+            loResult              = EnsureIntSized(loSrcOp, signExtend);
 
             hiResult                       = cast;
             hiResult->gtType               = TYP_INT;
@@ -657,7 +634,9 @@ GenTree* DecomposeLongs::DecomposeCast(LIR::Use& use)
             }
             else if (varTypeIsUnsigned(srcType))
             {
-                loResult = cast->gtGetOp1();
+                const bool signExtend = (cast->gtFlags & GTF_UNSIGNED) == 0;
+                loResult              = EnsureIntSized(cast->gtGetOp1(), signExtend);
+
                 hiResult = m_compiler->gtNewZeroConNode(TYP_INT);
 
                 Range().InsertAfter(cast, hiResult);
@@ -719,6 +698,49 @@ GenTree* DecomposeLongs::DecomposeCnsLng(LIR::Use& use)
     Range().InsertAfter(loResult, hiResult);
 
     return FinalizeDecomposition(use, loResult, hiResult, hiResult);
+}
+
+//------------------------------------------------------------------------
+// DecomposeFieldList: Decompose GT_FIELD_LIST.
+//
+// Arguments:
+//    listNode - the head of the FIELD_LIST that contains the given GT_LONG.
+//    longNode - the node to decompose
+//
+// Return Value:
+//    The next node to process.
+//
+// Notes:
+//    Split a LONG field list element into two elements: one for each half of the GT_LONG.
+//
+GenTree* DecomposeLongs::DecomposeFieldList(GenTreeFieldList* listNode, GenTreeOp* longNode)
+{
+    assert(longNode->OperGet() == GT_LONG);
+    // We are given the head of the field list. We need to find the actual node that uses
+    // the `GT_LONG` so that we can split it.
+    for (; listNode != nullptr; listNode = listNode->Rest())
+    {
+        if (listNode->Current() == longNode)
+        {
+            break;
+        }
+    }
+    assert(listNode != nullptr);
+
+    Range().Remove(longNode);
+
+    GenTree* rest = listNode->gtOp2;
+
+    GenTreeFieldList* loNode = listNode;
+    loNode->gtType           = TYP_INT;
+    loNode->gtOp1            = longNode->gtOp1;
+    loNode->gtFieldType      = TYP_INT;
+
+    GenTreeFieldList* hiNode =
+        new (m_compiler, GT_FIELD_LIST) GenTreeFieldList(longNode->gtOp2, loNode->gtFieldOffset + 4, TYP_INT, loNode);
+    hiNode->gtOp2 = rest;
+
+    return listNode->gtNext;
 }
 
 //------------------------------------------------------------------------
@@ -989,10 +1011,13 @@ GenTree* DecomposeLongs::DecomposeArith(LIR::Use& use)
 
     if ((oper == GT_ADD) || (oper == GT_SUB))
     {
-        if (loResult->gtOverflow())
+        loResult->gtFlags |= GTF_SET_FLAGS;
+        hiResult->gtFlags |= GTF_USE_FLAGS;
+
+        if ((loResult->gtFlags & GTF_OVERFLOW) != 0)
         {
-            hiResult->gtFlags |= GTF_OVERFLOW;
-            loResult->gtFlags &= ~GTF_OVERFLOW;
+            hiResult->gtFlags |= GTF_OVERFLOW | GTF_EXCEPT;
+            loResult->gtFlags &= ~(GTF_OVERFLOW | GTF_EXCEPT);
         }
         if (loResult->gtFlags & GTF_UNSIGNED)
         {
@@ -1055,6 +1080,10 @@ GenTree* DecomposeLongs::DecomposeShift(LIR::Use& use)
         {
             GenTree* next = shift->gtNext;
             // Remove shift and don't do anything else.
+            if (shift->IsUnusedValue())
+            {
+                gtLong->SetUnusedValue();
+            }
             Range().Remove(shift);
             use.ReplaceWith(m_compiler, gtLong);
             return next;
@@ -1127,7 +1156,7 @@ GenTree* DecomposeLongs::DecomposeShift(LIR::Use& use)
                     }
                     else
                     {
-                        hiOp1->gtLIRFlags |= LIR::Flags::IsUnusedValue;
+                        hiOp1->SetUnusedValue();
                     }
 
                     if (count < 64)
@@ -1175,7 +1204,7 @@ GenTree* DecomposeLongs::DecomposeShift(LIR::Use& use)
                         }
                         else
                         {
-                            loOp1->gtLIRFlags |= LIR::Flags::IsUnusedValue;
+                            loOp1->SetUnusedValue();
                         }
 
                         // Zero out hi (shift of >= 64 bits moves all the bits out of the two registers)
@@ -1235,7 +1264,7 @@ GenTree* DecomposeLongs::DecomposeShift(LIR::Use& use)
                     }
                     else
                     {
-                        loOp1->gtLIRFlags |= LIR::Flags::IsUnusedValue;
+                        loOp1->SetUnusedValue();
                     }
 
                     assert(count >= 32);
@@ -1271,7 +1300,7 @@ GenTree* DecomposeLongs::DecomposeShift(LIR::Use& use)
                         }
                         else
                         {
-                            hiOp1->gtLIRFlags |= LIR::Flags::IsUnusedValue;
+                            hiOp1->SetUnusedValue();
                         }
 
                         // Zero out lo
@@ -1333,7 +1362,7 @@ GenTree* DecomposeLongs::DecomposeShift(LIR::Use& use)
                     }
                     else
                     {
-                        loOp1->gtLIRFlags |= LIR::Flags::IsUnusedValue;
+                        loOp1->SetUnusedValue();
                     }
 
                     if (count < 64)
@@ -1423,8 +1452,13 @@ GenTree* DecomposeLongs::DecomposeShift(LIR::Use& use)
 
         GenTreeArgList* argList = m_compiler->gtNewArgList(loOp1, hiOp1, shiftByOp);
 
-        GenTree* call = m_compiler->gtNewHelperCallNode(helper, TYP_LONG, 0, argList);
+        GenTree* call = m_compiler->gtNewHelperCallNode(helper, TYP_LONG, argList);
         call->gtFlags |= shift->gtFlags & GTF_ALL_EFFECT;
+
+        if (shift->IsUnusedValue())
+        {
+            call->SetUnusedValue();
+        }
 
         GenTreeCall*    callNode    = call->AsCall();
         ReturnTypeDesc* retTypeDesc = callNode->GetReturnTypeDesc();
@@ -1913,6 +1947,43 @@ GenTree* DecomposeLongs::RepresentOpAsLocalVar(GenTree* op, GenTree* user, GenTr
 }
 
 //------------------------------------------------------------------------
+// DecomposeLongs::EnsureIntSized:
+//    Checks to see if the given node produces an int-sized value and
+//    performs the appropriate widening if it does not.
+//
+// Arguments:
+//    node       - The node that may need to be widened.
+//    signExtend - True if the value should be sign-extended; false if it
+//                 should be zero-extended.
+//
+// Return Value:
+//    The node that produces the widened value.
+GenTree* DecomposeLongs::EnsureIntSized(GenTree* node, bool signExtend)
+{
+    assert(node != nullptr);
+    if (!varTypeIsSmall(node))
+    {
+        assert(genTypeSize(node) == genTypeSize(TYP_INT));
+        return node;
+    }
+
+    if (node->OperIs(GT_LCL_VAR) && !m_compiler->lvaTable[node->AsLclVarCommon()->gtLclNum].lvNormalizeOnLoad())
+    {
+        node->gtType = TYP_INT;
+        return node;
+    }
+
+    GenTree* const cast = m_compiler->gtNewCastNode(TYP_INT, node, node->TypeGet());
+    if (!signExtend)
+    {
+        cast->gtFlags |= GTF_UNSIGNED;
+    }
+
+    Range().InsertAfter(node, cast);
+    return cast;
+}
+
+//------------------------------------------------------------------------
 // GetHiOper: Convert arithmetic operator to "high half" operator of decomposed node.
 //
 // Arguments:
@@ -1931,12 +2002,6 @@ genTreeOps DecomposeLongs::GetHiOper(genTreeOps oper)
             break;
         case GT_SUB:
             return GT_SUB_HI;
-            break;
-        case GT_DIV:
-            return GT_DIV_HI;
-            break;
-        case GT_MOD:
-            return GT_MOD_HI;
             break;
         case GT_OR:
             return GT_OR;

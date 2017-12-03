@@ -142,8 +142,7 @@ void CodeGen::genSetRegToConst(regNumber targetReg, var_types targetType, GenTre
             GenTreeIntConCommon* con    = tree->AsIntConCommon();
             ssize_t              cnsVal = con->IconValue();
 
-            bool needReloc = compiler->opts.compReloc && tree->IsIconHandle();
-            if (needReloc)
+            if (con->ImmedValNeedsReloc(compiler))
             {
                 instGen_Set_Reg_To_Imm(EA_HANDLE_CNS_RELOC, targetReg, cnsVal);
                 regTracker.rsTrackRegTrash(targetReg);
@@ -772,15 +771,6 @@ instruction CodeGen::genGetInsForOper(genTreeOps oper, var_types type)
     return ins;
 }
 
-// Generates CpBlk code by performing a loop unroll
-// Preconditions:
-//  The size argument of the CpBlk node is a constant and <= 64 bytes.
-//  This may seem small but covers >95% of the cases in several framework assemblies.
-void CodeGen::genCodeForCpBlkUnroll(GenTreeBlk* cpBlkNode)
-{
-    NYI_ARM("genCodeForCpBlkUnroll");
-}
-
 // Generate code for InitBlk by performing a loop unroll
 // Preconditions:
 //   a) Both the size and fill byte value are integer constants.
@@ -823,7 +813,7 @@ void CodeGen::genCodeForNegNot(GenTree* tree)
     }
     else
     {
-        getEmitter()->emitIns_R_R_I(ins, emitTypeSize(tree), targetReg, operandReg, 0);
+        getEmitter()->emitIns_R_R_I(ins, emitTypeSize(tree), targetReg, operandReg, 0, INS_FLAGS_SET);
     }
 
     genProduceReg(tree);
@@ -902,9 +892,18 @@ void CodeGen::genCodeForCpObj(GenTreeObj* cpObjNode)
         for (unsigned i = 0; i < slots; ++i)
         {
             if (gcPtrs[i] == GCT_GCREF)
+            {
                 attr = EA_GCREF;
+            }
             else if (gcPtrs[i] == GCT_BYREF)
+            {
                 attr = EA_BYREF;
+            }
+            else
+            {
+                attr = EA_PTRSIZE;
+            }
+
             emit->emitIns_R_R_I(INS_ldr, attr, tmpReg, REG_WRITE_BARRIER_SRC_BYREF, TARGET_POINTER_SIZE,
                                 INS_FLAGS_DONT_CARE, INS_OPTS_LDST_POST_INC);
             emit->emitIns_R_R_I(INS_str, attr, tmpReg, REG_WRITE_BARRIER_DST_BYREF, TARGET_POINTER_SIZE,
@@ -1528,7 +1527,7 @@ void CodeGen::genLongToIntCast(GenTree* cast)
 }
 
 //------------------------------------------------------------------------
-// genIntToFloatCast: Generate code to cast an int/long to float/double
+// genIntToFloatCast: Generate code to cast an int to float/double
 //
 // Arguments:
 //    treeNode - The GT_CAST node
@@ -1555,7 +1554,7 @@ void CodeGen::genIntToFloatCast(GenTreePtr treeNode)
     assert(genIsValidIntReg(op1->gtRegNum)); // Must be a valid int reg.
 
     var_types dstType = treeNode->CastToType();
-    var_types srcType = op1->TypeGet();
+    var_types srcType = genActualType(op1->TypeGet());
     assert(!varTypeIsFloating(srcType) && varTypeIsFloating(dstType));
 
     // force the srcType to unsigned if GT_UNSIGNED flag is set
@@ -1564,40 +1563,23 @@ void CodeGen::genIntToFloatCast(GenTreePtr treeNode)
         srcType = genUnsignedType(srcType);
     }
 
-    // We should never see a srcType whose size is neither EA_4BYTE or EA_8BYTE
-    // For conversions from small types (byte/sbyte/int16/uint16) to float/double,
-    // we expect the front-end or lowering phase to have generated two levels of cast.
-    //
+    // We only expect a srcType whose size is EA_4BYTE.
     emitAttr srcSize = EA_ATTR(genTypeSize(srcType));
-    noway_assert((srcSize == EA_4BYTE) || (srcSize == EA_8BYTE));
+    noway_assert(srcSize == EA_4BYTE);
 
     instruction insVcvt = INS_invalid;
 
     if (dstType == TYP_DOUBLE)
     {
-        if (srcSize == EA_4BYTE)
-        {
-            insVcvt = (varTypeIsUnsigned(srcType)) ? INS_vcvt_u2d : INS_vcvt_i2d;
-        }
-        else
-        {
-            assert(srcSize == EA_8BYTE);
-            NYI_ARM("Casting int64/uint64 to double in genIntToFloatCast");
-        }
+        insVcvt = (varTypeIsUnsigned(srcType)) ? INS_vcvt_u2d : INS_vcvt_i2d;
     }
     else
     {
         assert(dstType == TYP_FLOAT);
-        if (srcSize == EA_4BYTE)
-        {
-            insVcvt = (varTypeIsUnsigned(srcType)) ? INS_vcvt_u2f : INS_vcvt_i2f;
-        }
-        else
-        {
-            assert(srcSize == EA_8BYTE);
-            NYI_ARM("Casting int64/uint64 to float in genIntToFloatCast");
-        }
+        insVcvt = (varTypeIsUnsigned(srcType)) ? INS_vcvt_u2f : INS_vcvt_i2f;
     }
+    // All other cast are implemented by different CORINFO_HELP_XX2XX
+    // Look to Compiler::fgMorphCast()
 
     genConsumeOperands(treeNode->AsOp());
 
@@ -1609,7 +1591,7 @@ void CodeGen::genIntToFloatCast(GenTreePtr treeNode)
 }
 
 //------------------------------------------------------------------------
-// genFloatToIntCast: Generate code to cast float/double to int/long
+// genFloatToIntCast: Generate code to cast float/double to int
 //
 // Arguments:
 //    treeNode - The GT_CAST node
@@ -1640,40 +1622,26 @@ void CodeGen::genFloatToIntCast(GenTreePtr treeNode)
     var_types srcType = op1->TypeGet();
     assert(varTypeIsFloating(srcType) && !varTypeIsFloating(dstType));
 
-    // We should never see a dstType whose size is neither EA_4BYTE or EA_8BYTE
+    // We only expect a dstType whose size is EA_4BYTE.
     // For conversions to small types (byte/sbyte/int16/uint16) from float/double,
     // we expect the front-end or lowering phase to have generated two levels of cast.
     //
     emitAttr dstSize = EA_ATTR(genTypeSize(dstType));
-    noway_assert((dstSize == EA_4BYTE) || (dstSize == EA_8BYTE));
+    noway_assert(dstSize == EA_4BYTE);
 
     instruction insVcvt = INS_invalid;
 
     if (srcType == TYP_DOUBLE)
     {
-        if (dstSize == EA_4BYTE)
-        {
-            insVcvt = (varTypeIsUnsigned(dstType)) ? INS_vcvt_d2u : INS_vcvt_d2i;
-        }
-        else
-        {
-            assert(dstSize == EA_8BYTE);
-            NYI_ARM("Casting double to int64/uint64 in genIntToFloatCast");
-        }
+        insVcvt = (varTypeIsUnsigned(dstType)) ? INS_vcvt_d2u : INS_vcvt_d2i;
     }
     else
     {
         assert(srcType == TYP_FLOAT);
-        if (dstSize == EA_4BYTE)
-        {
-            insVcvt = (varTypeIsUnsigned(dstType)) ? INS_vcvt_f2u : INS_vcvt_f2i;
-        }
-        else
-        {
-            assert(dstSize == EA_8BYTE);
-            NYI_ARM("Casting float to int64/uint64 in genIntToFloatCast");
-        }
+        insVcvt = (varTypeIsUnsigned(dstType)) ? INS_vcvt_f2u : INS_vcvt_f2i;
     }
+    // All other cast are implemented by different CORINFO_HELP_XX2XX
+    // Look to Compiler::fgMorphCast()
 
     genConsumeOperands(treeNode->AsOp());
 
@@ -1752,7 +1720,6 @@ void CodeGen::genEmitHelperCall(unsigned helper, int argSize, emitAttr retSize, 
     }
 
     regTracker.rsTrashRegSet(RBM_CALLEE_TRASH);
-    regTracker.rsTrashRegsForGCInterruptability();
 }
 
 //------------------------------------------------------------------------

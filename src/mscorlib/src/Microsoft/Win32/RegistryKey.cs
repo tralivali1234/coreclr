@@ -52,7 +52,7 @@ using Microsoft.Win32.SafeHandles;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System.Diagnostics.Contracts;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 
@@ -117,27 +117,6 @@ namespace Microsoft.Win32
         private volatile bool remoteKey = false;
         private volatile RegistryKeyPermissionCheck checkMode;
         private volatile RegistryView regView = RegistryView.Default;
-
-        /**
-         * RegistryInternalCheck values.  Useful only for CheckPermission
-         */
-        private enum RegistryInternalCheck
-        {
-            CheckSubKeyWritePermission = 0,
-            CheckSubKeyReadPermission = 1,
-            CheckSubKeyCreatePermission = 2,
-            CheckSubTreeReadPermission = 3,
-            CheckSubTreeWritePermission = 4,
-            CheckSubTreeReadWritePermission = 5,
-            CheckValueWritePermission = 6,
-            CheckValueCreatePermission = 7,
-            CheckValueReadPermission = 8,
-            CheckKeyReadPermission = 9,
-            CheckSubTreePermission = 10,
-            CheckOpenSubKeyWithWritablePermission = 11,
-            CheckOpenSubKeyPermission = 12
-        };
-
 
         /**
          * Creates a RegistryKey.
@@ -237,7 +216,7 @@ namespace Microsoft.Win32
             }
             // We really should throw an exception here if errorCode was bad,
             // but we can't for compatibility reasons.
-            BCLDebug.Correctness(errorCode == 0, "RegDeleteValue failed.  Here's your error code: " + errorCode);
+            Debug.Assert(errorCode == 0, "RegDeleteValue failed.  Here's your error code: " + errorCode);
         }
 
         /**
@@ -264,8 +243,8 @@ namespace Microsoft.Win32
         internal static RegistryKey GetBaseKey(IntPtr hKey, RegistryView view)
         {
             int index = ((int)hKey) & 0x0FFFFFFF;
-            BCLDebug.Assert(index >= 0 && index < hkeyNames.Length, "index is out of range!");
-            BCLDebug.Assert((((int)hKey) & 0xFFFFFFF0) == 0x80000000, "Invalid hkey value!");
+            Debug.Assert(index >= 0 && index < hkeyNames.Length, "index is out of range!");
+            Debug.Assert((((int)hKey) & 0xFFFFFFF0) == 0x80000000, "Invalid hkey value!");
 
             bool isPerf = hKey == HKEY_PERFORMANCE_DATA;
             // only mark the SafeHandle as ownsHandle if the key is HKEY_PERFORMANCE_DATA.
@@ -315,29 +294,6 @@ namespace Microsoft.Win32
                 ThrowHelper.ThrowSecurityException(ExceptionResource.Security_RegistryPermission);
             }
 
-            return null;
-        }
-
-        // This required no security checks. This is to get around the Deleting SubKeys which only require
-        // write permission. They call OpenSubKey which required read. Now instead call this function w/o security checks
-        internal RegistryKey InternalOpenSubKey(String name, bool writable)
-        {
-            ValidateKeyName(name);
-            EnsureNotDisposed();
-
-            SafeRegistryHandle result = null;
-            int ret = Win32Native.RegOpenKeyEx(hkey,
-                name,
-                0,
-                GetRegistryKeyAccess(writable) | (int)regView,
-                out result);
-
-            if (ret == 0 && !result.IsInvalid)
-            {
-                RegistryKey key = new RegistryKey(result, writable, false, remoteKey, false, regView);
-                key.keyName = keyName + "\\" + name;
-                return key;
-            }
             return null;
         }
 
@@ -502,9 +458,7 @@ namespace Microsoft.Win32
          * Note that <var>name</var> can be null or "", at which point the
          * unnamed or default value of this Registry key is returned, if any.
          * The default values for RegistryKeys are OS-dependent.  NT doesn't
-         * have them by default, but they can exist and be of any type.  On
-         * Win95, the default value is always an empty key of type REG_SZ.
-         * Win98 supports default values of any type, but defaults to REG_SZ.
+         * have them by default, but they can exist and be of any type. 
          *
          * @param name Name of value to retrieve.
          * @param defaultValue Value to return if <i>name</i> doesn't exist.
@@ -585,7 +539,7 @@ namespace Microsoft.Win32
             if (datasize < 0)
             {
                 // unexpected code path
-                BCLDebug.Assert(false, "[InternalGetValue] RegQueryValue returned ERROR_SUCCESS but gave a negative datasize");
+                Debug.Fail("[InternalGetValue] RegQueryValue returned ERROR_SUCCESS but gave a negative datasize");
                 datasize = 0;
             }
 
@@ -609,7 +563,7 @@ namespace Microsoft.Win32
                             goto case Win32Native.REG_BINARY;
                         }
                         long blob = 0;
-                        BCLDebug.Assert(datasize == 8, "datasize==8");
+                        Debug.Assert(datasize == 8, "datasize==8");
                         // Here, datasize must be 8 when calling this
                         ret = Win32Native.RegQueryValueEx(hkey, name, null, ref type, ref blob, ref datasize);
 
@@ -624,7 +578,7 @@ namespace Microsoft.Win32
                             goto case Win32Native.REG_QWORD;
                         }
                         int blob = 0;
-                        BCLDebug.Assert(datasize == 4, "datasize==4");
+                        Debug.Assert(datasize == 4, "datasize==4");
                         // Here, datasize must be four when calling this
                         ret = Win32Native.RegQueryValueEx(hkey, name, null, ref type, ref blob, ref datasize);
 
@@ -748,7 +702,7 @@ namespace Microsoft.Win32
 
                             if (nextNull < len)
                             {
-                                BCLDebug.Assert(blob[nextNull] == (char)0, "blob[nextNull] should be 0");
+                                Debug.Assert(blob[nextNull] == (char)0, "blob[nextNull] should be 0");
                                 if (nextNull - cur > 0)
                                 {
                                     strings.Add(new String(blob, cur, nextNull - cur));
@@ -1036,13 +990,13 @@ namespace Microsoft.Win32
                     throw new IOException(SR.Arg_RegKeyNotFound, errorCode);
 
                 default:
-                    throw new IOException(Win32Native.GetMessage(errorCode), errorCode);
+                    throw new IOException(Interop.Kernel32.GetMessage(errorCode), errorCode);
             }
         }
 
         internal static String FixupName(String name)
         {
-            BCLDebug.Assert(name != null, "[FixupName]name!=null");
+            Debug.Assert(name != null, "[FixupName]name!=null");
             if (name.IndexOf('\\') == -1)
                 return name;
 
@@ -1057,7 +1011,7 @@ namespace Microsoft.Win32
 
         private static void FixupPath(StringBuilder path)
         {
-            Contract.Requires(path != null);
+            Debug.Assert(path != null);
             int length = path.Length;
             bool fixup = false;
             char markerChar = (char)0xFFFF;
@@ -1100,14 +1054,6 @@ namespace Microsoft.Win32
                 }
                 path.Length += j - i;
             }
-        }
-
-        private bool ContainsRegistryValue(string name)
-        {
-            int type = 0;
-            int datasize = 0;
-            int retval = Win32Native.RegQueryValueEx(hkey, name, null, ref type, (byte[])null, ref datasize);
-            return retval == 0;
         }
 
         private void EnsureNotDisposed()
@@ -1161,7 +1107,6 @@ namespace Microsoft.Win32
 
         static private void ValidateKeyName(string name)
         {
-            Contract.Ensures(name != null);
             if (name == null)
             {
                 ThrowHelper.ThrowArgumentNullException(ExceptionArgument.name);

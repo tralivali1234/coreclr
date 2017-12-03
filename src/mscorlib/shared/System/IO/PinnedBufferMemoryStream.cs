@@ -17,7 +17,6 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Diagnostics;
-using System.Diagnostics.Contracts;
 
 namespace System.IO
 {
@@ -45,6 +44,10 @@ namespace System.IO
             fixed (byte* ptr = &_array[0])
                 Initialize(ptr, len, len, FileAccess.Read);
         }
+
+        public override int Read(Span<byte> destination) => ReadCore(destination);
+
+        public override void Write(ReadOnlySpan<byte> source) => WriteCore(source);
 
         ~PinnedBufferMemoryStream()
         {

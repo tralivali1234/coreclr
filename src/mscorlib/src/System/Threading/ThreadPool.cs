@@ -15,7 +15,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Diagnostics.Contracts;
 using System.Diagnostics.Tracing;
 using System.Runtime.CompilerServices;
 using System.Runtime.ConstrainedExecution;
@@ -39,6 +38,7 @@ namespace System.Threading
         public static readonly ThreadPoolWorkQueue workQueue = new ThreadPoolWorkQueue();
     }
 
+    [StructLayout(LayoutKind.Sequential)] // enforce layout so that padding reduces false sharing
     internal sealed class ThreadPoolWorkQueue
     {
         internal static class WorkStealingQueueList
@@ -378,7 +378,11 @@ namespace System.Threading
         internal bool loggingEnabled;
         internal readonly ConcurrentQueue<IThreadPoolWorkItem> workItems = new ConcurrentQueue<IThreadPoolWorkItem>();
 
+        private Internal.PaddingFor32 pad1;
+
         private volatile int numOutstandingThreadRequests = 0;
+
+        private Internal.PaddingFor32 pad2;
 
         public ThreadPoolWorkQueue()
         {
@@ -392,7 +396,9 @@ namespace System.Threading
         internal void EnsureThreadRequested()
         {
             //
-            // If we have not yet requested #procs threads from the VM, then request a new thread.
+            // If we have not yet requested #procs threads from the VM, then request a new thread
+            // as needed
+            //
             // Note that there is a separate count in the VM which will also be incremented in this case, 
             // which is handled by RequestWorkerThread.
             //
@@ -715,16 +721,11 @@ namespace System.Threading
         {
             // needed for DangerousAddRef
             RuntimeHelpers.PrepareConstrainedRegions();
-            try
+
+            m_internalWaitObject = waitObject;
+            if (waitObject != null)
             {
-            }
-            finally
-            {
-                m_internalWaitObject = waitObject;
-                if (waitObject != null)
-                {
-                    m_internalWaitObject.SafeWaitHandle.DangerousAddRef(ref bReleaseNeeded);
-                }
+                m_internalWaitObject.SafeWaitHandle.DangerousAddRef(ref bReleaseNeeded);
             }
         }
 
@@ -735,47 +736,43 @@ namespace System.Threading
             bool result = false;
             // needed for DangerousRelease
             RuntimeHelpers.PrepareConstrainedRegions();
-            try
+
+            // lock(this) cannot be used reliably in Cer since thin lock could be
+            // promoted to syncblock and that is not a guaranteed operation
+            bool bLockTaken = false;
+            do
             {
-            }
-            finally
-            {
-                // lock(this) cannot be used reliably in Cer since thin lock could be
-                // promoted to syncblock and that is not a guaranteed operation
-                bool bLockTaken = false;
-                do
+                if (Interlocked.CompareExchange(ref m_lock, 1, 0) == 0)
                 {
-                    if (Interlocked.CompareExchange(ref m_lock, 1, 0) == 0)
+                    bLockTaken = true;
+                    try
                     {
-                        bLockTaken = true;
-                        try
+                        if (ValidHandle())
                         {
-                            if (ValidHandle())
+                            result = UnregisterWaitNative(GetHandle(), waitObject == null ? null : waitObject.SafeWaitHandle);
+                            if (result == true)
                             {
-                                result = UnregisterWaitNative(GetHandle(), waitObject == null ? null : waitObject.SafeWaitHandle);
-                                if (result == true)
+                                if (bReleaseNeeded)
                                 {
-                                    if (bReleaseNeeded)
-                                    {
-                                        m_internalWaitObject.SafeWaitHandle.DangerousRelease();
-                                        bReleaseNeeded = false;
-                                    }
-                                    // if result not true don't release/suppress here so finalizer can make another attempt
-                                    SetHandle(InvalidHandle);
-                                    m_internalWaitObject = null;
-                                    GC.SuppressFinalize(this);
+                                    m_internalWaitObject.SafeWaitHandle.DangerousRelease();
+                                    bReleaseNeeded = false;
                                 }
+                                // if result not true don't release/suppress here so finalizer can make another attempt
+                                SetHandle(InvalidHandle);
+                                m_internalWaitObject = null;
+                                GC.SuppressFinalize(this);
                             }
                         }
-                        finally
-                        {
-                            m_lock = 0;
-                        }
                     }
-                    Thread.SpinWait(1);     // yield to processor
+                    finally
+                    {
+                        m_lock = 0;
+                    }
                 }
-                while (!bLockTaken);
+                Thread.SpinWait(1);     // yield to processor
             }
+            while (!bLockTaken);
+
             return result;
         }
 
@@ -1185,7 +1182,6 @@ namespace System.Threading
         {
             if (millisecondsTimeOutInterval < -1)
                 throw new ArgumentOutOfRangeException(nameof(millisecondsTimeOutInterval), SR.ArgumentOutOfRange_NeedNonNegOrNegative1);
-            Contract.EndContractBlock();
             StackCrawlMark stackMark = StackCrawlMark.LookForMyCaller;
             return RegisterWaitForSingleObject(waitObject, callBack, state, (UInt32)millisecondsTimeOutInterval, executeOnlyOnce, ref stackMark, true);
         }
@@ -1201,7 +1197,6 @@ namespace System.Threading
         {
             if (millisecondsTimeOutInterval < -1)
                 throw new ArgumentOutOfRangeException(nameof(millisecondsTimeOutInterval), SR.ArgumentOutOfRange_NeedNonNegOrNegative1);
-            Contract.EndContractBlock();
             StackCrawlMark stackMark = StackCrawlMark.LookForMyCaller;
             return RegisterWaitForSingleObject(waitObject, callBack, state, (UInt32)millisecondsTimeOutInterval, executeOnlyOnce, ref stackMark, false);
         }
@@ -1217,7 +1212,6 @@ namespace System.Threading
         {
             if (millisecondsTimeOutInterval < -1)
                 throw new ArgumentOutOfRangeException(nameof(millisecondsTimeOutInterval), SR.ArgumentOutOfRange_NeedNonNegOrNegative1);
-            Contract.EndContractBlock();
             StackCrawlMark stackMark = StackCrawlMark.LookForMyCaller;
             return RegisterWaitForSingleObject(waitObject, callBack, state, (UInt32)millisecondsTimeOutInterval, executeOnlyOnce, ref stackMark, true);
         }
@@ -1233,7 +1227,6 @@ namespace System.Threading
         {
             if (millisecondsTimeOutInterval < -1)
                 throw new ArgumentOutOfRangeException(nameof(millisecondsTimeOutInterval), SR.ArgumentOutOfRange_NeedNonNegOrNegative1);
-            Contract.EndContractBlock();
             StackCrawlMark stackMark = StackCrawlMark.LookForMyCaller;
             return RegisterWaitForSingleObject(waitObject, callBack, state, (UInt32)millisecondsTimeOutInterval, executeOnlyOnce, ref stackMark, false);
         }
@@ -1275,9 +1268,12 @@ namespace System.Threading
         }
 
         public static bool QueueUserWorkItem(WaitCallback callBack) =>
-            QueueUserWorkItem(callBack, null);
+            QueueUserWorkItem(callBack, null, preferLocal: false);
 
-        public static bool QueueUserWorkItem(WaitCallback callBack, object state)
+        public static bool QueueUserWorkItem(WaitCallback callBack, object state) =>
+            QueueUserWorkItem(callBack, state, preferLocal: false);
+
+        public static bool QueueUserWorkItem(WaitCallback callBack, object state, bool preferLocal)
         {
             if (callBack == null)
             {
@@ -1292,7 +1288,7 @@ namespace System.Threading
                 new QueueUserWorkItemCallbackDefaultContext(callBack, state) :
                 (IThreadPoolWorkItem)new QueueUserWorkItemCallback(callBack, state, context);
 
-            ThreadPoolGlobals.workQueue.Enqueue(tpcallBack, forceGlobal: true);
+            ThreadPoolGlobals.workQueue.Enqueue(tpcallBack, forceGlobal: !preferLocal);
 
             return true;
         }
@@ -1405,7 +1401,6 @@ namespace System.Threading
             ToObjectArray(GetLocallyQueuedWorkItems());
 
         [DllImport(JitHelpers.QCall, CharSet = CharSet.Unicode)]
-        [SuppressUnmanagedCodeSecurity]
         internal static extern bool RequestWorkerThread();
 
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
@@ -1467,7 +1462,6 @@ namespace System.Threading
         internal static extern void NotifyWorkItemProgressNative();
 
         [DllImport(JitHelpers.QCall, CharSet = CharSet.Unicode)]
-        [SuppressUnmanagedCodeSecurity]
         private static extern void InitializeVMTp(ref bool enableWorkerTracking);
 
         [MethodImplAttribute(MethodImplOptions.InternalCall)]

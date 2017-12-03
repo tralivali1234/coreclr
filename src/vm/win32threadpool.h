@@ -105,250 +105,13 @@ class ThreadpoolMgr
     friend class HillClimbing;
     friend struct _DacGlobals;
 
-    //
-    // UnfairSemaphore is a more scalable semaphore than CLRSemaphore.  It prefers to release threads that have more recently begun waiting,
-    // to preserve locality.  Additionally, very recently-waiting threads can be released without an addition kernel transition to unblock
-    // them, which reduces latency.
-    //
-    // UnfairSemaphore is only appropriate in scenarios where the order of unblocking threads is not important, and where threads frequently
-    // need to be woken.  This is true of the ThreadPool's "worker semaphore", but not, for example, of the "retired worker semaphore" which is
-    // only rarely signalled.
-    //
-    // A further optimization that could be done here would be to replace CLRSemaphore with a Win32 IO Completion Port.  Completion ports
-    // unblock threads in LIFO order, unlike the roughly-FIFO ordering of ordinary semaphores, and that would help to keep the "warm" threads warm.
-    // We did not do this in CLR 4.0 because hosts currently have no way of intercepting calls to IO Completion Ports (other than THE completion port
-    // behind the I/O thread pool), and we did not have time to explore the implications of this.  Also, completion ports are not available on the Mac,
-    // though Snow Leopard has something roughly similar (and a regular Semaphore would do on the Mac in a pinch).
-    //
-    class UnfairSemaphore
-    {
-    private:
-
-        // padding to ensure we get our own cache line
-        BYTE padding1[64];
-
-        //
-        // We track everything we care about in a single 64-bit struct to allow us to 
-        // do CompareExchanges on this for atomic updates.
-        // 
-        union Counts
-        {
-            struct
-            {
-                int spinners : 16;         //how many threads are currently spin-waiting for this semaphore?
-                int countForSpinners : 16; //how much of the semaphore's count is availble to spinners?
-                int waiters : 16;          //how many threads are blocked in the OS waiting for this semaphore?
-                int countForWaiters : 16;  //how much count is available to waiters?
-            };
-
-            LONGLONG asLongLong;
-
-        } m_counts;
-
-    private:
-        const int m_spinLimitPerProcessor; //used when calculating max spin duration
-        CLRSemaphore m_sem;                //waiters wait on this
-
-        // padding to ensure we get our own cache line
-        BYTE padding2[64];
-
-        INDEBUG(int m_maxCount;)
-
-        bool UpdateCounts(Counts newCounts, Counts currentCounts)
-        {
-            LIMITED_METHOD_CONTRACT;
-            Counts oldCounts;
-            oldCounts.asLongLong = FastInterlockCompareExchangeLong(&m_counts.asLongLong, newCounts.asLongLong, currentCounts.asLongLong);
-            if (oldCounts.asLongLong == currentCounts.asLongLong)
-            {
-                // we succesfully updated the counts.  Now validate what we put in.
-                // Note: we can't validate these unless the CompareExchange succeeds, because
-                // on x86 a VolatileLoad of m_counts is not atomic; we could end up getting inconsistent
-                // values.  It's not until we've successfully stored the new values that we know for sure
-                // that the old values were correct (because if they were not, the CompareExchange would have
-                // failed.
-                _ASSERTE(newCounts.spinners >= 0);
-                _ASSERTE(newCounts.countForSpinners >= 0);
-                _ASSERTE(newCounts.waiters >= 0);
-                _ASSERTE(newCounts.countForWaiters >= 0);
-                _ASSERTE(newCounts.countForSpinners + newCounts.countForWaiters <= m_maxCount);
-
-                return true;
-            }
-            else
-            {
-                // we lost a race with some other thread, and will need to try again.
-                return false;
-            }
-        }
-
-    public:
-
-        UnfairSemaphore(int maxCount, int spinLimitPerProcessor)
-            : m_spinLimitPerProcessor(spinLimitPerProcessor)
-        {
-            CONTRACTL
-            {
-                THROWS;
-                GC_NOTRIGGER;
-                SO_TOLERANT;
-                MODE_ANY;
-            }
-            CONTRACTL_END;
-            _ASSERTE(maxCount <= 0x7fff); //counts need to fit in signed 16-bit ints
-            INDEBUG(m_maxCount = maxCount;)
-
-            m_counts.asLongLong = 0;
-            m_sem.Create(0, maxCount);
-        }
-
-        //
-        // no destructor - CLRSemaphore will close itself in its own destructor.
-        //
-        //~UnfairSemaphore()
-        //{
-        //}
-
-
-        void Release(int countToRelease)
-        {
-            while (true)
-            {
-                Counts currentCounts, newCounts;
-                currentCounts.asLongLong = VolatileLoad(&m_counts.asLongLong);
-                newCounts = currentCounts;
-
-                int remainingCount = countToRelease;
-                
-                // First, prefer to release existing spinners,
-                // because a) they're hot, and b) we don't need a kernel
-                // transition to release them.
-                int spinnersToRelease = max(0, min(remainingCount, currentCounts.spinners - currentCounts.countForSpinners));
-                newCounts.countForSpinners += spinnersToRelease;
-                remainingCount -= spinnersToRelease;
-
-                // Next, prefer to release existing waiters
-                int waitersToRelease = max(0, min(remainingCount, currentCounts.waiters - currentCounts.countForWaiters));
-                newCounts.countForWaiters += waitersToRelease;
-                remainingCount -= waitersToRelease;
-
-                // Finally, release any future spinners that might come our way
-                newCounts.countForSpinners += remainingCount;
-
-                // Try to commit the transaction
-                if (UpdateCounts(newCounts, currentCounts))
-                {
-                    // Now we need to release the waiters we promised to release
-                    if (waitersToRelease > 0)
-                    {
-                        LONG previousCount;
-                        INDEBUG(BOOL success =) m_sem.Release((LONG)waitersToRelease, &previousCount);
-                        _ASSERTE(success);
-                    }
-                    break;
-                }
-            }
-        }
-
-
-        bool Wait(DWORD timeout)
-        {
-            while (true)
-            {
-                Counts currentCounts, newCounts;
-                currentCounts.asLongLong = VolatileLoad(&m_counts.asLongLong);
-                newCounts = currentCounts;
-
-                // First, just try to grab some count.
-                if (currentCounts.countForSpinners > 0)
-                {
-                    newCounts.countForSpinners--;
-                    if (UpdateCounts(newCounts, currentCounts))
-                        return true;
-                }
-                else
-                {
-                    // No count available, become a spinner
-                    newCounts.spinners++;
-                    if (UpdateCounts(newCounts, currentCounts))
-                        break;
-                }
-            }
-
-            //
-            // Now we're a spinner.  
-            //
-            int numSpins = 0;
-            while (true)
-            {
-                Counts currentCounts, newCounts;
-
-                currentCounts.asLongLong = VolatileLoad(&m_counts.asLongLong);
-                newCounts = currentCounts;
-
-                if (currentCounts.countForSpinners > 0)
-                {
-                    newCounts.countForSpinners--;
-                    newCounts.spinners--;
-                    if (UpdateCounts(newCounts, currentCounts))
-                        return true;
-                }
-                else
-                {
-                    double spinnersPerProcessor = (double)currentCounts.spinners / ThreadpoolMgr::NumberOfProcessors;
-                    int spinLimit = (int)((m_spinLimitPerProcessor / spinnersPerProcessor) + 0.5);
-                    if (numSpins >= spinLimit)
-                    {
-                        newCounts.spinners--;
-                        newCounts.waiters++;
-                        if (UpdateCounts(newCounts, currentCounts))
-                            break;
-                    }
-                    else
-                    {
-                        //
-                        // We yield to other threads using SleepEx rather than the more traditional SwitchToThread.
-                        // This is because SwitchToThread does not yield to threads currently scheduled to run on other
-                        // processors.  On a 4-core machine, for example, this means that SwitchToThread is only ~25% likely
-                        // to yield to the correct thread in some scenarios.
-                        // SleepEx has the disadvantage of not yielding to lower-priority threads.  However, this is ok because
-                        // once we've called this a few times we'll become a "waiter" and wait on the CLRSemaphore, and that will
-                        // yield to anything that is runnable.
-                        //
-                        ClrSleepEx(0, FALSE);
-                        numSpins++;
-                    }
-                }
-            }
-
-            //
-            // Now we're a waiter
-            //
-            DWORD result = m_sem.Wait(timeout, FALSE);
-            _ASSERTE(WAIT_OBJECT_0 == result || WAIT_TIMEOUT == result);
-
-            while (true)
-            {
-                Counts currentCounts, newCounts;
-
-                currentCounts.asLongLong = VolatileLoad(&m_counts.asLongLong);
-                newCounts = currentCounts;
-
-                newCounts.waiters--;
-
-                if (result == WAIT_OBJECT_0)
-                    newCounts.countForWaiters--;
-
-                if (UpdateCounts(newCounts, currentCounts))
-                    return (result == WAIT_OBJECT_0);
-            }
-        }
-    };
-
 public:
     struct ThreadCounter
     {
         static const int MaxPossibleCount = 0x7fff;
+
+        // padding to ensure we get our own cache line
+        BYTE padding1[MAX_CACHE_LINE_SIZE];
 
         union Counts
         {
@@ -370,11 +133,10 @@ public:
             LONGLONG AsLongLong;
 
             bool operator==(Counts other) {LIMITED_METHOD_CONTRACT; return AsLongLong == other.AsLongLong;}
-
         } counts;
 
         // padding to ensure we get our own cache line
-        BYTE padding[64];
+        BYTE padding2[MAX_CACHE_LINE_SIZE];
 
         Counts GetCleanCounts()
         {
@@ -457,6 +219,11 @@ public:
         MEMTYPE_WorkRequest     = 2,
         MEMTYPE_COUNT           = 3,
     };
+
+    typedef struct {
+        ADID AppDomainId;
+        INT32 TimerId;
+    } TimerInfoContext;
 
     static BOOL Initialize();
 
@@ -962,11 +729,11 @@ public:
     //
     class RecycledListsWrapper
     {
-        DWORD                        CacheGuardPre[64/sizeof(DWORD)];
+        DWORD                        CacheGuardPre[MAX_CACHE_LINE_SIZE/sizeof(DWORD)];
         
         RecycledListInfo            (*pRecycledListPerProcessor)[MEMTYPE_COUNT];  // RecycledListInfo [numProc][MEMTYPE_COUNT]
 
-        DWORD                        CacheGuardPost[64/sizeof(DWORD)];
+        DWORD                        CacheGuardPost[MAX_CACHE_LINE_SIZE/sizeof(DWORD)];
 
     public:
         void Initialize( unsigned int numProcs );
@@ -1094,7 +861,7 @@ public:
         {
             ThreadCounter::Counts counts = WorkerCounter.GetCleanCounts();
             if (counts.NumActive <= counts.MaxWorking)
-                return true;
+                return !IsHillClimbingDisabled;
         }
 
         return false;
@@ -1247,16 +1014,18 @@ private:
     SVAL_DECL(LONG,MinLimitTotalWorkerThreads);         // same as MinLimitTotalCPThreads
     SVAL_DECL(LONG,MaxLimitTotalWorkerThreads);         // same as MaxLimitTotalCPThreads
         
-    DECLSPEC_ALIGN(64) static unsigned int LastDequeueTime;      // used to determine if work items are getting thread starved 
+    DECLSPEC_ALIGN(MAX_CACHE_LINE_SIZE) static unsigned int LastDequeueTime;      // used to determine if work items are getting thread starved
     
     static HillClimbing HillClimbingInstance;
 
-    DECLSPEC_ALIGN(64) static LONG PriorCompletedWorkRequests;
+    DECLSPEC_ALIGN(MAX_CACHE_LINE_SIZE) static LONG PriorCompletedWorkRequests;
     static DWORD PriorCompletedWorkRequestsTime;
     static DWORD NextCompletedWorkRequestsTime;
 
     static LARGE_INTEGER CurrentSampleStartTime;
 
+    static unsigned int WorkerThreadSpinLimit;
+    static bool IsHillClimbingDisabled;
     static int ThreadAdjustmentInterval;
 
     SPTR_DECL(WorkRequest,WorkRequestHead);             // Head of work request queue
@@ -1277,7 +1046,7 @@ private:
     static const DWORD WorkerTimeout = 20 * 1000;
     static const DWORD WorkerTimeoutAppX = 5 * 1000;    // shorter timeout to allow threads to exit prior to app suspension
 
-    DECLSPEC_ALIGN(64) SVAL_DECL(ThreadCounter,WorkerCounter);
+    DECLSPEC_ALIGN(MAX_CACHE_LINE_SIZE) SVAL_DECL(ThreadCounter,WorkerCounter);
 
     // 
     // WorkerSemaphore is an UnfairSemaphore because:
@@ -1285,7 +1054,7 @@ private:
     // 2) There is no functional reason why any particular thread should be preferred when waking workers.  This only impacts performance, 
     //    and un-fairness helps performance in this case.
     //
-    static UnfairSemaphore* WorkerSemaphore;
+    static CLRLifoSemaphore* WorkerSemaphore;
 
     //
     // RetiredWorkerSemaphore is a regular CLRSemaphore, not an UnfairSemaphore, because if a thread waits on this semaphore is it almost certainly
@@ -1294,7 +1063,7 @@ private:
     // down, by constantly re-using the same small set of retired workers rather than round-robining between all of them as CLRSemaphore will do.
     // If we go that route, we should add a "no-spin" option to UnfairSemaphore.Wait to avoid wasting CPU.
     //
-    static CLRSemaphore* RetiredWorkerSemaphore;
+    static CLRLifoSemaphore* RetiredWorkerSemaphore;
 
     static CLREvent * RetiredCPWakeupEvent;    
     
@@ -1306,7 +1075,7 @@ private:
     SVAL_DECL(LIST_ENTRY,TimerQueue);                   // queue of timers
     static HANDLE TimerThread;                          // Currently we only have one timer thread
     static Thread*  pTimerThread;
-    DECLSPEC_ALIGN(64) static DWORD LastTickCount;      // the count just before timer thread goes to sleep
+    DECLSPEC_ALIGN(MAX_CACHE_LINE_SIZE) static DWORD LastTickCount;      // the count just before timer thread goes to sleep
 
     static BOOL InitCompletionPortThreadpool;           // flag indicating whether completion port threadpool has been initialized
     static HANDLE GlobalCompletionPort;                 // used for binding io completions on file handles
@@ -1319,20 +1088,20 @@ private:
     SVAL_DECL(LONG,MinLimitTotalCPThreads);             
     SVAL_DECL(LONG,MaxFreeCPThreads);                   // = MaxFreeCPThreadsPerCPU * Number of CPUS
 
-    DECLSPEC_ALIGN(64) static LONG GateThreadStatus;    // See GateThreadStatus enumeration
+    DECLSPEC_ALIGN(MAX_CACHE_LINE_SIZE) static LONG GateThreadStatus;    // See GateThreadStatus enumeration
 
     static Volatile<LONG> NumCPInfrastructureThreads;   // number of threads currently busy handling draining cycle
 
     SVAL_DECL(LONG,cpuUtilization);
     static LONG cpuUtilizationAverage;
 
-    DECLSPEC_ALIGN(64) static RecycledListsWrapper RecycledLists;
+    DECLSPEC_ALIGN(MAX_CACHE_LINE_SIZE) static RecycledListsWrapper RecycledLists;
 
 #ifdef _DEBUG
     static DWORD   TickCountAdjustment;                 // add this value to value returned by GetTickCount
 #endif
 
-    DECLSPEC_ALIGN(64) static int offset_counter;
+    DECLSPEC_ALIGN(MAX_CACHE_LINE_SIZE) static int offset_counter;
     static const int offset_multiplier = 128;
 };
 

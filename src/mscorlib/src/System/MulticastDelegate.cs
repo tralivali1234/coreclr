@@ -8,7 +8,6 @@ using System.Runtime;
 using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Diagnostics;
-using System.Diagnostics.Contracts;
 using System.Reflection.Emit;
 
 namespace System
@@ -67,7 +66,7 @@ namespace System
             // the types are the same, obj should also be a
             // MulticastDelegate
             Debug.Assert(obj is MulticastDelegate, "Shouldn't have failed here since we already checked the types are the same!");
-            var d = JitHelpers.UnsafeCast<MulticastDelegate>(obj);
+            var d = Unsafe.As<MulticastDelegate>(obj);
 
             if (_invocationCount != (IntPtr)0)
             {
@@ -410,8 +409,6 @@ namespace System
         // This method returns the Invocation list of this multicast delegate.
         public override sealed Delegate[] GetInvocationList()
         {
-            Contract.Ensures(Contract.Result<Delegate[]>() != null);
-
             Delegate[] del;
             Object[] invocationList = _invocationList as Object[];
             if (invocationList == null)
@@ -451,6 +448,17 @@ namespace System
         {
             if (IsUnmanagedFunctionPtr())
                 return ValueType.GetHashCodeOfPtr(_methodPtr) ^ ValueType.GetHashCodeOfPtr(_methodPtrAux);
+
+            if (_invocationCount != (IntPtr)0)
+            {
+                var t = _invocationList as Delegate;
+
+                if (t != null)
+                {
+                    // this is a secure/wrapper delegate so we need to unwrap and check the inner one
+                    return t.GetHashCode();
+                }
+            }
 
             Object[] invocationList = _invocationList as Object[];
             if (invocationList == null)
@@ -584,71 +592,11 @@ namespace System
         }
 
         [System.Diagnostics.DebuggerNonUserCode]
-        private void CtorSecureClosed(Object target, IntPtr methodPtr, IntPtr callThunk, IntPtr creatorMethod)
-        {
-            MulticastDelegate realDelegate = (MulticastDelegate)Delegate.InternalAllocLike(this);
-            realDelegate.CtorClosed(target, methodPtr);
-            _invocationList = realDelegate;
-            this._target = this;
-            this._methodPtr = callThunk;
-            this._methodPtrAux = creatorMethod;
-            _invocationCount = GetInvokeMethod();
-        }
-
-        [System.Diagnostics.DebuggerNonUserCode]
-        private void CtorSecureClosedStatic(Object target, IntPtr methodPtr, IntPtr callThunk, IntPtr creatorMethod)
-        {
-            MulticastDelegate realDelegate = (MulticastDelegate)Delegate.InternalAllocLike(this);
-            realDelegate.CtorClosedStatic(target, methodPtr);
-            _invocationList = realDelegate;
-            this._target = this;
-            this._methodPtr = callThunk;
-            this._methodPtrAux = creatorMethod;
-            _invocationCount = GetInvokeMethod();
-        }
-
-        [System.Diagnostics.DebuggerNonUserCode]
-        private void CtorSecureRTClosed(Object target, IntPtr methodPtr, IntPtr callThunk, IntPtr creatorMethod)
-        {
-            MulticastDelegate realDelegate = Delegate.InternalAllocLike(this);
-            realDelegate.CtorRTClosed(target, methodPtr);
-            _invocationList = realDelegate;
-            this._target = this;
-            this._methodPtr = callThunk;
-            this._methodPtrAux = creatorMethod;
-            _invocationCount = GetInvokeMethod();
-        }
-
-        [System.Diagnostics.DebuggerNonUserCode]
-        private void CtorSecureOpened(Object target, IntPtr methodPtr, IntPtr shuffleThunk, IntPtr callThunk, IntPtr creatorMethod)
-        {
-            MulticastDelegate realDelegate = Delegate.InternalAllocLike(this);
-            realDelegate.CtorOpened(target, methodPtr, shuffleThunk);
-            _invocationList = realDelegate;
-            this._target = this;
-            this._methodPtr = callThunk;
-            this._methodPtrAux = creatorMethod;
-            _invocationCount = GetInvokeMethod();
-        }
-
-        [System.Diagnostics.DebuggerNonUserCode]
         private void CtorVirtualDispatch(Object target, IntPtr methodPtr, IntPtr shuffleThunk)
         {
             this._target = this;
             this._methodPtr = shuffleThunk;
             this._methodPtrAux = GetCallStub(methodPtr);
-        }
-
-        [System.Diagnostics.DebuggerNonUserCode]
-        private void CtorSecureVirtualDispatch(Object target, IntPtr methodPtr, IntPtr shuffleThunk, IntPtr callThunk, IntPtr creatorMethod)
-        {
-            MulticastDelegate realDelegate = Delegate.InternalAllocLike(this);
-            realDelegate.CtorVirtualDispatch(target, methodPtr, shuffleThunk);
-            _invocationList = realDelegate;
-            this._target = this;
-            this._methodPtr = callThunk;
-            this._methodPtrAux = creatorMethod;
-            _invocationCount = GetInvokeMethod();
         }
 
         [System.Diagnostics.DebuggerNonUserCode]

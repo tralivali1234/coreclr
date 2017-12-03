@@ -5253,7 +5253,7 @@ VOID ETW::MethodLog::MethodJitted(MethodDesc *pMethodDesc, SString *namespaceOrC
             _ASSERTE(g_pDebugInterface != NULL);
             g_pDebugInterface->InitializeLazyDataIfNecessary();
             
-            ETW::MethodLog::SendMethodILToNativeMapEvent(pMethodDesc, ETW::EnumerationLog::EnumerationStructs::JitMethodILToNativeMap, rejitID);
+            ETW::MethodLog::SendMethodILToNativeMapEvent(pMethodDesc, ETW::EnumerationLog::EnumerationStructs::JitMethodILToNativeMap, pCode, rejitID);
         }
 
     } EX_CATCH { } EX_END_CATCH(SwallowAllExceptions);
@@ -6664,7 +6664,7 @@ VOID ETW::MethodLog::SendMethodEvent(MethodDesc *pMethodDesc, DWORD dwEventOptio
 //
 
 // static
-VOID ETW::MethodLog::SendMethodILToNativeMapEvent(MethodDesc * pMethodDesc, DWORD dwEventOptions, ReJITID rejitID)
+VOID ETW::MethodLog::SendMethodILToNativeMapEvent(MethodDesc * pMethodDesc, DWORD dwEventOptions, SIZE_T pCode, ReJITID rejitID)
 {
     CONTRACTL
     {
@@ -6698,6 +6698,7 @@ VOID ETW::MethodLog::SendMethodILToNativeMapEvent(MethodDesc * pMethodDesc, DWOR
 
     HRESULT hr = g_pDebugInterface->GetILToNativeMappingIntoArrays(
         pMethodDesc,
+        pCode,
         kMapEntriesMax,
         &cMap,
         &rguiILOffset,
@@ -6834,7 +6835,7 @@ VOID ETW::MethodLog::SendEventsForJitMethodsHelper(BaseDomain *pDomainFilter,
         // manager locks.
         // see code:#TableLockHolder
         ReJITID rejitID =
-            fGetReJitIDs ? pMD->GetReJitManager()->GetReJitIdNoLock(pMD, codeStart) : 0;
+            fGetReJitIDs ? ReJitManager::GetReJitIdNoLock(pMD, codeStart) : 0;
 
         // There are small windows of time where the heap iterator may come across a
         // codeStart that is not yet published to the MethodDesc. This may happen if
@@ -6871,7 +6872,7 @@ VOID ETW::MethodLog::SendEventsForJitMethodsHelper(BaseDomain *pDomainFilter,
 
         // Send any supplemental events requested for this MethodID
         if (fSendILToNativeMapEvent)
-            ETW::MethodLog::SendMethodILToNativeMapEvent(pMD, dwEventOptions, rejitID);
+            ETW::MethodLog::SendMethodILToNativeMapEvent(pMD, dwEventOptions, codeStart, rejitID);
 
         // When we're called to announce unloads, then the methodunload event itself must
         // come after any supplemental events, so that the method unload event is the
@@ -6962,8 +6963,8 @@ VOID ETW::MethodLog::SendEventsForJitMethods(BaseDomain *pDomainFilter, LoaderAl
         // We only support getting rejit IDs when filtering by domain.
         if (pDomainFilter)
         {
-            ReJitManager::TableLockHolder lkRejitMgrSharedDomain(SharedDomain::GetDomain()->GetReJitManager());
-            ReJitManager::TableLockHolder lkRejitMgrModule(pDomainFilter->GetReJitManager());
+            CodeVersionManager::TableLockHolder lkRejitMgrSharedDomain(SharedDomain::GetDomain()->GetCodeVersionManager());
+            CodeVersionManager::TableLockHolder lkRejitMgrModule(pDomainFilter->GetCodeVersionManager());
             SendEventsForJitMethodsHelper(pDomainFilter,
                 pLoaderAllocatorFilter,
                 dwEventOptions,

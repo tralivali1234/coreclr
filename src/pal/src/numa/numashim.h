@@ -13,6 +13,8 @@
 #include <numa.h>
 #include <numaif.h>
 
+#define numa_free_cpumask numa_bitmask_free
+
 // List of all functions from the numa library that are used
 #define FOR_ALL_NUMA_FUNCTIONS \
     PER_FUNCTION_BLOCK(numa_available) \
@@ -23,7 +25,7 @@
     PER_FUNCTION_BLOCK(numa_node_to_cpus) \
     PER_FUNCTION_BLOCK(numa_bitmask_weight) \
     PER_FUNCTION_BLOCK(numa_bitmask_isbitset) \
-    PER_FUNCTION_BLOCK(numa_free_cpumask)
+    PER_FUNCTION_BLOCK(numa_bitmask_free)
 
 // Declare pointers to all the used numa functions
 #define PER_FUNCTION_BLOCK(fn) extern decltype(fn)* fn##_ptr;
@@ -40,7 +42,7 @@ FOR_ALL_NUMA_FUNCTIONS
 #define numa_node_to_cpus(...) numa_node_to_cpus_ptr(__VA_ARGS__)
 #define numa_bitmask_weight(...) numa_bitmask_weight_ptr(__VA_ARGS__)
 #define numa_bitmask_isbitset(...) numa_bitmask_isbitset_ptr(__VA_ARGS__)
-#define numa_free_cpumask(...) numa_free_cpumask_ptr(__VA_ARGS__)
+#define numa_bitmask_free(...) numa_bitmask_free_ptr(__VA_ARGS__)
 
 #endif // HAVE_NUMA_H
 

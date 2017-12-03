@@ -19,7 +19,6 @@
 #include "dllimport.h"
 #include "comdelegate.h"
 #include "log.h"
-#include "security.h"
 #include "comdelegate.h"
 #include "array.h"
 #include "jitinterface.h"
@@ -379,7 +378,30 @@ void HelperMethodFrame::UpdateRegDisplay(const PREGDISPLAY pRD)
     pRD->IsCallerSPValid      = FALSE;        // Don't add usage of this field.  This is only temporary.
 
 #ifdef DACCESS_COMPILE
-    PORTABILITY_ASSERT("HelperMethodFrame::UpdateRegDisplay");
+    // For DAC, we may get here when the HMF is still uninitialized.
+    // So we may need to unwind here.
+    if (!m_MachState.isValid())
+    {
+        // This allocation throws on OOM.
+        MachState* pUnwoundState = (MachState*)DacAllocHostOnlyInstance(sizeof(*pUnwoundState), true);
+
+        InsureInit(false, pUnwoundState);
+
+        pRD->pCurrentContext->Eip = pRD->ControlPC = pUnwoundState->GetRetAddr();
+        pRD->pCurrentContext->Esp = pRD->SP        = pUnwoundState->esp();
+
+#define CALLEE_SAVED_REGISTER(regname) pRD->pCurrentContext->regname = *((DWORD*) pUnwoundState->p##regname());
+        ENUM_CALLEE_SAVED_REGISTERS();
+#undef CALLEE_SAVED_REGISTER
+
+#define CALLEE_SAVED_REGISTER(regname) pRD->pCurrentContextPointers->regname = (DWORD*) pUnwoundState->p##regname();
+        ENUM_CALLEE_SAVED_REGISTERS();
+#undef CALLEE_SAVED_REGISTER
+
+        ClearRegDisplayArgumentAndScratchRegisters(pRD);
+
+        return;
+    }
 #endif // DACCESS_COMPILE
 
     pRD->pCurrentContext->Eip = pRD->ControlPC = m_MachState.GetRetAddr();
@@ -1054,7 +1076,7 @@ Stub *GenerateInitPInvokeFrameHelper()
     unsigned negSpace = FrameInfo.offsetOfFrameVptr;
 
     // mov esi, GetThread()
-    psl->X86EmitCurrentThreadFetch(kESI, (1<<kEDI)|(1<<kEBX)|(1<<kECX)|(1<<kEDX));
+    psl->X86EmitCurrentThreadFetch(kESI, (1 << kEDI) | (1 << kEBX) | (1 << kECX) | (1 << kEDX));
 
     // mov [edi + FrameInfo.offsetOfGSCookie], GetProcessGSCookie()
     psl->X86EmitOffsetModRM(0xc7, (X86Reg)0x0, kEDI, FrameInfo.offsetOfGSCookie - negSpace);
@@ -1586,6 +1608,13 @@ void UMEntryThunkCode::Encode(BYTE* pTargetCode, void* pvSecretParam)
     m_execstub   = (BYTE*) ((pTargetCode) - (4+((BYTE*)&m_execstub)));
 
     FlushInstructionCache(GetCurrentProcess(),GetEntryPoint(),sizeof(UMEntryThunkCode));
+}
+
+void UMEntryThunkCode::Poison()
+{
+    LIMITED_METHOD_CONTRACT;
+
+    m_movEAX = X86_INSTR_INT3;
 }
 
 UMEntryThunk* UMEntryThunk::Decode(LPVOID pCallback)

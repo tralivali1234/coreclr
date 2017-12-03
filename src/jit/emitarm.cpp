@@ -2459,6 +2459,16 @@ void emitter::emitIns_R_R_I(instruction ins,
                 fmt = IF_T2_M0;
                 sf  = INS_FLAGS_NOT_SET;
             }
+            else if (insDoesNotSetFlags(flags) && (reg1 != REG_SP) && (reg1 != REG_PC))
+            {
+                // movw,movt reg1, imm
+                codeGen->instGen_Set_Reg_To_Imm(attr, reg1, (ins == INS_sub ? -1 : 1) * imm);
+
+                // ins reg1, reg2
+                emitIns_R_R(INS_add, attr, reg1, reg2);
+
+                return;
+            }
             else
             {
                 assert(!"Instruction cannot be encoded");
@@ -3798,19 +3808,12 @@ void emitter::emitIns_C_I(instruction ins, emitAttr attr, CORINFO_FIELD_HANDLE f
  *  The following adds instructions referencing address modes.
  */
 
-void emitter::emitIns_I_AR(
-    instruction ins, emitAttr attr, int val, regNumber reg, int offs, int memCookie, void* clsCookie)
+void emitter::emitIns_I_AR(instruction ins, emitAttr attr, int val, regNumber reg, int offs)
 {
     NYI("emitIns_I_AR");
 }
 
-void emitter::emitIns_R_AR(instruction ins,
-                           emitAttr    attr,
-                           regNumber   ireg,
-                           regNumber   reg,
-                           int         offs,
-                           int         memCookie /* = 0 */,
-                           void*       clsCookie /* = NULL */)
+void emitter::emitIns_R_AR(instruction ins, emitAttr attr, regNumber ireg, regNumber reg, int offs)
 {
     if (ins == INS_mov)
     {
@@ -3880,13 +3883,7 @@ void emitter::emitIns_R_AI(instruction ins, emitAttr attr, regNumber ireg, ssize
     NYI("emitIns_R_AI");
 }
 
-void emitter::emitIns_AR_R(instruction ins,
-                           emitAttr    attr,
-                           regNumber   ireg,
-                           regNumber   reg,
-                           int         offs,
-                           int         memCookie /* = 0 */,
-                           void*       clsCookie /* = NULL */)
+void emitter::emitIns_AR_R(instruction ins, emitAttr attr, regNumber ireg, regNumber reg, int offs)
 {
     if (ins == INS_mov)
     {
@@ -4642,20 +4639,17 @@ void emitter::emitIns_Call(EmitCallType          callType,
                    VarSetOps::ToString(emitComp, ((instrDescCGCA*)id)->idcGCvars));
         }
     }
-#endif
 
-#if defined(DEBUG) || defined(LATE_DISASM)
     id->idDebugOnlyInfo()->idMemCookie = (size_t)methHnd; // method token
-    id->idDebugOnlyInfo()->idClsCookie = 0;
     id->idDebugOnlyInfo()->idCallSig   = sigInfo;
-#endif
+#endif // DEBUG
 
-#if defined(LATE_DISASM)
+#ifdef LATE_DISASM
     if (addr != nullptr)
     {
         codeGen->getDisAssembler().disSetMethod((size_t)addr, methHnd);
     }
-#endif // defined(LATE_DISASM)
+#endif // LATE_DISASM
 
     dispIns(id);
     appendToCurIG(id);
@@ -7619,7 +7613,7 @@ void emitter::emitInsLoadStoreOp(instruction ins, emitAttr attr, regNumber dataR
 
         if (addr->OperGet() == GT_LEA)
         {
-            offset += (int)addr->AsAddrMode()->gtOffset;
+            offset += addr->AsAddrMode()->Offset();
             if (addr->AsAddrMode()->gtScale > 0)
             {
                 assert(isPow2(addr->AsAddrMode()->gtScale));
@@ -7631,24 +7625,32 @@ void emitter::emitInsLoadStoreOp(instruction ins, emitAttr attr, regNumber dataR
 
         if (indir->HasIndex())
         {
+            assert(addr->OperGet() == GT_LEA);
+
             GenTree* index = indir->Index();
 
             if (offset != 0)
             {
                 regNumber tmpReg = indir->GetSingleTempReg();
 
+                // If the LEA produces a GCREF or BYREF, we need to be careful to mark any temp register
+                // computed with the base register as a BYREF.
+                GenTreeAddrMode* lea                    = addr->AsAddrMode();
+                emitAttr         leaAttr                = emitTypeSize(lea);
+                emitAttr         leaBasePartialAddrAttr = EA_IS_GCREF_OR_BYREF(leaAttr) ? EA_BYREF : EA_PTRSIZE;
+
                 if (emitIns_valid_imm_for_add(offset, INS_FLAGS_DONT_CARE))
                 {
                     if (lsl > 0)
                     {
                         // Generate code to set tmpReg = base + index*scale
-                        emitIns_R_R_R_I(INS_add, EA_PTRSIZE, tmpReg, memBase->gtRegNum, index->gtRegNum, lsl,
-                                        INS_FLAGS_DONT_CARE, INS_OPTS_LSL);
+                        emitIns_R_R_R_I(INS_add, leaBasePartialAddrAttr, tmpReg, memBase->gtRegNum, index->gtRegNum,
+                                        lsl, INS_FLAGS_DONT_CARE, INS_OPTS_LSL);
                     }
                     else // no scale
                     {
                         // Generate code to set tmpReg = base + index
-                        emitIns_R_R_R(INS_add, EA_PTRSIZE, tmpReg, memBase->gtRegNum, index->gtRegNum);
+                        emitIns_R_R_R(INS_add, leaBasePartialAddrAttr, tmpReg, memBase->gtRegNum, index->gtRegNum);
                     }
 
                     noway_assert(emitInsIsLoad(ins) || (tmpReg != dataReg));
@@ -7662,7 +7664,7 @@ void emitter::emitInsLoadStoreOp(instruction ins, emitAttr attr, regNumber dataR
                     codeGen->instGen_Set_Reg_To_Imm(EA_PTRSIZE, tmpReg, offset);
                     // Then add the base register
                     //      rd = rd + base
-                    emitIns_R_R_R(INS_add, EA_PTRSIZE, tmpReg, tmpReg, memBase->gtRegNum);
+                    emitIns_R_R_R(INS_add, leaBasePartialAddrAttr, tmpReg, tmpReg, memBase->gtRegNum);
 
                     noway_assert(emitInsIsLoad(ins) || (tmpReg != dataReg));
                     noway_assert(tmpReg != index->gtRegNum);
@@ -7879,7 +7881,11 @@ regNumber emitter::emitInsTernary(instruction ins, emitAttr attr, GenTree* dst, 
             jumpKind                = isUnsignedOverflow ? EJ_lo : EJ_vs;
             if (jumpKind == EJ_lo)
             {
-                if ((dst->OperGet() != GT_SUB) && (dst->OperGet() != GT_ASG_SUB) && (dst->OperGet() != GT_SUB_HI))
+                if ((dst->OperGet() != GT_SUB) &&
+#ifdef LEGACY_BACKEND
+                    (dst->OperGet() != GT_ASG_SUB) &&
+#endif
+                    (dst->OperGet() != GT_SUB_HI))
                 {
                     jumpKind = EJ_hs;
                 }

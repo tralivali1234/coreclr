@@ -5,6 +5,15 @@
 #ifndef _GC_INTERFACE_H_
 #define _GC_INTERFACE_H_
 
+// The major version of the GC/EE interface. Breaking changes to this interface
+// require bumps in the major version number.
+#define GC_INTERFACE_MAJOR_VERSION 1
+
+// The minor version of the GC/EE interface. Non-breaking changes are required
+// to bump the minor version number. GCs and EEs with minor version number
+// mismatches can still interopate correctly, with some care.
+#define GC_INTERFACE_MINOR_VERSION 1
+
 struct ScanContext;
 struct gc_alloc_context;
 class CrawlFrame;
@@ -102,6 +111,17 @@ struct WriteBarrierParameters
     uint8_t* write_watch_table;
 };
 
+// Opaque type for tracking object pointers
+#ifndef DACCESS_COMPILE
+struct OBJECTHANDLE__
+{
+    void* unused;
+};
+typedef struct OBJECTHANDLE__* OBJECTHANDLE;
+#else
+typedef uintptr_t OBJECTHANDLE;
+#endif
+
  /*
   * Scanning callback.
   */
@@ -154,7 +174,10 @@ struct segment_info
 };
 
 #ifdef PROFILING_SUPPORTED
+#ifndef BUILD_AS_STANDALONE
+// [LOCALGC TODO] Enable profiling (GitHub #11515)
 #define GC_PROFILING       //Turn on profiling
+#endif // BUILD_AS_STANDALONE
 #endif // PROFILING_SUPPORTED
 
 #define LARGE_OBJECT_SIZE ((size_t)(85000))
@@ -170,20 +193,6 @@ struct segment_info
 class Object;
 class IGCHeap;
 class IGCHandleManager;
-
-// The function that initialzes the garbage collector.
-// Should only be called once: here, during EE startup.
-// Returns true if the initialization was successful, false otherwise.
-typedef bool (*InitializeGarbageCollectorFunction)(
-    /* In  */ IGCToCLR*,
-    /* Out */ IGCHeap**,
-    /* Out */ IGCHandleManager**,
-    /* Out */ GcDacVars*
-);
-
-// The name of the function that initializes the garbage collector,
-// to be used as an argument to GetProcAddress.
-#define INITIALIZE_GC_FUNCTION_NAME "InitializeGarbageCollector"
 
 #ifdef WRITE_BARRIER_CHECK
 //always defined, but should be 0 in Server GC
@@ -395,16 +404,7 @@ typedef void (* fq_scan_fn)(Object** ppObject, ScanContext *pSC, uint32_t dwFlag
 typedef void (* handle_scan_fn)(Object** pRef, Object* pSec, uint32_t flags, ScanContext* context, bool isDependent);
 typedef bool (* async_pin_enum_fn)(Object* object, void* context);
 
-// Opaque type for tracking object pointers
-#ifndef DACCESS_COMPILE
-struct OBJECTHANDLE__
-{
-    void* unused;
-};
-typedef struct OBJECTHANDLE__* OBJECTHANDLE;
-#else
-typedef uintptr_t OBJECTHANDLE;
-#endif
+
 
 class IGCHandleStore {
 public:
@@ -421,7 +421,14 @@ public:
 
     virtual OBJECTHANDLE CreateDependentHandle(Object* primary, Object* secondary) = 0;
 
-    virtual void RelocateAsyncPinnedHandles(IGCHandleStore* pTarget) = 0;
+    // Relocates async pinned handles from a condemned handle store to the default domain's handle store.
+    //
+    // The two callbacks are called when:
+    //   1. clearIfComplete is called whenever the handle table observes an async pin that is still live.
+    //      The callback gives a chance for the EE to unpin the referents if the overlapped operation is complete.
+    //   2. setHandle is called whenever the GC has relocated the async pin to a new handle table. The passed-in
+    //      handle is the newly-allocated handle in the default domain that should be assigned to the overlapped object.
+    virtual void RelocateAsyncPinnedHandles(IGCHandleStore* pTarget, void (*clearIfComplete)(Object*), void (*setHandle)(Object*, OBJECTHANDLE)) = 0;
 
     virtual bool EnumerateAsyncPinnedHandles(async_pin_enum_fn callback, void* context) = 0;
 
@@ -839,15 +846,19 @@ struct ScanContext
     bool concurrent; //TRUE: concurrent scanning 
 #if CHECK_APP_DOMAIN_LEAKS || defined (FEATURE_APPDOMAIN_RESOURCE_MONITORING) || defined (DACCESS_COMPILE)
     AppDomain *pCurrentDomain;
+#else
+    void* _unused1;
 #endif //CHECK_APP_DOMAIN_LEAKS || FEATURE_APPDOMAIN_RESOURCE_MONITORING || DACCESS_COMPILE
 
-#ifndef FEATURE_REDHAWK
 #if defined(GC_PROFILING) || defined (DACCESS_COMPILE)
     MethodDesc *pMD;
+#else
+    void* _unused2;
 #endif //GC_PROFILING || DACCESS_COMPILE
-#endif // FEATURE_REDHAWK
 #if defined(GC_PROFILING) || defined(FEATURE_EVENT_TRACE)
     EtwGCRootKind dwEtwRootKind;
+#else
+    int _unused3;
 #endif // GC_PROFILING || FEATURE_EVENT_TRACE
     
     ScanContext()
@@ -867,5 +878,25 @@ struct ScanContext
 #endif // FEATURE_EVENT_TRACE
     }
 };
+
+// These types are used as part of the loader protocol between the EE
+// and the GC.
+struct VersionInfo {
+    uint32_t MajorVersion;
+    uint32_t MinorVersion;
+    uint32_t BuildVersion;
+    const char* Name;
+};
+
+typedef void (*GC_VersionInfoFunction)(
+    /* Out */ VersionInfo*
+);
+
+typedef HRESULT (*GC_InitializeFunction)(
+    /* In  */ IGCToCLR*,
+    /* Out */ IGCHeap**,
+    /* Out */ IGCHandleManager**,
+    /* Out */ GcDacVars*
+);
 
 #endif // _GC_INTERFACE_H_

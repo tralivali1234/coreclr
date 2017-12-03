@@ -26,7 +26,7 @@ Compiler::fgWalkResult Compiler::optAddCopiesCallback(GenTreePtr* pTree, fgWalkD
 {
     GenTreePtr tree = *pTree;
 
-    if (tree->OperKind() & GTK_ASGOP)
+    if (tree->OperIsAssignment())
     {
         GenTreePtr op1  = tree->gtOp.gtOp1;
         Compiler*  comp = data->compiler;
@@ -455,7 +455,7 @@ void Compiler::optAddCopies()
             GenTreePtr tree = optAddCopyAsgnNode;
             GenTreePtr op1  = tree->gtOp.gtOp1;
 
-            noway_assert(tree && op1 && (tree->OperKind() & GTK_ASGOP) && (op1->gtOper == GT_LCL_VAR) &&
+            noway_assert(tree && op1 && tree->OperIsAssignment() && (op1->gtOper == GT_LCL_VAR) &&
                          (op1->gtLclVarCommon.gtLclNum == lclNum));
 
             /*  TODO-Review: BB_UNITY_WEIGHT is not the correct block weight */
@@ -509,7 +509,7 @@ void Compiler::optAddCopies()
 
 ASSERT_TP& Compiler::GetAssertionDep(unsigned lclNum)
 {
-    ExpandArray<ASSERT_TP>& dep = *optAssertionDep;
+    JitExpandArray<ASSERT_TP>& dep = *optAssertionDep;
     if (dep[lclNum] == nullptr)
     {
         dep[lclNum] = BitVecOps::MakeEmpty(apTraits);
@@ -524,7 +524,7 @@ ASSERT_TP& Compiler::GetAssertionDep(unsigned lclNum)
 
 void Compiler::optAssertionTraitsInit(AssertionIndex assertionCount)
 {
-    apTraits = new (getAllocator()) BitVecTraits(assertionCount, this);
+    apTraits = new (this, CMK_AssertionProp) BitVecTraits(assertionCount, this);
     apFull   = BitVecOps::MakeFull(apTraits);
 }
 
@@ -547,9 +547,9 @@ void Compiler::optAssertionInit(bool isLocalProp)
     optMaxAssertionCount                    = countFunc[isLocalProp ? lowerBound : min(upperBound, codeSize)];
 
     optLocalAssertionProp  = isLocalProp;
-    optAssertionTabPrivate = new (getAllocator()) AssertionDsc[optMaxAssertionCount];
+    optAssertionTabPrivate = new (this, CMK_AssertionProp) AssertionDsc[optMaxAssertionCount];
     optComplementaryAssertionMap =
-        new (getAllocator()) AssertionIndex[optMaxAssertionCount](); // zero-inited (NO_ASSERTION_INDEX.)
+        new (this, CMK_AssertionProp) AssertionIndex[optMaxAssertionCount + 1](); // zero-inited (NO_ASSERTION_INDEX)
     assert(NO_ASSERTION_INDEX == 0);
 
     if (!isLocalProp)
@@ -559,7 +559,7 @@ void Compiler::optAssertionInit(bool isLocalProp)
 
     if (optAssertionDep == nullptr)
     {
-        optAssertionDep = new (getAllocator()) ExpandArray<ASSERT_TP>(getAllocator(), max(1, lvaCount));
+        optAssertionDep = new (this, CMK_AssertionProp) JitExpandArray<ASSERT_TP>(getAllocator(), max(1, lvaCount));
     }
 
     optAssertionTraitsInit(optMaxAssertionCount);
@@ -2093,7 +2093,7 @@ void Compiler::optAssertionGen(GenTreePtr tree)
         case GT_CALL:
             // A virtual call can create a non-null assertion. We transform some virtual calls into non-virtual calls
             // with a GTF_CALL_NULLCHECK flag set.
-            if ((tree->gtFlags & GTF_CALL_NULLCHECK) || ((tree->gtFlags & GTF_CALL_VIRT_KIND_MASK) != GTF_CALL_NONVIRT))
+            if ((tree->gtFlags & GTF_CALL_NULLCHECK) || tree->AsCall()->IsVirtual())
             {
                 //  Retrieve the 'this' arg
                 GenTreePtr thisArg = gtGetThisArg(tree->AsCall());
@@ -2150,6 +2150,10 @@ void Compiler::optMapComplementary(AssertionIndex assertionIndex, AssertionIndex
     {
         return;
     }
+
+    assert(assertionIndex <= optMaxAssertionCount);
+    assert(index <= optMaxAssertionCount);
+
     optComplementaryAssertionMap[assertionIndex] = index;
     optComplementaryAssertionMap[index]          = assertionIndex;
 }
@@ -3417,7 +3421,7 @@ GenTreePtr Compiler::optAssertionProp_Comma(ASSERT_VALARG_TP assertions, const G
     if ((tree->gtGetOp1()->OperGet() == GT_ARR_BOUNDS_CHECK) &&
         ((tree->gtGetOp1()->gtFlags & GTF_ARR_BOUND_INBND) != 0))
     {
-        optRemoveRangeCheck(tree, stmt, true, GTF_ASG, true /* force remove */);
+        optRemoveRangeCheck(tree, stmt);
         return optAssertionProp_Update(tree, tree, stmt);
     }
     return nullptr;
@@ -3471,6 +3475,7 @@ GenTreePtr Compiler::optAssertionProp_Ind(ASSERT_VALARG_TP assertions, const Gen
         }
 #endif
         tree->gtFlags &= ~GTF_EXCEPT;
+        tree->gtFlags |= GTF_IND_NONFAULTING;
 
         // Set this flag to prevent reordering
         tree->gtFlags |= GTF_ORDER_SIDEEFF;
@@ -4558,7 +4563,7 @@ ASSERT_TP* Compiler::optInitAssertionDataflowFlags()
     }
     // Compute the data flow values for all tracked expressions
     // IN and OUT never change for the initial basic block B1
-    BitVecOps::OldStyleClearD(apTraits, fgFirstBB->bbAssertionIn);
+    BitVecOps::ClearD(apTraits, fgFirstBB->bbAssertionIn);
     return jumpDestOut;
 }
 
@@ -4777,7 +4782,9 @@ Compiler::fgWalkResult Compiler::optVNConstantPropCurStmt(BasicBlock* block, Gen
         case GT_RSH:
         case GT_RSZ:
         case GT_NEG:
+#ifdef LEGACY_BACKEND
         case GT_CHS:
+#endif
         case GT_CAST:
         case GT_INTRINSIC:
             break;

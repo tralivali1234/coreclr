@@ -71,8 +71,6 @@ public:
     static PCODE GetSecureInvoke(MethodDesc* pMD);
     // determines where the delegate needs to be wrapped for non-security reason
     static BOOL NeedsWrapperDelegate(MethodDesc* pTargetMD);
-    // determines whether the delegate needs to be wrapped
-    static BOOL NeedsSecureDelegate(MethodDesc* pCreatorMethod, AppDomain *pCreatorDomain, MethodDesc* pTargetMD);
     // on entry delegate points to the delegate to wrap
     static DELEGATEREF CreateSecureDelegate(DELEGATEREF delegate, MethodDesc* pCreatorMethod, MethodDesc* pTargetMD);
 
@@ -122,19 +120,12 @@ public:
     static Stub *GenerateStubForHost(MethodDesc *pInvokeMD, MethodDesc *pStubMD, LPVOID pNativeTarget, Stub *pInnerStub);
 #endif // _TARGET_X86_
 
-#ifdef FEATURE_COMINTEROP
-    static void DoUnmanagedCodeAccessCheck(MethodDesc* pMeth);
-#endif // FEATURE_COMINTEROP
-
     static MethodDesc * __fastcall GetMethodDesc(OBJECTREF obj);
     static OBJECTREF GetTargetObject(OBJECTREF obj);
 
     static BOOL IsTrueMulticastDelegate(OBJECTREF delegate);
 
-    static BOOL IsMethodAllowedToSinkReversePInvoke(MethodDesc *pMD);
-
 private:
-    static BOOL IsFullTrustDelegate(DELEGATEREF pDelegate);
     static Stub* SetupShuffleThunk(MethodTable * pDelMT, MethodDesc *pTargetMeth);
 
 public:

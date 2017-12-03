@@ -7,9 +7,7 @@
 //
 
 using System;
-using System.Runtime.Serialization;
 using System.Diagnostics;
-using System.Diagnostics.Contracts;
 
 namespace System.Text
 {
@@ -118,7 +116,7 @@ namespace System.Text
         }
 
         // The following methods are copied from EncodingNLS.cs.
-        // Unfortunately EncodingNLS.cs is internal and we're public, so we have to reimpliment them here.
+        // Unfortunately EncodingNLS.cs is internal and we're public, so we have to re-implement them here.
         // These should be kept in sync for the following classes:
         // EncodingNLS, UTF7Encoding, UTF8Encoding, UTF32Encoding, ASCIIEncoding, UnicodeEncoding
 
@@ -141,7 +139,6 @@ namespace System.Text
 
             if (chars.Length - index < count)
                 throw new ArgumentOutOfRangeException("chars", SR.ArgumentOutOfRange_IndexCountBuffer);
-            Contract.EndContractBlock();
 
             // If no input, return 0, avoid fixed empty array problem
             if (count == 0)
@@ -162,7 +159,6 @@ namespace System.Text
             // Validate input
             if (s==null)
                 throw new ArgumentNullException("s");
-            Contract.EndContractBlock();
 
             fixed (char* pChars = s)
                 return GetByteCount(pChars, s.Length, null);
@@ -181,7 +177,6 @@ namespace System.Text
 
             if (count < 0)
                 throw new ArgumentOutOfRangeException("count", SR.ArgumentOutOfRange_NeedNonNegNum);
-            Contract.EndContractBlock();
 
             // Call it with empty encoder
             return GetByteCount(chars, count, null);
@@ -206,7 +201,6 @@ namespace System.Text
 
             if (byteIndex < 0 || byteIndex > bytes.Length)
                 throw new ArgumentOutOfRangeException("byteIndex", SR.ArgumentOutOfRange_Index);
-            Contract.EndContractBlock();
 
             int byteCount = bytes.Length - byteIndex;
 
@@ -247,7 +241,6 @@ namespace System.Text
 
             if (byteIndex < 0 || byteIndex > bytes.Length)
                 throw new ArgumentOutOfRangeException("byteIndex", SR.ArgumentOutOfRange_Index);
-            Contract.EndContractBlock();
 
             // If nothing to encode return 0, avoid fixed problem
             if (charCount == 0)
@@ -278,7 +271,6 @@ namespace System.Text
 
             if (charCount < 0 || byteCount < 0)
                 throw new ArgumentOutOfRangeException((charCount < 0 ? "charCount" : "byteCount"), SR.ArgumentOutOfRange_NeedNonNegNum);
-            Contract.EndContractBlock();
 
             return GetBytes(chars, charCount, bytes, byteCount, null);
         }
@@ -302,7 +294,6 @@ namespace System.Text
 
             if (bytes.Length - index < count)
                 throw new ArgumentOutOfRangeException("bytes", SR.ArgumentOutOfRange_IndexCountBuffer);
-            Contract.EndContractBlock();
 
             // If no input just return 0, fixed doesn't like 0 length arrays.
             if (count == 0)
@@ -326,7 +317,6 @@ namespace System.Text
 
             if (count < 0)
                 throw new ArgumentOutOfRangeException("count", SR.ArgumentOutOfRange_NeedNonNegNum);
-            Contract.EndContractBlock();
 
             return GetCharCount(bytes, count, null);
         }
@@ -351,7 +341,6 @@ namespace System.Text
 
             if (charIndex < 0 || charIndex > chars.Length)
                 throw new ArgumentOutOfRangeException("charIndex", SR.ArgumentOutOfRange_Index);
-            Contract.EndContractBlock();
 
             // If no input, return 0 & avoid fixed problem
             if (byteCount == 0)
@@ -382,7 +371,6 @@ namespace System.Text
 
             if (charCount < 0 || byteCount < 0)
                 throw new ArgumentOutOfRangeException((charCount < 0 ? "charCount" : "byteCount"), SR.ArgumentOutOfRange_NeedNonNegNum);
-            Contract.EndContractBlock();
 
             return GetChars(bytes, byteCount, chars, charCount, null);
         }
@@ -406,7 +394,6 @@ namespace System.Text
 
             if (bytes.Length - index < count)
                 throw new ArgumentOutOfRangeException("bytes", SR.ArgumentOutOfRange_IndexCountBuffer);
-            Contract.EndContractBlock();
 
             // Avoid problems with empty input buffer
             if (count == 0) return String.Empty;
@@ -563,7 +550,7 @@ namespace System.Text
                 // We already cleared bits & bitcount for mustflush case
                 encoder.bits = bits;
                 encoder.bitCount = bitCount;
-                encoder.m_charsUsed = buffer.CharsUsed;
+                encoder._charsUsed = buffer.CharsUsed;
             }
 
             return buffer.Count;
@@ -737,7 +724,7 @@ namespace System.Text
                     decoder.bitCount = bitCount;
                     decoder.firstByte = firstByte;
                 }
-                decoder.m_bytesUsed = buffer.BytesUsed;
+                decoder._bytesUsed = buffer.BytesUsed;
             }
             // else ignore any hanging bits.
 
@@ -763,7 +750,6 @@ namespace System.Text
             if (charCount < 0)
                 throw new ArgumentOutOfRangeException(nameof(charCount),
                      SR.ArgumentOutOfRange_NeedNonNegNum);
-            Contract.EndContractBlock();
 
             // Suppose that every char can not be direct-encoded, we know that
             // a byte can encode 6 bits of the Unicode character.  And we will
@@ -796,7 +782,6 @@ namespace System.Text
             if (byteCount < 0)
                 throw new ArgumentOutOfRangeException(nameof(byteCount),
                      SR.ArgumentOutOfRange_NeedNonNegNum);
-            Contract.EndContractBlock();
 
             // Worst case is 1 char per byte.  Minimum 1 for left over bits in case decoder is being flushed
             // Also note that we ignore extra bits (per spec), so UTF7 doesn't have unknown in this direction.
@@ -808,7 +793,7 @@ namespace System.Text
 
         // Of all the amazing things... This MUST be Decoder so that our com name
         // for System.Text.Decoder doesn't change
-        private sealed class Decoder : DecoderNLS, ISerializable
+        private sealed class Decoder : DecoderNLS
         {
             /*private*/
             internal int bits;
@@ -822,19 +807,13 @@ namespace System.Text
                 // base calls reset
             }
 
-            // ISerializable implementation, get data for this object
-            void ISerializable.GetObjectData(SerializationInfo info, StreamingContext context)
-            {
-                throw new PlatformNotSupportedException();
-            }
-
             public override void Reset()
             {
                 this.bits = 0;
                 this.bitCount = -1;
                 this.firstByte = false;
-                if (m_fallbackBuffer != null)
-                    m_fallbackBuffer.Reset();
+                if (_fallbackBuffer != null)
+                    _fallbackBuffer.Reset();
             }
 
             // Anything left in our encoder?
@@ -851,7 +830,7 @@ namespace System.Text
 
         // Of all the amazing things... This MUST be Encoder so that our com name
         // for System.Text.Encoder doesn't change
-        private sealed class Encoder : EncoderNLS, ISerializable
+        private sealed class Encoder : EncoderNLS
         {
             /*private*/
             internal int bits;
@@ -863,18 +842,12 @@ namespace System.Text
                 // base calls reset
             }
 
-            // ISerializable implementation
-            void ISerializable.GetObjectData(SerializationInfo info, StreamingContext context)
-            {
-                throw new PlatformNotSupportedException();
-            }
-
             public override void Reset()
             {
                 this.bitCount = -1;
                 this.bits = 0;
-                if (m_fallbackBuffer != null)
-                    m_fallbackBuffer.Reset();
+                if (_fallbackBuffer != null)
+                    _fallbackBuffer.Reset();
             }
 
             // Anything left in our encoder?

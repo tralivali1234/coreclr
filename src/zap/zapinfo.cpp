@@ -448,25 +448,6 @@ void ZapInfo::CompileMethod()
     }
 #endif
 
-    if (!m_jitFlags.IsSet(CORJIT_FLAGS::CORJIT_FLAG_SKIP_VERIFICATION))
-    {
-        BOOL raiseVerificationException, unverifiableGenericCode;
-
-        m_jitFlags = GetCompileFlagsIfGenericInstantiation(
-                        m_currentMethodHandle,
-                        m_jitFlags,
-                        this,
-                        &raiseVerificationException,
-                        &unverifiableGenericCode);
-
-        // Instead of raising a VerificationException, we will leave the method
-        // uncompiled. If it gets called at runtime, we will raise the
-        // VerificationException at that time while trying to compile the method.
-        if (raiseVerificationException)
-            return;
-    }
-
-
     if (m_pImage->m_stats)
     {
         m_pImage->m_stats->m_methods++;
@@ -3126,6 +3107,16 @@ BOOL ZapInfo::areTypesEquivalent(CORINFO_CLASS_HANDLE cls1, CORINFO_CLASS_HANDLE
     return m_pEEJitInfo->areTypesEquivalent(cls1, cls2);
 }
 
+TypeCompareState ZapInfo::compareTypesForCast(CORINFO_CLASS_HANDLE fromClass, CORINFO_CLASS_HANDLE toClass)
+{
+    return m_pEEJitInfo->compareTypesForCast(fromClass, toClass);
+}
+
+TypeCompareState ZapInfo::compareTypesForEquality(CORINFO_CLASS_HANDLE cls1, CORINFO_CLASS_HANDLE cls2)
+{
+    return m_pEEJitInfo->compareTypesForEquality(cls1, cls2);
+}
+
 CORINFO_CLASS_HANDLE ZapInfo::mergeClasses(
                                 CORINFO_CLASS_HANDLE cls1,
                                 CORINFO_CLASS_HANDLE cls2)
@@ -3564,6 +3555,11 @@ const char* ZapInfo::getMethodName(CORINFO_METHOD_HANDLE ftn, const char **modul
     return m_pEEJitInfo->getMethodName(ftn, moduleName);
 }
 
+const char* ZapInfo::getMethodNameFromMetadata(CORINFO_METHOD_HANDLE ftn, const char **className, const char** namespaceName)
+{
+    return m_pEEJitInfo->getMethodNameFromMetadata(ftn, className, namespaceName);
+}
+
 unsigned ZapInfo::getMethodHash(CORINFO_METHOD_HANDLE ftn)
 {
     return m_pEEJitInfo->getMethodHash(ftn);
@@ -3702,19 +3698,32 @@ CORINFO_MODULE_HANDLE ZapInfo::getMethodModule(CORINFO_METHOD_HANDLE method)
 }
 
 void ZapInfo::getMethodVTableOffset(CORINFO_METHOD_HANDLE method,
-                                                  unsigned * pOffsetOfIndirection,
-                                                  unsigned * pOffsetAfterIndirection)
+                                    unsigned * pOffsetOfIndirection,
+                                    unsigned * pOffsetAfterIndirection,
+                                    bool * isRelative)
 {
-    m_pEEJitInfo->getMethodVTableOffset(method, pOffsetOfIndirection, pOffsetAfterIndirection);
+    m_pEEJitInfo->getMethodVTableOffset(method, pOffsetOfIndirection, pOffsetAfterIndirection, isRelative);
 }
 
 CORINFO_METHOD_HANDLE ZapInfo::resolveVirtualMethod(
         CORINFO_METHOD_HANDLE virtualMethod,
         CORINFO_CLASS_HANDLE implementingClass,
-        CORINFO_CONTEXT_HANDLE ownerType
-        )
+        CORINFO_CONTEXT_HANDLE ownerType)
 {
     return m_pEEJitInfo->resolveVirtualMethod(virtualMethod, implementingClass, ownerType);
+}
+
+CORINFO_METHOD_HANDLE ZapInfo::getUnboxedEntry(
+    CORINFO_METHOD_HANDLE ftn,
+    bool* requiresInstMethodTableArg)
+{
+    return m_pEEJitInfo->getUnboxedEntry(ftn, requiresInstMethodTableArg);
+}
+
+CORINFO_CLASS_HANDLE ZapInfo::getDefaultEqualityComparerClass(
+    CORINFO_CLASS_HANDLE elemType)
+{
+    return m_pEEJitInfo->getDefaultEqualityComparerClass(elemType);
 }
 
 void ZapInfo::expandRawHandleIntrinsic(

@@ -360,7 +360,7 @@ inline regMaskTP Compiler::genReturnRegForTree(GenTreePtr tree)
 {
     var_types type = tree->TypeGet();
 
-    if (type == TYP_STRUCT && IsHfa(tree))
+    if (varTypeIsStruct(type) && IsHfa(tree))
     {
         int retSlots = GetHfaCount(tree);
         return ((1 << retSlots) - 1) << REG_FLOATRET;
@@ -751,7 +751,7 @@ regNumber Compiler::raUpdateRegStateForArg(RegState* regState, LclVarDsc* argDsc
 #endif // _TARGET_ARM_
 
 #if FEATURE_MULTIREG_ARGS
-    if (argDsc->lvType == TYP_STRUCT)
+    if (varTypeIsStruct(argDsc->lvType))
     {
         if (argDsc->lvIsHfaRegArg())
         {
@@ -1342,7 +1342,7 @@ RET:
         while (iter.NextElem(&varNum))
         {
             // We'll need this for one of the calls...
-            VarSetOps::OldStyleClearD(this, varAsSet);
+            VarSetOps::ClearD(this, varAsSet);
             VarSetOps::AddElemD(this, varAsSet, varNum);
 
             // If this varBit and lastUse?
@@ -4835,6 +4835,17 @@ regMaskTP Compiler::rpPredictTreeRegUse(GenTreePtr   tree,
             }
             assert(list == NULL);
 
+#ifdef LEGACY_BACKEND
+#if CPU_LOAD_STORE_ARCH
+#ifdef FEATURE_READYTORUN_COMPILER
+            if (tree->gtCall.IsR2RRelativeIndir())
+            {
+                tree->gtUsedRegs |= RBM_R2R_INDIRECT_PARAM;
+            }
+#endif // FEATURE_READYTORUN_COMPILER
+#endif // CPU_LOAD_STORE_ARCH
+#endif // LEGACY_BACKEND
+
             regMaskTP callAddrMask;
             callAddrMask = RBM_NONE;
 #if CPU_LOAD_STORE_ARCH
@@ -6256,23 +6267,13 @@ void Compiler::rpPredictRegUse()
         mustPredict |= rpLostEnreg;
 
 #ifdef _TARGET_ARM_
-
         // See if we previously reserved REG_R10 and try to make it available if we have a small frame now
-        //
-        if ((rpPasses == 0) && (codeGen->regSet.rsMaskResvd & RBM_OPT_RSVD))
+        if ((rpPasses == 0) && ((codeGen->regSet.rsMaskResvd & RBM_OPT_RSVD) != 0) &&
+            !compRsvdRegCheck(REGALLOC_FRAME_LAYOUT))
         {
-            if (compRsvdRegCheck(REGALLOC_FRAME_LAYOUT))
-            {
-                // We must keep reserving R10 in this case
-                codeGen->regSet.rsMaskResvd |= RBM_OPT_RSVD;
-            }
-            else
-            {
-                // We can release our reservation on R10 and use it to color registers
-                //
-                codeGen->regSet.rsMaskResvd &= ~RBM_OPT_RSVD;
-                allAcceptableRegs |= RBM_OPT_RSVD;
-            }
+            // We can release our reservation on R10 and use it to color registers
+            codeGen->regSet.rsMaskResvd &= ~RBM_OPT_RSVD;
+            allAcceptableRegs |= RBM_OPT_RSVD;
         }
 #endif
 
@@ -6351,7 +6352,7 @@ void Compiler::rpPredictRegUse()
         /*  Zero the variable/register interference graph */
         for (unsigned i = 0; i < REG_COUNT; i++)
         {
-            VarSetOps::OldStyleClearD(this, raLclRegIntf[i]);
+            VarSetOps::ClearD(this, raLclRegIntf[i]);
         }
 
         // if there are PInvoke calls and compLvFrameListRoot is enregistered,
@@ -6469,6 +6470,21 @@ void Compiler::rpPredictRegUse()
 
         /* Decide whether we need to set mustPredict */
         mustPredict = false;
+
+#ifdef _TARGET_ARM_
+        // The spill count may be now high enough that we now need to reserve r10. If this is the case, we'll need to
+        // reserve r10, and if it was used, throw out the last prediction and repredict.
+        if (((codeGen->regSet.rsMaskResvd & RBM_OPT_RSVD) == 0) && compRsvdRegCheck(REGALLOC_FRAME_LAYOUT))
+        {
+            codeGen->regSet.rsMaskResvd |= RBM_OPT_RSVD;
+            allAcceptableRegs &= ~RBM_OPT_RSVD;
+            if ((regUsed & RBM_OPT_RSVD) != 0)
+            {
+                mustPredict              = true;
+                rpBestRecordedPrediction = nullptr;
+            }
+        }
+#endif
 
         if (rpAddedVarIntf)
         {
@@ -6789,7 +6805,7 @@ void Compiler::rpRecordPrediction()
         if (rpBestRecordedPrediction == NULL)
         {
             rpBestRecordedPrediction =
-                reinterpret_cast<VarRegPrediction*>(compGetMemArrayA(lvaCount, sizeof(VarRegPrediction)));
+                reinterpret_cast<VarRegPrediction*>(compGetMemArray(lvaCount, sizeof(VarRegPrediction)));
         }
         for (unsigned k = 0; k < lvaCount; k++)
         {

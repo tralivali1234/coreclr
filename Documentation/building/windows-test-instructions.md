@@ -33,8 +33,6 @@ To run a clean, priority 1, crossgen test pass:
 
 **buildtest /?** will list additional supported parameters.
 
-Additionally, there is a Visual Studio solution, `<repo_root>\tests\src\AllTestProjects.sln`, where users can build a particular testcase, or all priority 0 testcases that are within it.
-
 **Building Individual Tests**
 
 Note: buildtest.cmd or build.cmd skipnative skipmscorlib needs to be run atleast once
@@ -71,15 +69,15 @@ If you wish to re-run a failed test, please follow the following steps:
 1. Set an environment variable, `CORE_ROOT`, pointing to the path to product binaries that was passed to runtest.cmd.
 For example using a checked build the location would be: `<repo_root>\bin\tests\Windows_NT.x64.Checked\Tests\Core_Root`
 
-2. Next, run the failed test, the command to which is also present in the test report for a failed test. It will be something like `<repo_root>\binaries\tests\x64\debug\Exceptions\Finalization\Finalizer.cmd`.
+2. Next, run the failed test, the command to which is also present in the test report for a failed test. It will be something like `<repo_root>\bin\tests\Windows_NT.x64.Checked\Exceptions\Finalization\Finalizer.cmd`.
 
 If you wish to run the test under a debugger (e.g. [WinDbg](http://msdn.microsoft.com/en-us/library/windows/hardware/ff551063(v=vs.85).aspx)), append `-debug <debuggerFullPath>` to the test command. For example:
 
-     <repo_root>\binaries\tests\x64\debug\Exceptions\Finalization\Finalizer.cmd -debug <debuggerFullPath>
+     <repo_root>\bin\tests\Windows_NT.x64.Checked\Exceptions\Finalization\Finalizer.cmd -debug <debuggerFullPath>
     
 **Modifying a test**
 
-If test changes are needed, make the change and build the test project. This will binplace the binaries in test binaries folder (e.g. `<repo_root>\binaries\tests\x64\debug\Exceptions\Finalization`). At this point, follow the steps to re-run a failed test to re-run the modified test.
+If test changes are needed, make the change and build the test project. This will binplace the binaries in test binaries folder (e.g. `<repo_root>\bin\tests\Windows_NT.x64.Checked\Exceptions\Finalization`). At this point, follow the steps to re-run a failed test to re-run the modified test.
 
 **Authoring Tests (in VS)**
 
@@ -87,12 +85,11 @@ If test changes are needed, make the change and build the test project. This wil
 1. Use an existing test such as `<repo_root>\tests\src\Exceptions\Finalization\Finalizer.csproj` as a template and copy it to a new folder under `<repo_root>\tests\src`.
 2. Be sure that the AssemblyName has been removed (this causes confusion with the way tests are generally handled behind the scenes by the build system). 
 3. [Assign a CLRTestKind/CLRTestPriority.](test-configuration.md)
-4. Add the project of the new test to `<repo_root>\tests\src\AllTestProjects.sln` in VS
-5. Add source files to this newly added project.
-6. Indicate the success of the test by returning `100`.
-8. Add any other projects as a dependency, if needed.
-9. Build the test.
-10. Follow the steps to re-run a failed test to validate the new test.
+4. Add source files to this newly added project.
+5. Indicate the success of the test by returning `100`.
+6. Add any other projects as a dependency, if needed.
+7. Build the test.
+8. Follow the steps to re-run a failed test to validate the new test.
 
 Note:
 

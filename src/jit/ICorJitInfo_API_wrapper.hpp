@@ -122,10 +122,11 @@ CORINFO_MODULE_HANDLE WrapICorJitInfo::getMethodModule(
 void WrapICorJitInfo::getMethodVTableOffset(
             CORINFO_METHOD_HANDLE       method,                 /* IN */
             unsigned*                   offsetOfIndirection,    /* OUT */
-            unsigned*                   offsetAfterIndirection  /* OUT */)
+            unsigned*                   offsetAfterIndirection, /* OUT */
+            bool*                       isRelative              /* OUT */)
 {
     API_ENTER(getMethodVTableOffset);
-    wrapHnd->getMethodVTableOffset(method, offsetOfIndirection, offsetAfterIndirection);
+    wrapHnd->getMethodVTableOffset(method, offsetOfIndirection, offsetAfterIndirection, isRelative);
     API_LEAVE(getMethodVTableOffset);
 }
 
@@ -1028,6 +1029,17 @@ const char* WrapICorJitInfo::getMethodName(
     return temp;
 }
 
+const char* WrapICorJitInfo::getMethodNameFromMetadata(
+        CORINFO_METHOD_HANDLE       ftn,           /* IN */
+        const char                **className,     /* OUT */
+        const char                **namespaceName  /* OUT */)
+{
+    API_ENTER(getMethodNameFromMetadata);
+    const char* temp = wrapHnd->getMethodNameFromMetaData(ftn, moduleName, namespaceName);
+    API_LEAVE(getMethodNameFromMetadata);
+    return temp;
+}
+
 unsigned WrapICorJitInfo::getMethodHash(
         CORINFO_METHOD_HANDLE       ftn         /* IN */)
 {
@@ -1607,6 +1619,27 @@ CORINFO_METHOD_HANDLE WrapICorJitInfo::resolveVirtualMethod(
     API_LEAVE(resolveVirtualMethod);
     return result;
 }
+
+CORINFO_METHOD_HANDLE WrapICorJitInfo::getUnboxedEntry(
+    CORINFO_METHOD_HANDLE       ftn,          /* IN */
+    bool* requiresInstMethodTableArg          /* OUT */
+)
+{
+    API_ENTER(getUnboxedEntry);
+    CORINFO_METHOD_HANDLE result = wrapHnd->getUnboxedEntry(ftn, requiresInstMethodTableArg);
+    API_LEAVE(getUnboxedEntry);
+    return result;
+}
+
+CORINFO_CLASS_HANDLE WrapICorJitInfo::getDefaultEqualityComparerClass(
+    CORINFO_CLASS_HANDLE elemType)
+{
+    API_ENTER(getDefaultEqualityComparerClass);
+    CORINFO_CLASS_HANDLE result = wrapHnd->getDefaultEqualityComparerClass(elemType);
+    API_LEAVE(getDefaultEqualityComparerClass);
+    return result;
+}
+
 
 void WrapICorJitInfo::expandRawHandleIntrinsic(
     CORINFO_RESOLVED_TOKEN *        pResolvedToken,

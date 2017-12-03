@@ -28,7 +28,6 @@ namespace System.Resources
     using System.Text;
     using System.Threading;
     using System.Diagnostics;
-    using System.Diagnostics.Contracts;
     using Microsoft.Win32;
 
     //
@@ -48,7 +47,7 @@ namespace System.Resources
         {
             // here and below: convert asserts to preconditions where appropriate when we get
             // contracts story in place.
-            Contract.Requires(mediator != null, "mediator shouldn't be null; check caller");
+            Debug.Assert(mediator != null, "mediator shouldn't be null; check caller");
             _mediator = mediator;
         }
 
@@ -181,7 +180,7 @@ namespace System.Resources
                 // fires, please fix the build process for the BCL directory.
                 if (a == typeof(Object).Assembly)
                 {
-                    Debug.Assert(false, System.CoreLib.Name + "'s NeutralResourcesLanguageAttribute is a malformed culture name! name: \"" + cultureName + "\"  Exception: " + e);
+                    Debug.Fail(System.CoreLib.Name + "'s NeutralResourcesLanguageAttribute is a malformed culture name! name: \"" + cultureName + "\"  Exception: " + e);
                     return CultureInfo.InvariantCulture;
                 }
 
@@ -189,9 +188,7 @@ namespace System.Resources
             }
         }
 
-        // Constructs a new ResourceSet for a given file name.  The logic in
-        // here avoids a ReflectionPermission check for our RuntimeResourceSet
-        // for perf and working set reasons.
+        // Constructs a new ResourceSet for a given file name.
         // Use the assembly to resolve assembly manifest resource references.
         // Note that is can be null, but probably shouldn't be.
         // This method could use some refactoring. One thing at a time.
@@ -248,13 +245,7 @@ namespace System.Resources
                     // the abbreviated ones emitted by InternalResGen.
                     if (CanUseDefaultResourceClasses(readerTypeName, resSetTypeName))
                     {
-                        RuntimeResourceSet rs;
-#if LOOSELY_LINKED_RESOURCE_REFERENCE
-                        rs = new RuntimeResourceSet(store, assembly);
-#else
-                        rs = new RuntimeResourceSet(store);
-#endif // LOOSELY_LINKED_RESOURCE_REFERENCE
-                        return rs;
+                        return new RuntimeResourceSet(store);
                     }
                     else
                     {
@@ -264,16 +255,9 @@ namespace System.Resources
                         args[0] = store;
                         IResourceReader reader = (IResourceReader)Activator.CreateInstance(readerType, args);
 
-                        Object[] resourceSetArgs =
-#if LOOSELY_LINKED_RESOURCE_REFERENCE
-                            new Object[2];
-#else
- new Object[1];
-#endif // LOOSELY_LINKED_RESOURCE_REFERENCE
+                        Object[] resourceSetArgs = new Object[1];
                         resourceSetArgs[0] = reader;
-#if LOOSELY_LINKED_RESOURCE_REFERENCE
-                        resourceSetArgs[1] = assembly;
-#endif // LOOSELY_LINKED_RESOURCE_REFERENCE
+
                         Type resSetType;
                         if (_mediator.UserResourceSet == null)
                         {
@@ -299,14 +283,7 @@ namespace System.Resources
 
             if (_mediator.UserResourceSet == null)
             {
-                // Explicitly avoid CreateInstance if possible, because it
-                // requires ReflectionPermission to call private & protected
-                // constructors.  
-#if LOOSELY_LINKED_RESOURCE_REFERENCE                
-                return new RuntimeResourceSet(store, assembly);
-#else
                 return new RuntimeResourceSet(store);
-#endif // LOOSELY_LINKED_RESOURCE_REFERENCE
             }
             else
             {
@@ -327,9 +304,7 @@ namespace System.Resources
                     args = new Object[1];
                     args[0] = store;
                     rs = (ResourceSet)Activator.CreateInstance(_mediator.UserResourceSet, args);
-#if LOOSELY_LINKED_RESOURCE_REFERENCE
-                    rs.Assembly = assembly;
-#endif // LOOSELY_LINKED_RESOURCE_REFERENCE
+
                     return rs;
                 }
                 catch (MissingMethodException e)
@@ -341,8 +316,8 @@ namespace System.Resources
 
         private Stream GetManifestResourceStream(RuntimeAssembly satellite, String fileName, ref StackCrawlMark stackMark)
         {
-            Contract.Requires(satellite != null, "satellite shouldn't be null; check caller");
-            Contract.Requires(fileName != null, "fileName shouldn't be null; check caller");
+            Debug.Assert(satellite != null, "satellite shouldn't be null; check caller");
+            Debug.Assert(fileName != null, "fileName shouldn't be null; check caller");
 
             // If we're looking in the main assembly AND if the main assembly was the person who
             // created the ResourceManager, skip a security check for private manifest resources.
@@ -365,8 +340,8 @@ namespace System.Resources
         [System.Security.DynamicSecurityMethod] // Methods containing StackCrawlMark local var has to be marked DynamicSecurityMethod
         private Stream CaseInsensitiveManifestResourceStreamLookup(RuntimeAssembly satellite, String name)
         {
-            Contract.Requires(satellite != null, "satellite shouldn't be null; check caller");
-            Contract.Requires(name != null, "name shouldn't be null; check caller");
+            Debug.Assert(satellite != null, "satellite shouldn't be null; check caller");
+            Debug.Assert(name != null, "name shouldn't be null; check caller");
 
             StringBuilder sb = new StringBuilder();
             if (_mediator.LocationInfo != null)
@@ -440,16 +415,16 @@ namespace System.Resources
                 // denied back from the OS.  This showed up for
                 // href-run exe's at one point.  
                 int hr = fle._HResult;
-                if (hr != Win32Native.MakeHRFromErrorCode(Win32Native.ERROR_ACCESS_DENIED))
+                if (hr != Win32Marshal.MakeHRFromErrorCode(Win32Native.ERROR_ACCESS_DENIED))
                 {
-                    Debug.Assert(false, "[This assert catches satellite assembly build/deployment problems - report this message to your build lab & loc engineer]" + Environment.NewLine + "GetSatelliteAssembly failed for culture " + lookForCulture.Name + " and version " + (_mediator.SatelliteContractVersion == null ? _mediator.MainAssembly.GetVersion().ToString() : _mediator.SatelliteContractVersion.ToString()) + " of assembly " + _mediator.MainAssembly.GetSimpleName() + " with error code 0x" + hr.ToString("X", CultureInfo.InvariantCulture) + Environment.NewLine + "Exception: " + fle);
+                    Debug.Fail("[This assert catches satellite assembly build/deployment problems - report this message to your build lab & loc engineer]" + Environment.NewLine + "GetSatelliteAssembly failed for culture " + lookForCulture.Name + " and version " + (_mediator.SatelliteContractVersion == null ? _mediator.MainAssembly.GetVersion().ToString() : _mediator.SatelliteContractVersion.ToString()) + " of assembly " + _mediator.MainAssembly.GetSimpleName() + " with error code 0x" + hr.ToString("X", CultureInfo.InvariantCulture) + Environment.NewLine + "Exception: " + fle);
                 }
             }
 
             // Don't throw for zero-length satellite assemblies, for compat with v1
             catch (BadImageFormatException bife)
             {
-                Debug.Assert(false, "[This assert catches satellite assembly build/deployment problems - report this message to your build lab & loc engineer]" + Environment.NewLine + "GetSatelliteAssembly failed for culture " + lookForCulture.Name + " and version " + (_mediator.SatelliteContractVersion == null ? _mediator.MainAssembly.GetVersion().ToString() : _mediator.SatelliteContractVersion.ToString()) + " of assembly " + _mediator.MainAssembly.GetSimpleName() + Environment.NewLine + "Exception: " + bife);
+                Debug.Fail("[This assert catches satellite assembly build/deployment problems - report this message to your build lab & loc engineer]" + Environment.NewLine + "GetSatelliteAssembly failed for culture " + lookForCulture.Name + " and version " + (_mediator.SatelliteContractVersion == null ? _mediator.MainAssembly.GetVersion().ToString() : _mediator.SatelliteContractVersion.ToString()) + " of assembly " + _mediator.MainAssembly.GetSimpleName() + Environment.NewLine + "Exception: " + bife);
             }
 
             return satellite;
@@ -530,7 +505,7 @@ namespace System.Resources
             if (_mediator.MainAssembly == typeof(Object).Assembly && _mediator.BaseName.Equals(System.CoreLib.Name))
             {
                 // This would break CultureInfo & all our exceptions.
-                Debug.Assert(false, "Couldn't get " + System.CoreLib.Name + ResourceManager.ResFileExtension + " from " + System.CoreLib.Name + "'s assembly" + Environment.NewLine + Environment.NewLine + "Are you building the runtime on your machine?  Chances are the BCL directory didn't build correctly.  Type 'build -c' in the BCL directory.  If you get build errors, look at buildd.log.  If you then can't figure out what's wrong (and you aren't changing the assembly-related metadata code), ask a BCL dev.\n\nIf you did NOT build the runtime, you shouldn't be seeing this and you've found a bug.");
+                Debug.Fail("Couldn't get " + System.CoreLib.Name + ResourceManager.ResFileExtension + " from " + System.CoreLib.Name + "'s assembly" + Environment.NewLine + Environment.NewLine + "Are you building the runtime on your machine?  Chances are the BCL directory didn't build correctly.  Type 'build -c' in the BCL directory.  If you get build errors, look at buildd.log.  If you then can't figure out what's wrong (and you aren't changing the assembly-related metadata code), ask a BCL dev.\n\nIf you did NOT build the runtime, you shouldn't be seeing this and you've found a bug.");
 
                 // We cannot continue further - simply FailFast.
                 string mesgFailFast = System.CoreLib.Name + ResourceManager.ResFileExtension + " couldn't be found!  Large parts of the BCL won't work!";
@@ -546,7 +521,6 @@ namespace System.Resources
         }
 
         [DllImport(JitHelpers.QCall, CharSet = CharSet.Unicode)]
-        [System.Security.SuppressUnmanagedCodeSecurity]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool GetNeutralResourcesLanguageAttribute(RuntimeAssembly assemblyHandle, StringHandleOnStack cultureName, out short fallbackLocation);
     }

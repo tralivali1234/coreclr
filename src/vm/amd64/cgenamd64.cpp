@@ -670,6 +670,19 @@ void UMEntryThunkCode::Encode(BYTE* pTargetCode, void* pvSecretParam)
     _ASSERTE(DbgIsExecutable(&m_movR10[0], &m_jmpRAX[3]-&m_movR10[0]));
 }
 
+void UMEntryThunkCode::Poison()
+{
+    CONTRACTL
+    {
+        NOTHROW;
+        GC_NOTRIGGER;
+        MODE_ANY;
+    }
+    CONTRACTL_END;
+
+    m_movR10[0] = X86_INSTR_INT3;
+}
+
 UMEntryThunk* UMEntryThunk::Decode(LPVOID pCallback)
 {
     LIMITED_METHOD_CONTRACT;
@@ -679,7 +692,8 @@ UMEntryThunk* UMEntryThunk::Decode(LPVOID pCallback)
     return (UMEntryThunk*)pThunkCode->m_uet;
 }
 
-INT32 rel32UsingJumpStub(INT32 UNALIGNED * pRel32, PCODE target, MethodDesc *pMethod, LoaderAllocator *pLoaderAllocator /* = NULL */)
+INT32 rel32UsingJumpStub(INT32 UNALIGNED * pRel32, PCODE target, MethodDesc *pMethod, 
+    LoaderAllocator *pLoaderAllocator /* = NULL */, bool throwOnOutOfMemoryWithinRange /*= true*/)
 {
     CONTRACTL
     {
@@ -708,11 +722,31 @@ INT32 rel32UsingJumpStub(INT32 UNALIGNED * pRel32, PCODE target, MethodDesc *pMe
         TADDR hiAddr = baseAddr + INT32_MAX;
         if (hiAddr < baseAddr) hiAddr = UINT64_MAX; // overflow
 
+        // Always try to allocate with throwOnOutOfMemoryWithinRange:false first to conserve reserveForJumpStubs until when
+        // it is really needed. LoaderCodeHeap::CreateCodeHeap and EEJitManager::CanUseCodeHeap won't use the reserved 
+        // space when throwOnOutOfMemoryWithinRange is false.
+        //
+        // The reserved space should be only used by jump stubs for precodes and other similar code fragments. It should
+        // not be used by JITed code. And since the accounting of the reserved space is not precise, we are conservative
+        // and try to save the reserved space until it is really needed to avoid throwing out of memory within range exception.
         PCODE jumpStubAddr = ExecutionManager::jumpStub(pMethod,
                                                         target,
                                                         (BYTE *)loAddr,
                                                         (BYTE *)hiAddr,
-                                                        pLoaderAllocator);
+                                                        pLoaderAllocator,
+                                                        /* throwOnOutOfMemoryWithinRange */ false);
+        if (jumpStubAddr == NULL)
+        {
+            if (!throwOnOutOfMemoryWithinRange)
+                return 0;
+
+            jumpStubAddr = ExecutionManager::jumpStub(pMethod,
+                target,
+                (BYTE *)loAddr,
+                (BYTE *)hiAddr,
+                pLoaderAllocator,
+                /* throwOnOutOfMemoryWithinRange */ true);
+        }
 
         offset = jumpStubAddr - baseAddr;
 

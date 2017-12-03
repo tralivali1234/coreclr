@@ -75,7 +75,7 @@ namespace System.IO
             }
 
             // Technically this doesn't matter but we used to throw for this case
-            if (string.IsNullOrWhiteSpace(path))
+            if (PathInternal.IsEffectivelyEmpty(path))
                 throw new ArgumentException(SR.Arg_PathEmpty, nameof(path));
 
             // We don't want to check invalid characters for device format- see comments for extended above
@@ -119,8 +119,6 @@ namespace System.IO
         {
             if (path != null)
             {
-                PathInternal.CheckInvalidPathChars(path);
-
                 int length = path.Length;
                 if ((length >= 1 && PathInternal.IsDirectorySeparator(path[0])) ||
                     (length >= 2 && PathInternal.IsValidDriveChar(path[0]) && path[1] == PathInternal.VolumeSeparatorChar))
@@ -141,10 +139,8 @@ namespace System.IO
         public static string GetPathRoot(string path)
         {
             if (path == null) return null;
-            if (string.IsNullOrWhiteSpace(path)) 
+            if (PathInternal.IsEffectivelyEmpty(path))
                 throw new ArgumentException(SR.Arg_PathEmpty, nameof(path));
-
-            PathInternal.CheckInvalidPathChars(path);
 
             // Need to return the normalized directory separator
             path = PathInternal.NormalizeDirectorySeparators(path);

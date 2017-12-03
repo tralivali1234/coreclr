@@ -39,6 +39,10 @@ SET_DEFAULT_DEBUG_CHANNEL(SYNC); // some headers have code with asserts, so do t
 #include "pal/fakepoll.h"
 #endif // HAVE_POLL
 
+#include <algorithm>
+
+const int CorUnix::CThreadSynchronizationInfo::PendingSignalingsArraySize;
+
 // We use the synchronization manager's worker thread to handle
 // process termination requests. It does so by calling the
 // registered handler function.
@@ -949,7 +953,7 @@ namespace CorUnix
         if (SharedObject == odObjectDomain)
         {
             SharedID shridSynchData = m_cacheSHRSynchData.Get(pthrCurrent);
-            if (NULLSharedID == shridSynchData)
+            if (NULL == shridSynchData)
             {
                 ERROR("Unable to allocate shared memory\n");
                 return ERROR_NOT_ENOUGH_MEMORY;
@@ -962,8 +966,8 @@ namespace CorUnix
             _ASSERT_MSG(NULL != psdSynchData, "Bad shared memory pointer\n");
 
             // Initialize waiting list pointers
-            psdSynchData->SetWTLHeadShrPtr(NULLSharedID);
-            psdSynchData->SetWTLTailShrPtr(NULLSharedID);
+            psdSynchData->SetWTLHeadShrPtr(NULL);
+            psdSynchData->SetWTLTailShrPtr(NULL);
 
             // Store shared pointer to this object
             psdSynchData->SetSharedThis(shridSynchData);
@@ -984,7 +988,7 @@ namespace CorUnix
             psdSynchData->SetWTLTailPtr(NULL);
 
             // Set shared this pointer to NULL
-            psdSynchData->SetSharedThis(NULLSharedID);
+            psdSynchData->SetSharedThis(NULL);
 
             *ppvSynchData = static_cast<void *>(psdSynchData);
         }
@@ -2019,7 +2023,7 @@ namespace CorUnix
         if (SynchWorkerCmdRemoteSignal == swcWorkerCmd ||
             SynchWorkerCmdDelegatedObjectSignaling == swcWorkerCmd)
         {
-            SharedID shridMarshaledId = NULLSharedID;
+            SharedID shridMarshaledId = NULL;
 
             TRACE("Received %s cmd\n",
                   (swcWorkerCmd == SynchWorkerCmdRemoteSignal) ?
@@ -2499,7 +2503,7 @@ namespace CorUnix
         WaitingThreadsListNode * pWLNode = SharedIDToTypePointer(WaitingThreadsListNode, shridWLNode);
 
         _ASSERT_MSG(gPID != pWLNode->dwProcessId, "WakeUpRemoteThread called on local thread\n");
-        _ASSERT_MSG(NULLSharedID != shridWLNode, "NULL shared identifier\n");
+        _ASSERT_MSG(NULL != shridWLNode, "NULL shared identifier\n");
         _ASSERT_MSG(NULL != pWLNode, "Bad shared wait list node identifier (%p)\n", (VOID*)shridWLNode);
         _ASSERT_MSG(MsgSize <= PIPE_BUF, "Message too long [MsgSize=%d PIPE_BUF=%d]\n", MsgSize, (int)PIPE_BUF);
 
@@ -2556,7 +2560,7 @@ namespace CorUnix
             SharedIDToTypePointer(CSynchData, shridSynchData);
 
         _ASSERT_MSG(gPID != dwTargetProcessId, " called on local thread\n");
-        _ASSERT_MSG(NULLSharedID != shridSynchData, "NULL shared identifier\n");
+        _ASSERT_MSG(NULL != shridSynchData, "NULL shared identifier\n");
         _ASSERT_MSG(NULL != psdSynchData, "Bad shared SynchData identifier (%p)\n", (VOID*)shridSynchData);
         _ASSERT_MSG(MsgSize <= PIPE_BUF, "Message too long [MsgSize=%d PIPE_BUF=%d]\n", MsgSize, (int)PIPE_BUF);
 
@@ -3737,7 +3741,7 @@ namespace CorUnix
         PAL_ERROR palError = NO_ERROR;
         CSynchData *psdLocal = reinterpret_cast<CSynchData *>(pvLocalSynchData);
         CSynchData *psdShared = NULL;
-        SharedID shridSynchData = NULLSharedID;
+        SharedID shridSynchData = NULL;
         SharedID *rgshridWTLNodes = NULL;
         CObjectType *pot = NULL;
         ULONG ulcWaitingThreads;
@@ -3759,7 +3763,7 @@ namespace CorUnix
         //
 
         shridSynchData = m_cacheSHRSynchData.Get(pthrCurrent);
-        if (NULLSharedID == shridSynchData)
+        if (NULL == shridSynchData)
         {
             ERROR("Unable to allocate shared memory\n");
             palError = ERROR_NOT_ENOUGH_MEMORY;
@@ -3837,8 +3841,8 @@ namespace CorUnix
         // for the waiting threads
         //
 
-        psdShared->SetWTLHeadShrPtr(NULLSharedID);
-        psdShared->SetWTLTailShrPtr(NULLSharedID);
+        psdShared->SetWTLHeadShrPtr(NULL);
+        psdShared->SetWTLTailShrPtr(NULL);
 
         if (0 < ulcWaitingThreads)
         {
@@ -3867,7 +3871,7 @@ namespace CorUnix
                 pwtlnNew->shridWaitingState = pwtlnOld->shridWaitingState;
                 pwtlnNew->ptwiWaitInfo = pwtlnOld->ptwiWaitInfo;
 
-                psdShared->SharedWaiterEnqueue(rgshridWTLNodes[i]);
+                psdShared->SharedWaiterEnqueue(rgshridWTLNodes[i], false);
                 psdShared->AddRef();
 
                 _ASSERTE(pwtlnOld = pwtlnOld->ptwiWaitInfo->rgpWTLNodes[pwtlnOld->dwObjIndex]);
@@ -4020,7 +4024,7 @@ namespace CorUnix
 
     CThreadSynchronizationInfo::CThreadSynchronizationInfo() :
             m_tsThreadState(TS_IDLE),
-            m_shridWaitAwakened(NULLSharedID),
+            m_shridWaitAwakened(NULL),
             m_lLocalSynchLockCount(0),
             m_lSharedSynchLockCount(0),
             m_ownedNamedMutexListHead(nullptr)
@@ -4037,9 +4041,9 @@ namespace CorUnix
     CThreadSynchronizationInfo::~CThreadSynchronizationInfo()
     {
         DeleteCriticalSection(&m_ownedNamedMutexListLock);
-        if (NULLSharedID != m_shridWaitAwakened)
+        if (NULL != m_shridWaitAwakened)
         {
-            RawSharedObjectFree(m_shridWaitAwakened);
+            free(m_shridWaitAwakened);
         }
     }
 
@@ -4091,9 +4095,8 @@ namespace CorUnix
         pthread_condattr_t attrs;
         pthread_condattr_t *attrsPtr = nullptr;
 
-        m_shridWaitAwakened = RawSharedObjectAlloc(sizeof(DWORD),
-                                                   DefaultSharedPool);
-        if (NULLSharedID == m_shridWaitAwakened)
+        m_shridWaitAwakened = malloc(sizeof(DWORD));
+        if (NULL == m_shridWaitAwakened)
         {
             ERROR("Fail allocating thread wait status shared object\n");
             palErr = ERROR_NOT_ENOUGH_MEMORY;
@@ -4147,7 +4150,7 @@ namespace CorUnix
             ERROR("Failed creating thread synchronization mutex [error=%d (%s)]\n", iRet, strerror(iRet));
             if (EAGAIN == iRet && MaxUnavailableResourceRetries >= ++iEagains)
             {
-                poll(NULL, 0, min(100,10*iEagains));
+                poll(NULL, 0, std::min(100,10*iEagains));
                 goto Mutex_retry;
             }
             else if (ENOMEM == iRet)
@@ -4173,7 +4176,7 @@ namespace CorUnix
                   "[error=%d (%s)]\n", iRet, strerror(iRet));
             if (EAGAIN == iRet && MaxUnavailableResourceRetries >= ++iEagains)
             {
-                poll(NULL, 0, min(100,10*iEagains));
+                poll(NULL, 0, std::min(100,10*iEagains));
                 goto Cond_retry;
             }
             else if (ENOMEM == iRet)
@@ -4362,7 +4365,7 @@ namespace CorUnix
 
         if (0 < m_lPendingSignalingCount)
         {
-            LONG lArrayPendingSignalingCount = min(PendingSignalingsArraySize, m_lPendingSignalingCount);
+            LONG lArrayPendingSignalingCount = std::min(PendingSignalingsArraySize, m_lPendingSignalingCount);
             LONG lIdx = 0;
             PAL_ERROR palTempErr;
 

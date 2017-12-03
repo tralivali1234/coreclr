@@ -516,6 +516,7 @@ void Rationalizer::RewriteAssignment(LIR::Use& use)
             location->gtType = TYP_BYREF;
 
             assignment->SetOper(GT_STOREIND);
+            assignment->AsStoreInd()->SetRMWStatusDefault();
 
             // TODO: JIT dump
         }
@@ -731,6 +732,7 @@ Compiler::fgWalkResult Rationalizer::RewriteNode(GenTree** useEdge, ArrayStack<G
             {
                 use.ReplaceWith(comp, node->gtGetOp1());
                 BlockRange().Remove(node);
+                node = node->gtGetOp1();
             }
             break;
 
@@ -750,9 +752,9 @@ Compiler::fgWalkResult Rationalizer::RewriteNode(GenTree** useEdge, ArrayStack<G
 
                 BlockRange().Delete(comp, m_block, std::move(lhsRange));
             }
-            else
+            else if (op1->IsValue())
             {
-                op1->gtLIRFlags |= LIR::Flags::IsUnusedValue;
+                op1->SetUnusedValue();
             }
 
             BlockRange().Remove(node);
@@ -920,8 +922,8 @@ Compiler::fgWalkResult Rationalizer::RewriteNode(GenTree** useEdge, ArrayStack<G
 #endif // FEATURE_SIMD
 
         default:
-            // CMP, SETCC and JCC nodes should not be present in HIR.
-            assert(!node->OperIs(GT_CMP, GT_SETCC, GT_JCC));
+            // JCMP, CMP, SETCC and JCC nodes should not be present in HIR.
+            assert(!node->OperIs(GT_CMP, GT_SETCC, GT_JCC, GT_JCMP));
             break;
     }
 
@@ -953,9 +955,9 @@ Compiler::fgWalkResult Rationalizer::RewriteNode(GenTree** useEdge, ArrayStack<G
             node->gtFlags &= ~GTF_CALL;
         }
 
-        if (use.IsDummyUse())
+        if (node->IsValue() && use.IsDummyUse())
         {
-            node->gtLIRFlags |= LIR::Flags::IsUnusedValue;
+            node->SetUnusedValue();
         }
 
         if (node->TypeGet() == TYP_LONG)

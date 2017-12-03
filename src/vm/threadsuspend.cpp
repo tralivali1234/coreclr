@@ -39,7 +39,6 @@ CLREventBase * ThreadSuspend::s_hAbortEvtCache = NULL;
 extern "C" void             RedirectedHandledJITCaseForGCThreadControl_Stub(void);
 extern "C" void             RedirectedHandledJITCaseForDbgThreadControl_Stub(void);
 extern "C" void             RedirectedHandledJITCaseForUserSuspend_Stub(void);
-extern "C" void             RedirectedHandledJITCaseForYieldTask_Stub(void);
 
 #define GetRedirectHandlerForGCThreadControl()      \
                 ((PFN_REDIRECTTARGET) GetEEFuncEntryPoint(RedirectedHandledJITCaseForGCThreadControl_Stub))
@@ -47,8 +46,6 @@ extern "C" void             RedirectedHandledJITCaseForYieldTask_Stub(void);
                 ((PFN_REDIRECTTARGET) GetEEFuncEntryPoint(RedirectedHandledJITCaseForDbgThreadControl_Stub))
 #define GetRedirectHandlerForUserSuspend()          \
                 ((PFN_REDIRECTTARGET) GetEEFuncEntryPoint(RedirectedHandledJITCaseForUserSuspend_Stub))
-#define GetRedirectHandlerForYieldTask()            \
-                ((PFN_REDIRECTTARGET) GetEEFuncEntryPoint(RedirectedHandledJITCaseForYieldTask_Stub))
 
 #if defined(_TARGET_AMD64_) || defined(_TARGET_ARM_) || defined(_TARGET_ARM64_)
 #if defined(HAVE_GCCOVER) && defined(USE_REDIRECT_FOR_GCSTRESS) // GCCOVER
@@ -1412,10 +1409,18 @@ BOOL Thread::IsContextSafeToRedirect(CONTEXT* pContext)
     }
     CONTRACTL_END;
 
+    BOOL isSafeToRedirect = TRUE;
+
 #ifndef FEATURE_PAL
     
 #if !defined(_TARGET_X86_)
-    CONSISTENCY_CHECK_MSG(pContext->ContextFlags & CONTEXT_EXCEPTION_REPORTING, "ERROR: you didn't pass CONTEXT_EXCEPTION_REQUEST into GetThreadContext\n");
+    // In some cases (x86 WOW64, ARM32 on ARM64) Windows will not set the CONTEXT_EXCEPTION_REPORTING flag
+    // if the thread is executing in kernel mode (i.e. in the middle of a syscall or exception handling).
+    // Therefore, we should treat the absence of the CONTEXT_EXCEPTION_REPORTING flag as an indication that
+    // it is not safe to manipulate with the current state of the thread context.
+    // Note: the x86 WOW64 case is already handled in GetSafelyRedirectableThreadContext; in addition, this
+    // flag is never set on Windows7 x86 WOW64. So this check is valid for non-x86 architectures only.
+    isSafeToRedirect = (pContext->ContextFlags & CONTEXT_EXCEPTION_REPORTING) != 0;
 #endif // !defined(_TARGET_X86_)
 
     if (pContext->ContextFlags & CONTEXT_EXCEPTION_REPORTING)
@@ -1424,13 +1429,13 @@ BOOL Thread::IsContextSafeToRedirect(CONTEXT* pContext)
         {
             // cannot process exception
             LOG((LF_ALWAYS, LL_WARNING, "thread [os id=0x08%x id=0x08%x] redirect failed due to ContextFlags of 0x%08x\n", m_OSThreadId, m_ThreadId, pContext->ContextFlags));
-            return FALSE;
+            isSafeToRedirect = FALSE;
         }
     }
 
 #endif // !FEATURE_PAL
 
-    return TRUE;
+    return isSafeToRedirect;
 }
 
 void Thread::SetAbortEndTime(ULONGLONG endTime, BOOL fRudeAbort)
@@ -3082,12 +3087,6 @@ void Thread::RareDisablePreemptiveGC()
     // waiting for GC
     _ASSERTE ((m_StateNC & Thread::TSNC_OwnsSpinLock) == 0);
 
-    // If this thread is asked to yield
-    if (m_State & TS_YieldRequested)
-    {
-        __SwitchToThread(0, CALLER_LIMITS_SPINNING);
-    }
-
     if (!GCHeapUtilities::IsGCHeapInitialized())
     {
         goto Exit;
@@ -3923,12 +3922,6 @@ void __stdcall Thread::RedirectedHandledJITCase(RedirectReason reason)
             case RedirectReason_UserSuspension:
                 // Do nothing;
                 break;
-            case RedirectReason_YieldTask:
-                if (pThread->IsYieldRequested())
-                {
-                    __SwitchToThread(0, CALLER_LIMITS_SPINNING);
-                }
-                break;
             default:
                 _ASSERTE(!"Invalid redirect reason");
                 break;
@@ -4088,15 +4081,6 @@ void __stdcall Thread::RedirectedHandledJITCaseForUserSuspend()
 {
     WRAPPER_NO_CONTRACT;
     RedirectedHandledJITCase(RedirectReason_UserSuspension);
-}
-
-//***********************
-// Like the above, but called for YieldTask.
-//
-void __stdcall Thread::RedirectedHandledJITCaseForYieldTask()
-{
-    WRAPPER_NO_CONTRACT;
-    RedirectedHandledJITCase(RedirectReason_YieldTask);
 }
 
 #if defined(HAVE_GCCOVER) && defined(USE_REDIRECT_FOR_GCSTRESS) // GCCOVER
@@ -4340,8 +4324,7 @@ BOOL Thread::IsAddrOfRedirectFunc(void * pFuncAddr)
     return
         (pFuncAddr == GetRedirectHandlerForGCThreadControl()) ||
         (pFuncAddr == GetRedirectHandlerForDbgThreadControl()) ||
-        (pFuncAddr == GetRedirectHandlerForUserSuspend()) ||
-        (pFuncAddr == GetRedirectHandlerForYieldTask());
+        (pFuncAddr == GetRedirectHandlerForUserSuspend());
 }
 
 //************************************************************************
@@ -4390,22 +4373,6 @@ BOOL Thread::CheckForAndDoRedirectForUserSuspend()
 
     LOG((LF_SYNC, LL_INFO1000, "Redirecting thread %08x for UserSuspension", GetThreadId()));
     return CheckForAndDoRedirect(GetRedirectHandlerForUserSuspend());
-}
-
-//*************************************************************************
-// Redirect thread to make task yield.
-BOOL Thread::CheckForAndDoRedirectForYieldTask()
-{
-    CONTRACTL
-    {
-        NOTHROW;
-        GC_NOTRIGGER;
-        MODE_ANY;
-    }
-    CONTRACTL_END;
-
-    LOG((LF_SYNC, LL_INFO1000, "Redirecting thread %08x for YieldTask", GetThreadId()));
-    return CheckForAndDoRedirect(GetRedirectHandlerForYieldTask());
 }
 
 #if defined(HAVE_GCCOVER) && defined(USE_REDIRECT_FOR_GCSTRESS) // GCCOVER
