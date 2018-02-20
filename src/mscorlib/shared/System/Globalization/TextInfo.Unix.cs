@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Security;
 using System.Text;
 
@@ -64,6 +65,52 @@ namespace System.Globalization
             return result;
         }
 
+        internal unsafe void ChangeCase(ReadOnlySpan<char> source, Span<char> destination, bool toUpper)
+        {
+            Debug.Assert(!_invariantMode);
+            Debug.Assert(destination.Length >= source.Length);
+
+            if (source.IsEmpty)
+            {
+                return;
+            }
+            
+            fixed (char* pSource = &MemoryMarshal.GetReference(source))
+            {
+                fixed (char* pResult = &MemoryMarshal.GetReference(destination))
+                {
+                    if (IsAsciiCasingSameAsInvariant)
+                    {
+                        int length = source.Length;
+                        char* a = pSource, b = pResult;
+                        if (toUpper)
+                        {
+                            while (length-- != 0 && *a < 0x80)
+                            {
+                                *b++ = ToUpperAsciiInvariant(*a++);
+                            }
+                        }
+                        else
+                        {
+                            while (length-- != 0 && *a < 0x80)
+                            {
+                                *b++ = ToLowerAsciiInvariant(*a++);
+                            }
+                        }
+
+                        if (length != 0)
+                        {
+                            ChangeCase(a, source.Length - length, b, destination.Length - length, toUpper);
+                        }
+                    }
+                    else
+                    {
+                        ChangeCase(pSource, source.Length, pResult, destination.Length, toUpper);
+                    }
+                }
+            }
+        }
+
         private unsafe char ChangeCase(char c, bool toUpper)
         {
             Debug.Assert(!_invariantMode);
@@ -94,7 +141,7 @@ namespace System.Globalization
 
             if (IsInvariant)
             {
-                Interop.GlobalizationInterop.ChangeCaseInvariant(src, srcLen, dstBuffer, dstBufferCapacity, bToUpper);
+                Interop.Globalization.ChangeCaseInvariant(src, srcLen, dstBuffer, dstBufferCapacity, bToUpper);
             }
             else
             {
@@ -104,11 +151,11 @@ namespace System.Globalization
                 }
                 if (_needsTurkishCasing == Tristate.True)
                 {
-                    Interop.GlobalizationInterop.ChangeCaseTurkish(src, srcLen, dstBuffer, dstBufferCapacity, bToUpper);
+                    Interop.Globalization.ChangeCaseTurkish(src, srcLen, dstBuffer, dstBufferCapacity, bToUpper);
                 }
                 else
                 {
-                    Interop.GlobalizationInterop.ChangeCase(src, srcLen, dstBuffer, dstBufferCapacity, bToUpper);
+                    Interop.Globalization.ChangeCase(src, srcLen, dstBuffer, dstBufferCapacity, bToUpper);
                 }
             }
         }

@@ -1328,11 +1328,6 @@ void EEJitManager::SetCpuInfo()
         //    SSSE3 - ECX bit 9    (buffer[9]  & 0x02)
         //    SSE4.2 - ECX bit 20  (buffer[10] & 0x10)
         //    POPCNT - ECX bit 23  (buffer[10] & 0x80)
-        // CORJIT_FLAG_USE_SSE3_4 if the following feature bits are set (input EAX of 1)
-        //    SSE3 - ECX bit 0     (buffer[8]  & 0x01)
-        //    SSSE3 - ECX bit 9    (buffer[9]  & 0x02)
-        //    SSE4.1 - ECX bit 19  (buffer[10] & 0x08)
-        //    SSE4.2 - ECX bit 20  (buffer[10] & 0x10)
         // CORJIT_FLAG_USE_AVX if the following feature bits are set (input EAX of 1), and xmmYmmStateSupport returns 1:
         //    OSXSAVE - ECX bit 27 (buffer[11] & 0x08)
         //    AVX - ECX bit 28     (buffer[11] & 0x10)
@@ -1371,12 +1366,6 @@ void EEJitManager::SetCpuInfo()
                         {
                             CPUCompileFlags.Set(CORJIT_FLAGS::CORJIT_FLAG_USE_POPCNT);
                         }
-                    }
-
-                    if (((buffer[10] & 0x08) != 0) &&       // SSE4.1
-                        ((buffer[10] & 0x10) != 0))         // SSE4.2
-                    {
-                        CPUCompileFlags.Set(CORJIT_FLAGS::CORJIT_FLAG_USE_SSE3_4);
                     }
                 }
             }
@@ -1432,9 +1421,26 @@ void EEJitManager::SetCpuInfo()
             {
                 CPUCompileFlags.Set(CORJIT_FLAGS::CORJIT_FLAG_FEATURE_SIMD);
             }
+
+            if (CLRConfig::GetConfigValue(CLRConfig::INTERNAL_SIMD16ByteOnly) != 0)
+            {
+                CPUCompileFlags.Clear(CORJIT_FLAGS::CORJIT_FLAG_USE_AVX2);
+            }
         }
     }
 #endif // defined(_TARGET_X86_) || defined(_TARGET_AMD64_)
+
+#if defined(_TARGET_ARM64_) && defined(FEATURE_PAL)
+    PAL_GetJitCpuCapabilityFlags(&CPUCompileFlags);
+#endif
+
+#if defined(_TARGET_ARM64_)
+    static ConfigDWORD fFeatureSIMD;
+    if (fFeatureSIMD.val(CLRConfig::EXTERNAL_FeatureSIMD) != 0)
+    {
+        CPUCompileFlags.Set(CORJIT_FLAGS::CORJIT_FLAG_FEATURE_SIMD);
+    }
+#endif
 
     m_CPUCompileFlags = CPUCompileFlags;
 }
@@ -2082,7 +2088,7 @@ HeapList* LoaderCodeHeap::CreateCodeHeap(CodeHeapRequestInfo *pInfo, LoaderHeap 
     CONTRACT(HeapList *) {
         THROWS;
         GC_NOTRIGGER;
-        POSTCONDITION(CheckPointer(RETVAL) || !pInfo->getThrowOnOutOfMemoryWithinRange());
+        POSTCONDITION((RETVAL != NULL) || !pInfo->getThrowOnOutOfMemoryWithinRange());
     } CONTRACT_END;
 
     size_t * pPrivatePCLBytes   = NULL;
@@ -2286,7 +2292,7 @@ HeapList* EEJitManager::NewCodeHeap(CodeHeapRequestInfo *pInfo, DomainCodeHeapLi
         THROWS;
         GC_NOTRIGGER;
         PRECONDITION(m_CodeHeapCritSec.OwnedByCurrentThread());
-        POSTCONDITION(CheckPointer(RETVAL) || !pInfo->getThrowOnOutOfMemoryWithinRange());
+        POSTCONDITION((RETVAL != NULL) || !pInfo->getThrowOnOutOfMemoryWithinRange());
     } CONTRACT_END;
 
     size_t initialRequestSize = pInfo->getRequestSize();
@@ -2405,7 +2411,7 @@ void* EEJitManager::allocCodeRaw(CodeHeapRequestInfo *pInfo,
         THROWS;
         GC_NOTRIGGER;
         PRECONDITION(m_CodeHeapCritSec.OwnedByCurrentThread());
-        POSTCONDITION(CheckPointer(RETVAL) || !pInfo->getThrowOnOutOfMemoryWithinRange());
+        POSTCONDITION((RETVAL != NULL) || !pInfo->getThrowOnOutOfMemoryWithinRange());
     } CONTRACT_END;
 
     pInfo->setRequestSize(header+blockSize+(align-1)+pInfo->getReserveForJumpStubs());
@@ -2880,7 +2886,7 @@ JumpStubBlockHeader *  EEJitManager::allocJumpStubBlock(MethodDesc* pMD, DWORD n
         GC_NOTRIGGER;
         PRECONDITION(loAddr < hiAddr);
         PRECONDITION(pLoaderAllocator != NULL);
-        POSTCONDITION(CheckPointer(RETVAL) || !throwOnOutOfMemoryWithinRange);
+        POSTCONDITION((RETVAL != NULL) || !throwOnOutOfMemoryWithinRange);
     } CONTRACT_END;
 
     _ASSERTE((sizeof(JumpStubBlockHeader) % CODE_SIZE_ALIGN) == 0);
@@ -4148,6 +4154,19 @@ ExecutionManager::FindCodeRangeWithLock(PCODE currentPC)
 
     ReaderLockHolder rlh;
     return GetRangeSection(currentPC);
+}
+
+
+//**************************************************************************
+PCODE ExecutionManager::GetCodeStartAddress(PCODE currentPC)
+{
+    WRAPPER_NO_CONTRACT;
+    _ASSERTE(currentPC != NULL);
+
+    EECodeInfo codeInfo(currentPC);
+    if (!codeInfo.IsValid())
+        return NULL;
+    return (PCODE)codeInfo.GetStartAddress();
 }
 
 //**************************************************************************

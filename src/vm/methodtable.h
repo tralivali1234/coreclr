@@ -1398,6 +1398,18 @@ public:
         SetFlag(enum_flag_HasModuleDependencies);
     }
 
+    inline BOOL IsIntrinsicType()
+    {
+        LIMITED_METHOD_DAC_CONTRACT;;
+        return GetFlag(enum_flag_IsIntrinsicType);
+    }
+
+    inline void SetIsIntrinsicType()
+    {
+        LIMITED_METHOD_DAC_CONTRACT;;
+        SetFlag(enum_flag_IsIntrinsicType);
+    }
+
     // See the comment in code:MethodTable.DoFullyLoad for detailed description.
     inline BOOL DependsOnEquivalentOrForwardedStructs()
     {
@@ -2165,12 +2177,6 @@ public:
     // THE METHOD TABLE PARENT (SUPERCLASS/BASE CLASS)
     //
 
-#if defined(PLATFORM_UNIX) && defined(_TARGET_ARM_)
-    typedef RelativeFixupPointer<PTR_MethodTable> ParentMT_t;
-#else
-    typedef PlainPointer<PTR_MethodTable> ParentMT_t;
-#endif
-
     BOOL HasApproxParent()
     {
         LIMITED_METHOD_DAC_CONTRACT;
@@ -2189,24 +2195,32 @@ public:
         LIMITED_METHOD_DAC_CONTRACT;
 
         PRECONDITION(IsParentMethodTablePointerValid());
-        return ReadPointerMaybeNull(this, &MethodTable::m_pParentMethodTable);
+
+        TADDR pMT = m_pParentMethodTable;
+#ifdef FEATURE_PREJIT
+        if (GetFlag(enum_flag_HasIndirectParent))
+            pMT = *PTR_TADDR(m_pParentMethodTable + offsetof(MethodTable, m_pParentMethodTable));
+#endif
+        return PTR_MethodTable(pMT);
     }
 
-    inline static PTR_VOID GetParentMethodTable(PTR_VOID pMT)
+    inline static PTR_VOID GetParentMethodTableOrIndirection(PTR_VOID pMT)
     {
-      LIMITED_METHOD_DAC_CONTRACT;
-
-      PTR_MethodTable pMethodTable = dac_cast<PTR_MethodTable>(pMT);
-      return pMethodTable->GetParentMethodTable();
+        WRAPPER_NO_CONTRACT;
+        return PTR_VOID(*PTR_TADDR(dac_cast<TADDR>(pMT) + offsetof(MethodTable, m_pParentMethodTable)));
     }
 
-#ifndef DACCESS_COMPILE
-    inline ParentMT_t * GetParentMethodTablePlainOrRelativePointerPtr()
+    inline MethodTable ** GetParentMethodTablePtr()
     {
-      LIMITED_METHOD_CONTRACT;
-      return &m_pParentMethodTable;
+        WRAPPER_NO_CONTRACT;
+
+#ifdef FEATURE_PREJIT
+        return GetFlag(enum_flag_HasIndirectParent) ? 
+            (MethodTable **)(m_pParentMethodTable + offsetof(MethodTable, m_pParentMethodTable)) :(MethodTable **)&m_pParentMethodTable;
+#else
+        return (MethodTable **)&m_pParentMethodTable;
+#endif
     }
-#endif // !DACCESS_COMPILE
 
     // Is the parent method table pointer equal to the given argument?
     BOOL ParentEquals(PTR_MethodTable pMT)
@@ -2225,8 +2239,8 @@ public:
     void SetParentMethodTable (MethodTable *pParentMethodTable)
     {
         LIMITED_METHOD_CONTRACT;
-        PRECONDITION(!m_pParentMethodTable.IsIndirectPtrMaybeNull());
-        m_pParentMethodTable.SetValueMaybeNull(pParentMethodTable);
+        PRECONDITION(!GetFlag(enum_flag_HasIndirectParent));
+        m_pParentMethodTable = (TADDR)pParentMethodTable;
 #ifdef _DEBUG
         GetWriteableDataForWrite_NoLogging()->SetParentMethodTablePointerValid();
 #endif
@@ -2547,6 +2561,14 @@ public:
         UINT32         typeID, 
         UINT32         slotNumber, 
         DispatchSlot * pImplSlot);
+
+
+#ifndef DACCESS_COMPILE
+    BOOL FindDefaultInterfaceImplementation(
+        MethodDesc *pInterfaceMD,
+        MethodTable *pObjectMT,
+        MethodDesc **ppDefaultMethod);
+#endif // DACCESS_COMPILE
 
     DispatchSlot FindDispatchSlot(UINT32 typeID, UINT32 slotNumber);
 
@@ -4003,7 +4025,7 @@ private:
 
         enum_flag_HasModuleDependencies     = 0x0080,
 
-        // enum_Unused                      = 0x0100,
+        enum_flag_IsIntrinsicType           = 0x0100,
 
         enum_flag_RequiresDispatchTokenFat  = 0x0200,
 
@@ -4121,7 +4143,7 @@ private:
     // if enum_flag_enum_flag_HasIndirectParent is set. The indirection is offset by offsetof(MethodTable, m_pParentMethodTable).
     // It allows casting helpers to go through parent chain natually. Casting helper do not need need the explicit check
     // for enum_flag_HasIndirectParentMethodTable.
-    ParentMT_t m_pParentMethodTable;
+    TADDR           m_pParentMethodTable;
 
     RelativePointer<PTR_Module> m_pLoaderModule;    // LoaderModule. It is equal to the ZapModule in ngened images
     

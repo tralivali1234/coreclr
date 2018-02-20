@@ -84,7 +84,7 @@ instruction CodeGen::getOpForSIMDIntrinsic(SIMDIntrinsicID intrinsicId, var_type
                     case TYP_INT:
                         result = INS_vpbroadcastd;
                         break;
-                    case TYP_CHAR:
+                    case TYP_USHORT:
                     case TYP_SHORT:
                         result = INS_vpbroadcastw;
                         break;
@@ -151,7 +151,7 @@ instruction CodeGen::getOpForSIMDIntrinsic(SIMDIntrinsicID intrinsicId, var_type
             {
                 result = INS_paddd;
             }
-            else if (baseType == TYP_CHAR || baseType == TYP_SHORT)
+            else if (baseType == TYP_USHORT || baseType == TYP_SHORT)
             {
                 result = INS_paddw;
             }
@@ -178,7 +178,7 @@ instruction CodeGen::getOpForSIMDIntrinsic(SIMDIntrinsicID intrinsicId, var_type
             {
                 result = INS_psubd;
             }
-            else if (baseType == TYP_CHAR || baseType == TYP_SHORT)
+            else if (baseType == TYP_USHORT || baseType == TYP_SHORT)
             {
                 result = INS_psubw;
             }
@@ -249,7 +249,7 @@ instruction CodeGen::getOpForSIMDIntrinsic(SIMDIntrinsicID intrinsicId, var_type
                 {
                     result = INS_pminsb;
                 }
-                else if (baseType == TYP_CHAR)
+                else if (baseType == TYP_USHORT)
                 {
                     result = INS_pminuw;
                 }
@@ -291,7 +291,7 @@ instruction CodeGen::getOpForSIMDIntrinsic(SIMDIntrinsicID intrinsicId, var_type
                 {
                     result = INS_pmaxsb;
                 }
-                else if (baseType == TYP_CHAR)
+                else if (baseType == TYP_USHORT)
                 {
                     result = INS_pmaxuw;
                 }
@@ -345,7 +345,7 @@ instruction CodeGen::getOpForSIMDIntrinsic(SIMDIntrinsicID intrinsicId, var_type
             {
                 result = INS_pcmpeqd;
             }
-            else if (baseType == TYP_CHAR || baseType == TYP_SHORT)
+            else if (baseType == TYP_USHORT || baseType == TYP_SHORT)
             {
                 result = INS_pcmpeqw;
             }
@@ -497,13 +497,11 @@ instruction CodeGen::getOpForSIMDIntrinsic(SIMDIntrinsicID intrinsicId, var_type
             break;
 
         case SIMDIntrinsicConvertToInt32:
-        case SIMDIntrinsicConvertToUInt32:
             assert(baseType == TYP_FLOAT);
             result = INS_cvttps2dq;
             break;
 
         case SIMDIntrinsicConvertToInt64:
-        case SIMDIntrinsicConvertToUInt64:
             assert(baseType == TYP_DOUBLE);
             result = INS_cvttsd2si;
             break;
@@ -525,7 +523,7 @@ instruction CodeGen::getOpForSIMDIntrinsic(SIMDIntrinsicID intrinsicId, var_type
                     }
                     break;
                 case TYP_SHORT:
-                case TYP_CHAR:
+                case TYP_USHORT:
                     result = INS_packuswb;
                     break;
                 default:
@@ -548,7 +546,7 @@ instruction CodeGen::getOpForSIMDIntrinsic(SIMDIntrinsicID intrinsicId, var_type
                     result = INS_punpckldq;
                     break;
                 case TYP_SHORT:
-                case TYP_CHAR:
+                case TYP_USHORT:
                     result = INS_punpcklwd;
                     break;
                 case TYP_BYTE:
@@ -574,7 +572,7 @@ instruction CodeGen::getOpForSIMDIntrinsic(SIMDIntrinsicID intrinsicId, var_type
                     result = INS_punpckhdq;
                     break;
                 case TYP_SHORT:
-                case TYP_CHAR:
+                case TYP_USHORT:
                     result = INS_punpckhwd;
                     break;
                 case TYP_BYTE:
@@ -600,7 +598,6 @@ instruction CodeGen::getOpForSIMDIntrinsic(SIMDIntrinsicID intrinsicId, var_type
                     result = INS_pslld;
                     break;
                 case TYP_SHORT:
-                case TYP_CHAR:
                 case TYP_USHORT:
                     result = INS_psllw;
                     break;
@@ -623,7 +620,6 @@ instruction CodeGen::getOpForSIMDIntrinsic(SIMDIntrinsicID intrinsicId, var_type
                     result = INS_psrld;
                     break;
                 case TYP_SHORT:
-                case TYP_CHAR:
                 case TYP_USHORT:
                     result = INS_psrlw;
                     break;
@@ -1064,8 +1060,7 @@ void CodeGen::genSIMDIntrinsicUnOp(GenTreeSIMD* simdNode)
 void CodeGen::genSIMDIntrinsic32BitConvert(GenTreeSIMD* simdNode)
 {
     SIMDIntrinsicID intrinsicID = simdNode->gtSIMDIntrinsicID;
-    assert((intrinsicID == SIMDIntrinsicConvertToSingle) || (intrinsicID == SIMDIntrinsicConvertToInt32) ||
-           (intrinsicID == SIMDIntrinsicConvertToUInt32));
+    assert((intrinsicID == SIMDIntrinsicConvertToSingle) || (intrinsicID == SIMDIntrinsicConvertToInt32));
 
     GenTree*  op1       = simdNode->gtGetOp1();
     var_types baseType  = simdNode->gtSIMDBaseType;
@@ -1200,8 +1195,7 @@ void CodeGen::genSIMDLo64BitConvert(SIMDIntrinsicID intrinsicID,
 void CodeGen::genSIMDIntrinsic64BitConvert(GenTreeSIMD* simdNode)
 {
     SIMDIntrinsicID intrinsicID = simdNode->gtSIMDIntrinsicID;
-    assert((intrinsicID == SIMDIntrinsicConvertToDouble) || (intrinsicID == SIMDIntrinsicConvertToInt64) ||
-           (intrinsicID == SIMDIntrinsicConvertToUInt64));
+    assert((intrinsicID == SIMDIntrinsicConvertToDouble) || (intrinsicID == SIMDIntrinsicConvertToInt64));
 
     GenTree*  op1       = simdNode->gtGetOp1();
     var_types baseType  = simdNode->gtSIMDBaseType;
@@ -2861,8 +2855,8 @@ void CodeGen::genLoadIndTypeSIMD12(GenTree* treeNode)
 {
     assert(treeNode->OperGet() == GT_IND);
 
-    regNumber  targetReg = treeNode->gtRegNum;
-    GenTreePtr op1       = treeNode->gtOp.gtOp1;
+    regNumber targetReg = treeNode->gtRegNum;
+    GenTree*  op1       = treeNode->gtOp.gtOp1;
     assert(!op1->isContained());
     regNumber operandReg = genConsumeReg(op1);
 
@@ -2906,7 +2900,7 @@ void CodeGen::genStoreLclTypeSIMD12(GenTree* treeNode)
         offs = treeNode->gtLclFld.gtLclOffs;
     }
 
-    GenTreePtr op1 = treeNode->gtOp.gtOp1;
+    GenTree* op1 = treeNode->gtOp.gtOp1;
     assert(!op1->isContained());
     regNumber operandReg = genConsumeReg(op1);
 
@@ -3010,7 +3004,7 @@ void CodeGen::genPutArgStkSIMD12(GenTree* treeNode)
 {
     assert(treeNode->OperGet() == GT_PUTARG_STK);
 
-    GenTreePtr op1 = treeNode->gtOp.gtOp1;
+    GenTree* op1 = treeNode->gtOp.gtOp1;
     assert(!op1->isContained());
     regNumber operandReg = genConsumeReg(op1);
 
@@ -3116,7 +3110,7 @@ void CodeGen::genSIMDIntrinsic(GenTreeSIMD* simdNode)
     // NYI for unsupported base types
     if (simdNode->gtSIMDBaseType != TYP_INT && simdNode->gtSIMDBaseType != TYP_LONG &&
         simdNode->gtSIMDBaseType != TYP_FLOAT && simdNode->gtSIMDBaseType != TYP_DOUBLE &&
-        simdNode->gtSIMDBaseType != TYP_CHAR && simdNode->gtSIMDBaseType != TYP_UBYTE &&
+        simdNode->gtSIMDBaseType != TYP_USHORT && simdNode->gtSIMDBaseType != TYP_UBYTE &&
         simdNode->gtSIMDBaseType != TYP_SHORT && simdNode->gtSIMDBaseType != TYP_BYTE &&
         simdNode->gtSIMDBaseType != TYP_UINT && simdNode->gtSIMDBaseType != TYP_ULONG)
     {
@@ -3141,13 +3135,11 @@ void CodeGen::genSIMDIntrinsic(GenTreeSIMD* simdNode)
 
         case SIMDIntrinsicConvertToSingle:
         case SIMDIntrinsicConvertToInt32:
-        case SIMDIntrinsicConvertToUInt32:
             genSIMDIntrinsic32BitConvert(simdNode);
             break;
 
         case SIMDIntrinsicConvertToDouble:
         case SIMDIntrinsicConvertToInt64:
-        case SIMDIntrinsicConvertToUInt64:
             genSIMDIntrinsic64BitConvert(simdNode);
             break;
 

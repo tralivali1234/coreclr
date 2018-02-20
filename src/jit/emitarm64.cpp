@@ -3821,12 +3821,11 @@ void emitter::emitIns_R_R(
         case INS_not:
             assert(isVectorRegister(reg1));
             assert(isVectorRegister(reg2));
-            // for 'NOT' we can construct the arrangement: 8B or 16B
-            if ((ins == INS_not) && insOptsNone(opt))
+            if (ins == INS_not)
             {
                 assert(isValidVectorDatasize(size));
-                elemsize = EA_1BYTE;
-                opt      = optMakeArrangement(size, elemsize);
+                // Bitwise behavior is independent of element size, but is always encoded as 1 Byte
+                opt = optMakeArrangement(size, EA_1BYTE);
             }
             if (insOptsNone(opt))
             {
@@ -3841,11 +3840,7 @@ void emitter::emitIns_R_R(
                 assert(isValidVectorDatasize(size));
                 assert(isValidArrangement(size, opt));
                 elemsize = optGetElemsize(opt);
-                if (ins == INS_not)
-                {
-                    assert(elemsize == EA_1BYTE);
-                }
-                fmt = IF_DV_2M;
+                fmt      = IF_DV_2M;
             }
             break;
 
@@ -3854,12 +3849,11 @@ void emitter::emitIns_R_R(
             if (isVectorRegister(reg1))
             {
                 assert(isVectorRegister(reg2));
-                // for 'mvn' we can construct the arrangement: 8B or 16b
-                if ((ins == INS_mvn) && insOptsNone(opt))
+                if (ins == INS_mvn)
                 {
                     assert(isValidVectorDatasize(size));
-                    elemsize = EA_1BYTE;
-                    opt      = optMakeArrangement(size, elemsize);
+                    // Bitwise behavior is independent of element size, but is always encoded as 1 Byte
+                    opt = optMakeArrangement(size, EA_1BYTE);
                 }
                 if (insOptsNone(opt))
                 {
@@ -3873,11 +3867,7 @@ void emitter::emitIns_R_R(
                     assert(isValidVectorDatasize(size));
                     assert(isValidArrangement(size, opt));
                     elemsize = optGetElemsize(opt);
-                    if (ins == INS_mvn)
-                    {
-                        assert(elemsize == EA_1BYTE); // Only supports 8B or 16B
-                    }
-                    fmt = IF_DV_2M;
+                    fmt      = IF_DV_2M;
                 }
                 break;
             }
@@ -4232,6 +4222,58 @@ void emitter::emitIns_R_R(
             assert(isVectorRegister(reg1));
             assert(isVectorRegister(reg2));
             fmt = IF_DV_2J;
+            break;
+
+        case INS_cmeq:
+        case INS_cmge:
+        case INS_cmgt:
+        case INS_cmle:
+        case INS_cmlt:
+            assert(isVectorRegister(reg1));
+            assert(isVectorRegister(reg2));
+
+            if (isValidVectorDatasize(size))
+            {
+                // Vector operation
+                assert(insOptsAnyArrangement(opt));
+                assert(isValidArrangement(size, opt));
+                elemsize = optGetElemsize(opt);
+                fmt      = IF_DV_2M;
+            }
+            else
+            {
+                NYI("Untested");
+                // Scalar operation
+                assert(size == EA_8BYTE); // Only Double supported
+                fmt = IF_DV_2L;
+            }
+            break;
+
+        case INS_fcmeq:
+        case INS_fcmge:
+        case INS_fcmgt:
+        case INS_fcmle:
+        case INS_fcmlt:
+            assert(isVectorRegister(reg1));
+            assert(isVectorRegister(reg2));
+
+            if (isValidVectorDatasize(size))
+            {
+                // Vector operation
+                assert(insOptsAnyArrangement(opt));
+                assert(isValidArrangement(size, opt));
+                elemsize = optGetElemsize(opt);
+                assert((elemsize == EA_8BYTE) || (elemsize == EA_4BYTE)); // Only Double/Float supported
+                assert(opt != INS_OPTS_1D);                               // Reserved encoding
+                fmt = IF_DV_2A;
+            }
+            else
+            {
+                NYI("Untested");
+                // Scalar operation
+                assert((size == EA_8BYTE) || (size == EA_4BYTE)); // Only Double/Float supported
+                fmt = IF_DV_2G;
+            }
             break;
 
         default:
@@ -7271,7 +7313,7 @@ void emitter::emitIns_Call(EmitCallType          callType,
 #endif
 
     assert(argSize % REGSIZE_BYTES == 0);
-    argCnt = (int)(argSize / (int)sizeof(void*));
+    argCnt = (int)(argSize / (int)REGSIZE_BYTES);
 
     /* Managed RetVal: emit sequence point for the call */
     if (emitComp->opts.compDbgInfo && ilOffset != BAD_IL_OFFSET)
@@ -9928,7 +9970,7 @@ size_t emitter::emitOutputInstr(insGroup* ig, instrDesc* id, BYTE** dp)
     if (emitInsWritesToLclVarStackLoc(id) || emitInsWritesToLclVarStackLocPair(id))
     {
         int      varNum = id->idAddr()->iiaLclVar.lvaVarNum();
-        unsigned ofs    = AlignDown(id->idAddr()->iiaLclVar.lvaOffset(), sizeof(size_t));
+        unsigned ofs    = AlignDown(id->idAddr()->iiaLclVar.lvaOffset(), TARGET_POINTER_SIZE);
         bool     FPbased;
         int      adr = emitComp->lvaFrameAddress(varNum, &FPbased);
         if (id->idGCref() != GCT_NONE)
@@ -9954,7 +9996,7 @@ size_t emitter::emitOutputInstr(insGroup* ig, instrDesc* id, BYTE** dp)
         }
         if (emitInsWritesToLclVarStackLocPair(id))
         {
-            unsigned ofs2 = ofs + sizeof(size_t);
+            unsigned ofs2 = ofs + TARGET_POINTER_SIZE;
             if (id->idGCrefReg2() != GCT_NONE)
             {
                 emitGCvarLiveUpd(adr + ofs2, varNum, id->idGCrefReg2(), dst);
@@ -10070,11 +10112,13 @@ void emitter::emitDispImm(ssize_t imm, bool addComma, bool alwaysHex /* =false *
         printf("#");
     }
 
-    // Munge any pointers if we want diff-able disassembly
+    // Munge any pointers if we want diff-able disassembly.
+    // Since some may be emitted as partial words, print as diffable anything that has
+    // significant bits beyond the lowest 8-bits.
     if (emitComp->opts.disDiffable)
     {
-        ssize_t top44bits = (imm >> 20);
-        if ((top44bits != 0) && (top44bits != -1))
+        ssize_t top56bits = (imm >> 8);
+        if ((top56bits != 0) && (top56bits != -1))
             imm = 0xD1FFAB1E;
     }
 

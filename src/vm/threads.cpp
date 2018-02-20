@@ -902,12 +902,6 @@ void DestroyThread(Thread *th)
 #endif // _TARGET_X86_
 #endif // WIN64EXCEPTIONS
 
-    if (g_fEEShutDown == 0) 
-    {
-        th->SetThreadState(Thread::TS_ReportDead);
-        th->OnThreadTerminate(FALSE);
-    }
-
 #ifdef FEATURE_PERFTRACING
     // Before the thread dies, mark its buffers as no longer owned
     // so that they can be cleaned up after the thread dies.
@@ -917,6 +911,12 @@ void DestroyThread(Thread *th)
         pBufferList->SetOwnedByThread(false);
     }
 #endif // FEATURE_PERFTRACING
+
+    if (g_fEEShutDown == 0) 
+    {
+        th->SetThreadState(Thread::TS_ReportDead);
+        th->OnThreadTerminate(FALSE);
+    }
 }
 
 //-------------------------------------------------------------------------
@@ -1687,6 +1687,7 @@ Thread::Thread()
 #ifdef FEATURE_PERFTRACING
     m_pEventPipeBufferList = NULL;
     m_eventWriteInProgress = false;
+    memset(&m_activityId, 0, sizeof(m_activityId));
 #endif // FEATURE_PERFTRACING
     m_HijackReturnKind = RT_Illegal;
 }
@@ -3867,7 +3868,6 @@ WaitCompleted:
     return ret;
 }
 
-#ifndef FEATURE_PAL
 //--------------------------------------------------------------------
 // Only one style of wait for DoSignalAndWait since we don't support this on STA Threads
 //--------------------------------------------------------------------
@@ -4013,7 +4013,6 @@ WaitCompleted:
 
     return ret;
 }
-#endif // !FEATURE_PAL
 
 DWORD Thread::DoSyncContextWait(OBJECTREF *pSyncCtxObj, int countHandles, HANDLE *handles, BOOL waitAll, DWORD millis)
 {

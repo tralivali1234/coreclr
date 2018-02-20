@@ -1102,7 +1102,16 @@ void EEStartupHelper(COINITIEE fFlags)
         hr = S_OK;
         STRESS_LOG0(LF_STARTUP, LL_ALWAYS, "===================EEStartup Completed===================");
 
-#if defined(_DEBUG) && !defined(CROSSGEN_COMPILE)
+#ifndef CROSSGEN_COMPILE
+
+#ifdef FEATURE_TIERED_COMPILATION
+        if (g_pConfig->TieredCompilation())
+        {
+            SystemDomain::System()->DefaultDomain()->GetTieredCompilationManager()->InitiateTier1CountingDelay();
+        }
+#endif
+
+#ifdef _DEBUG
 
         //if g_fEEStarted was false when we loaded the System Module, we did not run ExpandAll on it.  In
         //this case, make sure we run ExpandAll here.  The rationale is that if we Jit before g_fEEStarted
@@ -1120,7 +1129,9 @@ void EEStartupHelper(COINITIEE fFlags)
         // Perform mscorlib consistency check if requested
         g_Mscorlib.CheckExtended();
 
-#endif // _DEBUG && !CROSSGEN_COMPILE
+#endif // _DEBUG
+
+#endif // !CROSSGEN_COMPILE
 
 ErrExit: ;
     }
@@ -2037,8 +2048,6 @@ BOOL IsThreadInSTA()
 }
 #endif
 
-BOOL g_fWeOwnProcess = FALSE;
-
 static LONG s_ActiveShutdownThreadCount = 0;
 
 // ---------------------------------------------------------------------------
@@ -2074,15 +2083,8 @@ DWORD WINAPI EEShutDownProcForSTAThread(LPVOID lpParameter)
     {
         action = eRudeExitProcess;
     }
-    UINT exitCode;
-    if (g_fWeOwnProcess)
-    {
-        exitCode = GetLatchedExitCode();
-    }
-    else
-    {
-        exitCode = HOST_E_EXITPROCESS_TIMEOUT;
-    }
+
+    UINT exitCode = GetLatchedExitCode();
     EEPolicy::HandleExitProcessFromEscalation(action, exitCode);
 
     return 0;
@@ -2176,7 +2178,7 @@ void STDMETHODCALLTYPE EEShutDown(BOOL fIsDllUnloading)
     }
 
 #ifdef FEATURE_COMINTEROP
-    if (!fIsDllUnloading && IsThreadInSTA())
+    if (!fIsDllUnloading && CLRConfig::GetConfigValue(CLRConfig::EXTERNAL_FinalizeOnShutdown) && IsThreadInSTA())
     {
         // #STAShutDown
         // 

@@ -3291,19 +3291,15 @@ public:
 
     DWORD          DoAppropriateWait(AppropriateWaitFunc func, void *args, DWORD millis,
                                      WaitMode mode, PendingSync *syncInfo = 0);
-#ifndef FEATURE_PAL
     DWORD          DoSignalAndWait(HANDLE *handles, DWORD millis, BOOL alertable,
                                      PendingSync *syncState = 0);
-#endif // !FEATURE_PAL
 private:
     void           DoAppropriateWaitWorkerAlertableHelper(WaitMode mode);
     DWORD          DoAppropriateWaitWorker(int countHandles, HANDLE *handles, BOOL waitAll,
                                            DWORD millis, WaitMode mode);
     DWORD          DoAppropriateWaitWorker(AppropriateWaitFunc func, void *args,
                                            DWORD millis, WaitMode mode);
-#ifndef FEATURE_PAL
     DWORD          DoSignalAndWaitWorker(HANDLE* pHandles, DWORD millis,BOOL alertable);
-#endif // !FEATURE_PAL
     DWORD          DoAppropriateAptStateWait(int numWaiters, HANDLE* pHandles, BOOL bWaitAll, DWORD timeout, WaitMode mode);
     DWORD          DoSyncContextWait(OBJECTREF *pSyncCtxObj, int countHandles, HANDLE *handles, BOOL waitAll, DWORD millis);
 public:
@@ -5256,6 +5252,10 @@ private:
     // True if the thread was in cooperative mode.  False if it was in preemptive when the suspension started.
     Volatile<ULONG> m_gcModeOnSuspension;
 
+    // The activity ID for the current thread.
+    // An activity ID of zero means the thread is not executing in the context of an activity.
+    GUID m_activityId;
+
 public:
     EventPipeBufferList* GetEventPipeBufferList()
     {
@@ -5284,7 +5284,7 @@ public:
     bool GetGCModeOnSuspension()
     {
         LIMITED_METHOD_CONTRACT;
-        return m_gcModeOnSuspension;
+        return m_gcModeOnSuspension != 0;
     }
 
     void SaveGCModeOnSuspension()
@@ -5296,6 +5296,20 @@ public:
     void ClearGCModeOnSuspension()
     {
         m_gcModeOnSuspension = 0;
+    }
+
+    LPCGUID GetActivityId() const
+    {
+        LIMITED_METHOD_CONTRACT;
+        return &m_activityId;
+    }
+
+    void SetActivityId(LPCGUID pActivityId)
+    {
+        LIMITED_METHOD_CONTRACT;
+        _ASSERTE(pActivityId != NULL);
+
+        m_activityId = *pActivityId;
     }
 #endif // FEATURE_PERFTRACING
 

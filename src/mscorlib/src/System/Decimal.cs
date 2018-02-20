@@ -353,7 +353,7 @@ namespace System
         // positive, the result is d. If d is negative, the result
         // is -d.
         //
-        internal static Decimal Abs(Decimal d)
+        internal static Decimal Abs(ref Decimal d)
         {
             return new Decimal(d.lo, d.mid, d.hi, d.flags & ~SignMask);
         }
@@ -500,10 +500,6 @@ namespace System
         {
             return Number.FormatDecimal(this, format, NumberFormatInfo.GetInstance(provider));
         }
-
-        // TODO https://github.com/dotnet/corefx/issues/23642: Remove once corefx has been updated with new overloads.
-        public bool TryFormat(Span<char> destination, out int charsWritten, string format, IFormatProvider provider) =>
-            TryFormat(destination, out charsWritten, (ReadOnlySpan<char>)format, provider);
 
         public bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format = default, IFormatProvider provider = null)
         {
@@ -718,14 +714,14 @@ namespace System
 
         // Returns the larger of two Decimal values.
         //
-        internal static Decimal Max(Decimal d1, Decimal d2)
+        internal static Decimal Max(ref Decimal d1, ref Decimal d2)
         {
             return FCallCompare(ref d1, ref d2) >= 0 ? d1 : d2;
         }
 
         // Returns the smaller of two Decimal values.
         //
-        internal static Decimal Min(Decimal d1, Decimal d2)
+        internal static Decimal Min(ref Decimal d1, ref Decimal d2)
         {
             return FCallCompare(ref d1, ref d2) < 0 ? d1 : d2;
         }
@@ -741,7 +737,7 @@ namespace System
             // This piece of code is to work around the fact that Dividing a decimal with 28 digits number by decimal which causes
             // causes the result to be 28 digits, can cause to be incorrectly rounded up.
             // eg. Decimal.MaxValue / 2 * Decimal.MaxValue will overflow since the division by 2 was rounded instead of being truncked.
-            if (Abs(d1) < Abs(d2))
+            if (Math.Abs(d1) < Math.Abs(d2))
             {
                 return d1;
             }

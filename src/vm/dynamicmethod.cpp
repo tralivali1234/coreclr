@@ -322,7 +322,7 @@ HeapList* HostCodeHeap::CreateCodeHeap(CodeHeapRequestInfo *pInfo, EEJitManager 
         GC_NOTRIGGER;
         MODE_ANY;
         INJECT_FAULT(COMPlusThrowOM());
-        POSTCONDITION(CheckPointer(RETVAL) || !pInfo->getThrowOnOutOfMemoryWithinRange());
+        POSTCONDITION((RETVAL != NULL) || !pInfo->getThrowOnOutOfMemoryWithinRange());
     }
     CONTRACT_END;
 
@@ -715,7 +715,7 @@ HostCodeHeap::TrackAllocation* HostCodeHeap::AllocMemory_NoThrow(size_t header, 
 
         _ASSERTE(totalRequiredSize > availableInFreeList);
         size_t sizeToCommit = totalRequiredSize - availableInFreeList;
-        sizeToCommit = ROUND_UP_TO_PAGE(size); // round up to page
+        sizeToCommit = ROUND_UP_TO_PAGE(sizeToCommit);
 
         if (m_pLastAvailableCommittedAddr + sizeToCommit <= m_pBaseAddr + m_TotalBytesAvailable)
         {
@@ -795,7 +795,7 @@ struct HostCodeHeap::TrackAllocation * HostCodeHeap::GetTrackAllocation(TADDR co
 {
     LIMITED_METHOD_CONTRACT;
 
-    CodeHeader * pHdr = dac_cast<PTR_CodeHeader>(codeStart) - 1;
+    CodeHeader * pHdr = dac_cast<PTR_CodeHeader>(PCODEToPINSTR(codeStart)) - 1;
 
     // Pointer to the TrackAllocation record is stored just before the code header
     return *((TrackAllocation **)(pHdr) - 1);

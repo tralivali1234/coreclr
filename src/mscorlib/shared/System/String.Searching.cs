@@ -53,16 +53,16 @@ namespace System
                     return CultureInfo.CurrentCulture.CompareInfo.IndexOf(this, value, CompareOptions.IgnoreCase);
 
                 case StringComparison.InvariantCulture:
-                    return CultureInfo.InvariantCulture.CompareInfo.IndexOf(this, value, CompareOptions.None);
+                    return CompareInfo.Invariant.IndexOf(this, value, CompareOptions.None);
 
                 case StringComparison.InvariantCultureIgnoreCase:
-                    return CultureInfo.InvariantCulture.CompareInfo.IndexOf(this, value, CompareOptions.IgnoreCase);
+                    return CompareInfo.Invariant.IndexOf(this, value, CompareOptions.IgnoreCase);
 
                 case StringComparison.Ordinal:
-                    return CultureInfo.InvariantCulture.CompareInfo.IndexOf(this, value, CompareOptions.Ordinal);
+                    return CompareInfo.Invariant.IndexOf(this, value, CompareOptions.Ordinal);
 
                 case StringComparison.OrdinalIgnoreCase:
-                    return CultureInfo.InvariantCulture.CompareInfo.IndexOf(this, value, CompareOptions.OrdinalIgnoreCase);
+                    return CompareInfo.Invariant.IndexOf(this, value, CompareOptions.OrdinalIgnoreCase);
                     
                 default:
                     throw new ArgumentException(SR.NotSupported_StringComparison, nameof(comparisonType));
@@ -305,17 +305,17 @@ namespace System
             charMap[value & PROBABILISTICMAP_BLOCK_INDEX_MASK] |= 1u << (value >> PROBABILISTICMAP_BLOCK_INDEX_SHIFT);
         }
 
-        public int IndexOf(String value)
+        public int IndexOf(string value)
         {
             return IndexOf(value, StringComparison.CurrentCulture);
         }
 
-        public int IndexOf(String value, int startIndex)
+        public int IndexOf(string value, int startIndex)
         {
             return IndexOf(value, startIndex, StringComparison.CurrentCulture);
         }
 
-        public int IndexOf(String value, int startIndex, int count)
+        public int IndexOf(string value, int startIndex, int count)
         {
             if (startIndex < 0 || startIndex > this.Length)
             {
@@ -330,17 +330,17 @@ namespace System
             return IndexOf(value, startIndex, count, StringComparison.CurrentCulture);
         }
 
-        public int IndexOf(String value, StringComparison comparisonType)
+        public int IndexOf(string value, StringComparison comparisonType)
         {
             return IndexOf(value, 0, this.Length, comparisonType);
         }
 
-        public int IndexOf(String value, int startIndex, StringComparison comparisonType)
+        public int IndexOf(string value, int startIndex, StringComparison comparisonType)
         {
             return IndexOf(value, startIndex, this.Length - startIndex, comparisonType);
         }
 
-        public int IndexOf(String value, int startIndex, int count, StringComparison comparisonType)
+        public int IndexOf(string value, int startIndex, int count, StringComparison comparisonType)
         {
             // Validate inputs
             if (value == null)
@@ -361,16 +361,16 @@ namespace System
                     return CultureInfo.CurrentCulture.CompareInfo.IndexOf(this, value, startIndex, count, CompareOptions.IgnoreCase);
 
                 case StringComparison.InvariantCulture:
-                    return CultureInfo.InvariantCulture.CompareInfo.IndexOf(this, value, startIndex, count, CompareOptions.None);
+                    return CompareInfo.Invariant.IndexOf(this, value, startIndex, count, CompareOptions.None);
 
                 case StringComparison.InvariantCultureIgnoreCase:
-                    return CultureInfo.InvariantCulture.CompareInfo.IndexOf(this, value, startIndex, count, CompareOptions.IgnoreCase);
+                    return CompareInfo.Invariant.IndexOf(this, value, startIndex, count, CompareOptions.IgnoreCase);
 
                 case StringComparison.Ordinal:
-                    return CultureInfo.InvariantCulture.CompareInfo.IndexOf(this, value, startIndex, count, CompareOptions.Ordinal);
+                    return CompareInfo.Invariant.IndexOfOrdinal(this, value, startIndex, count, ignoreCase: false);
 
                 case StringComparison.OrdinalIgnoreCase:
-                    return TextInfo.IndexOfStringOrdinalIgnoreCase(this, value, startIndex, count);
+                    return CompareInfo.Invariant.IndexOfOrdinal(this, value, startIndex, count, ignoreCase: true);
 
                 default:
                     throw new ArgumentException(SR.NotSupported_StringComparison, nameof(comparisonType));
@@ -521,17 +521,17 @@ namespace System
         // The character at position startIndex is included in the search.  startIndex is the larger
         // index within the string.
         //
-        public int LastIndexOf(String value)
+        public int LastIndexOf(string value)
         {
             return LastIndexOf(value, this.Length - 1, this.Length, StringComparison.CurrentCulture);
         }
 
-        public int LastIndexOf(String value, int startIndex)
+        public int LastIndexOf(string value, int startIndex)
         {
             return LastIndexOf(value, startIndex, startIndex + 1, StringComparison.CurrentCulture);
         }
 
-        public int LastIndexOf(String value, int startIndex, int count)
+        public int LastIndexOf(string value, int startIndex, int count)
         {
             if (count < 0)
             {
@@ -541,17 +541,17 @@ namespace System
             return LastIndexOf(value, startIndex, count, StringComparison.CurrentCulture);
         }
 
-        public int LastIndexOf(String value, StringComparison comparisonType)
+        public int LastIndexOf(string value, StringComparison comparisonType)
         {
             return LastIndexOf(value, this.Length - 1, this.Length, comparisonType);
         }
 
-        public int LastIndexOf(String value, int startIndex, StringComparison comparisonType)
+        public int LastIndexOf(string value, int startIndex, StringComparison comparisonType)
         {
             return LastIndexOf(value, startIndex, startIndex + 1, comparisonType);
         }
 
-        public int LastIndexOf(String value, int startIndex, int count, StringComparison comparisonType)
+        public int LastIndexOf(string value, int startIndex, int count, StringComparison comparisonType)
         {
             if (value == null)
                 throw new ArgumentNullException(nameof(value));
@@ -589,16 +589,16 @@ namespace System
                     return CultureInfo.CurrentCulture.CompareInfo.LastIndexOf(this, value, startIndex, count, CompareOptions.IgnoreCase);
 
                 case StringComparison.InvariantCulture:
-                    return CultureInfo.InvariantCulture.CompareInfo.LastIndexOf(this, value, startIndex, count, CompareOptions.None);
+                    return CompareInfo.Invariant.LastIndexOf(this, value, startIndex, count, CompareOptions.None);
 
                 case StringComparison.InvariantCultureIgnoreCase:
-                    return CultureInfo.InvariantCulture.CompareInfo.LastIndexOf(this, value, startIndex, count, CompareOptions.IgnoreCase);
+                    return CompareInfo.Invariant.LastIndexOf(this, value, startIndex, count, CompareOptions.IgnoreCase);
 
                 case StringComparison.Ordinal:
-                    return CultureInfo.InvariantCulture.CompareInfo.LastIndexOf(this, value, startIndex, count, CompareOptions.Ordinal);
+                    return CompareInfo.Invariant.LastIndexOfOrdinal(this, value, startIndex, count, ignoreCase: false);
 
                 case StringComparison.OrdinalIgnoreCase:
-                    return TextInfo.LastIndexOfStringOrdinalIgnoreCase(this, value, startIndex, count);
+                    return CompareInfo.Invariant.LastIndexOfOrdinal(this, value, startIndex, count, ignoreCase: true);
 
                 default:
                     throw new ArgumentException(SR.NotSupported_StringComparison, nameof(comparisonType));

@@ -4,6 +4,7 @@
 
 using Microsoft.Win32.SafeHandles;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -239,7 +240,7 @@ namespace System.IO
                     {
                         FlushWriteBuffer();
                     }
-                    catch (IOException) when (!disposing)
+                    catch (Exception e) when (IsIoRelatedException(e) && !disposing)
                     {
                         // On finalization, ignore failures from trying to flush the write buffer,
                         // e.g. if this stream is wrapping a pipe and the pipe is now broken.
@@ -459,7 +460,7 @@ namespace System.IO
             VerifyOSHandlePosition();
 
             int bytesRead;
-            fixed (byte* bufPtr = &buffer.DangerousGetPinnableReference())
+            fixed (byte* bufPtr = &MemoryMarshal.GetReference(buffer))
             {
                 bytesRead = CheckFileCall(Interop.Sys.Read(_fileHandle, bufPtr, buffer.Length));
                 Debug.Assert(bytesRead <= buffer.Length);
@@ -612,7 +613,7 @@ namespace System.IO
         {
             VerifyOSHandlePosition();
 
-            fixed (byte* bufPtr = &source.DangerousGetPinnableReference())
+            fixed (byte* bufPtr = &MemoryMarshal.GetReference(source))
             {
                 int offset = 0;
                 int count = source.Length;

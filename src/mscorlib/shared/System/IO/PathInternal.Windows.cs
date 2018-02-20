@@ -4,6 +4,7 @@
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace System.IO
@@ -115,7 +116,7 @@ namespace System.IO
         /// <summary>
         /// Returns true if the path uses any of the DOS device path syntaxes. ("\\.\", "\\?\", or "\??\")
         /// </summary>
-        internal static bool IsDevice(string path)
+        internal static bool IsDevice(ReadOnlySpan<char> path)
         {
             // If the path begins with any two separators is will be recognized and normalized and prepped with
             // "\??\" for internal usage correctly. "\??\" is recognized and handled, "/??/" is not.
@@ -135,7 +136,7 @@ namespace System.IO
         /// path matches exactly (cannot use alternate directory separators) Windows will skip normalization
         /// and path length checks.
         /// </summary>
-        internal static bool IsExtended(string path)
+        internal static bool IsExtended(ReadOnlySpan<char> path)
         {
             // While paths like "//?/C:/" will work, they're treated the same as "\\.\" paths.
             // Skipping of normalization will *only* occur if back slashes ('\') are used.
@@ -147,39 +148,9 @@ namespace System.IO
         }
 
         /// <summary>
-        /// Returns a value indicating if the given path contains invalid characters (", &lt;, &gt;, | 
-        /// NUL, or any ASCII char whose integer representation is in the range of 1 through 31).
-        /// Does not check for wild card characters ? and *.
-        /// </summary>
-        internal static bool HasIllegalCharacters(string path)
-        {
-            // This is equivalent to IndexOfAny(InvalidPathChars) >= 0,
-            // except faster since IndexOfAny grows slower as the input
-            // array grows larger.
-            // Since we know that some of the characters we're looking
-            // for are contiguous in the alphabet-- the path cannot contain
-            // characters 0-31-- we can optimize this for our specific use
-            // case and use simple comparison operations.
-
-            for (int i = 0; i < path.Length; i++)
-            {
-                char c = path[i];
-                if (c <= '|') // fast path for common case - '|' is highest illegal character
-                {
-                    if (c <= '\u001f' || c == '|')
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
-
-        /// <summary>
         /// Check for known wildcard characters. '*' and '?' are the most common ones.
         /// </summary>
-        internal static bool HasWildCardCharacters(string path)
+        internal static bool HasWildCardCharacters(ReadOnlySpan<char> path)
         {
             // Question mark is part of dos device syntax so we have to skip if we are
             int startIndex = IsDevice(path) ? ExtendedPathPrefix.Length : 0;
@@ -202,22 +173,15 @@ namespace System.IO
         /// <summary>
         /// Gets the length of the root of the path (drive, share, etc.).
         /// </summary>
-        internal unsafe static int GetRootLength(string path)
+        internal static int GetRootLength(ReadOnlySpan<char> path)
         {
-            fixed (char* value = path)
-            {
-                return GetRootLength(value, path.Length);
-            }
-        }
-
-        private unsafe static int GetRootLength(char* path, int pathLength)
-        {
+            int pathLength = path.Length;
             int i = 0;
             int volumeSeparatorLength = 2;  // Length to the colon "C:"
             int uncRootLength = 2;          // Length to the start of the server name "\\"
 
-            bool extendedSyntax = StartsWithOrdinal(path, pathLength, ExtendedPathPrefix);
-            bool extendedUncSyntax = StartsWithOrdinal(path, pathLength, UncExtendedPathPrefix);
+            bool extendedSyntax = StartsWithOrdinal(path, ExtendedPathPrefix);
+            bool extendedUncSyntax = StartsWithOrdinal(path, UncExtendedPathPrefix);
             if (extendedSyntax)
             {
                 // Shift the position we look for the root from to account for the extended prefix
@@ -244,7 +208,8 @@ namespace System.IO
                     // (e.g. to \\?\UNC\Server\Share or \\Server\Share\)
                     i = uncRootLength;
                     int n = 2; // Maximum separators to skip
-                    while (i < pathLength && (!IsDirectorySeparator(path[i]) || --n > 0)) i++;
+                    while (i < pathLength && (!IsDirectorySeparator(path[i]) || --n > 0))
+                        i++;
                 }
             }
             else if (pathLength >= volumeSeparatorLength && path[volumeSeparatorLength - 1] == VolumeSeparatorChar)
@@ -252,17 +217,21 @@ namespace System.IO
                 // Path is at least longer than where we expect a colon, and has a colon (\\?\A:, A:)
                 // If the colon is followed by a directory separator, move past it
                 i = volumeSeparatorLength;
-                if (pathLength >= volumeSeparatorLength + 1 && IsDirectorySeparator(path[volumeSeparatorLength])) i++;
+                if (pathLength >= volumeSeparatorLength + 1 && IsDirectorySeparator(path[volumeSeparatorLength]))
+                    i++;
             }
             return i;
         }
 
-        private unsafe static bool StartsWithOrdinal(char* source, int sourceLength, string value)
+        private static bool StartsWithOrdinal(ReadOnlySpan<char> source, string value)
         {
-            if (sourceLength < value.Length) return false;
+            if (source.Length < value.Length)
+                return false;
+
             for (int i = 0; i < value.Length; i++)
             {
-                if (value[i] != source[i]) return false;
+                if (value[i] != source[i])
+                    return false;
             }
             return true;
         }
@@ -279,7 +248,7 @@ namespace System.IO
         /// for C: (rooted, but relative). "C:\a" is rooted and not relative (the current directory
         /// will not be used to modify the path).
         /// </remarks>
-        internal static bool IsPartiallyQualified(string path)
+        internal static bool IsPartiallyQualified(ReadOnlySpan<char> path)
         {
             if (path.Length < 2)
             {
@@ -313,7 +282,7 @@ namespace System.IO
         /// <remarks>
         /// Note that this conflicts with IsPathRooted() which doesn't (and never did) such a skip.
         /// </remarks>
-        internal static int PathStartSkip(string path)
+        internal static int PathStartSkip(ReadOnlySpan<char> path)
         {
             int startIndex = 0;
             while (startIndex < path.Length && path[startIndex] == ' ') startIndex++;
@@ -371,7 +340,8 @@ namespace System.IO
         /// </remarks>
         internal static string NormalizeDirectorySeparators(string path)
         {
-            if (string.IsNullOrEmpty(path)) return path;
+            if (string.IsNullOrEmpty(path))
+                return path;
 
             char current;
             int start = PathStartSkip(path);
@@ -394,7 +364,8 @@ namespace System.IO
                     }
                 }
 
-                if (normalized) return path;
+                if (normalized)
+                    return path;
             }
 
             StringBuilder builder = new StringBuilder(path.Length);
@@ -442,9 +413,9 @@ namespace System.IO
         /// For unix, this is empty or null. For Windows, this is empty, null, or 
         /// just spaces ((char)32).
         /// </summary>
-        internal static bool IsEffectivelyEmpty(string path)
+        internal static bool IsEffectivelyEmpty(ReadOnlySpan<char> path)
         {
-            if (string.IsNullOrEmpty(path))
+            if (path.IsEmpty)
                 return true;
 
             foreach (char c in path)

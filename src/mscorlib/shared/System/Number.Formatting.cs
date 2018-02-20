@@ -5,6 +5,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace System
@@ -1127,10 +1128,8 @@ namespace System
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static unsafe bool TryCopyTo(char* src, int length, Span<char> destination, out int charsWritten)
         {
-            if (length <= destination.Length)
+            if (new ReadOnlySpan<char>(src, length).TryCopyTo(destination))
             {
-                bool copied = new ReadOnlySpan<char>(src, length).TryCopyTo(destination);
-                Debug.Assert(copied);
                 charsWritten = length;
                 return true;
             }
@@ -1558,7 +1557,7 @@ namespace System
                 scaleAdjust = 0;
                 src = section;
 
-                fixed (char* pFormat = &format.DangerousGetPinnableReference())
+                fixed (char* pFormat = &MemoryMarshal.GetReference(format))
                 {
                     while (src < format.Length && (ch = pFormat[src++]) != 0 && ch != ';')
                     {
@@ -1707,8 +1706,7 @@ namespace System
                         if (thousandsSepCtr >= thousandsSepPos.Length)
                         {
                             var newThousandsSepPos = new int[thousandsSepPos.Length * 2];
-                            bool copied = thousandsSepPos.TryCopyTo(newThousandsSepPos);
-                            Debug.Assert(copied, "Expect copy to succeed, as the new array is larger than the original");
+                            thousandsSepPos.CopyTo(newThousandsSepPos);
                             thousandsSepPos = newThousandsSepPos;
                         }
 
@@ -1728,7 +1726,7 @@ namespace System
 
             bool decimalWritten = false;
 
-            fixed (char* pFormat = &format.DangerousGetPinnableReference())
+            fixed (char* pFormat = &MemoryMarshal.GetReference(format))
             {
                 char* cur = dig;
 
@@ -1948,7 +1946,7 @@ namespace System
                     int digitCount = 0;
                     int digLength = string.wcslen(dig);
                     int digStart = (digPos < digLength) ? digPos : digLength;
-                    fixed (char* spanPtr = &sb.AppendSpan(bufferSize).DangerousGetPinnableReference())
+                    fixed (char* spanPtr = &MemoryMarshal.GetReference(sb.AppendSpan(bufferSize)))
                     {
                         char* p = spanPtr + bufferSize - 1;
                         for (int i = digPos - 1; i >= 0; i--)
@@ -2188,7 +2186,7 @@ namespace System
             if (section == 0)
                 return 0;
 
-            fixed (char* pFormat = &format.DangerousGetPinnableReference())
+            fixed (char* pFormat = &MemoryMarshal.GetReference(format))
             {
                 src = 0;
                 for (;;)
